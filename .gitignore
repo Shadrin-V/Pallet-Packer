@@ -4,6 +4,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Local npm auth for GitHub Packages (qrd.19) — NEVER commit
+.npmrc
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
