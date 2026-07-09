@@ -15,3 +15,4 @@
 | 008 | [Интеграция @shadrin-v/engine в Lovable](008-lovable-engine-integration.md)                  | Решено (ADR 010) |
 | 009 | [Модель вложения — pairwise (парами)](009-pairwise-nesting-model.md)                      | Принято |
 | 010 | [Интеграция в Lovable — приватный npm-пакет](010-lovable-private-npm.md)                  | Принято |
+| 011 | [Группировка по заказам (без LIFO-очередности)](011-order-grouping.md)                    | Принято |
