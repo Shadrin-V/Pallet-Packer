@@ -15,6 +15,8 @@
 - ADR 009 + контракт **0.2.0**: модель вложения **pairwise** (парами) — поля `nestingMode`,
   `allowUnpairedTop`, переинтерпретация `stepHeight` как h_д. Аддитивно; `sequential` по умолчанию.
 - `docs/qrd-17-preset-data.md` — точка сбора реальных данных каркасов (h_д для pairwise).
+- ADR 010 (итог спайка qrd.16): интеграция в Lovable — приватный scoped npm-пакет через `.npmrc`
+  + build secret; ADR 008 разрешён. Браузерная модель (ADR 001) подтверждена.
 
 ### Планируется (эпик «Pallet Packer MVP»)
 - `@pallet/engine`: домен, валидация, 2D shelf-упаковщик, вертикальный расчёт, метрики.
