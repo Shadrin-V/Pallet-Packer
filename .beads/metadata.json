@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "LKWkalk",
+  "project_id": "e6cf6750-fda3-45d6-b481-bb899b7f75ec"
+}
