@@ -1,4 +1,9 @@
 
+# Node / build
+node_modules/
+dist/
+*.tsbuildinfo
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

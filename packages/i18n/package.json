@@ -1,0 +1,22 @@
+{
+  "name": "@pallet/i18n",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Locale dictionaries and unit/number formatting for Pallet Packer (de, ru)",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  }
+}
