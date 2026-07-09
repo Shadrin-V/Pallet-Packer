@@ -1,7 +1,7 @@
 // Domain types (api-contract.md 0.1.0). All linear dimensions and coordinates are integer
 // millimetres (ADR 002); coordinates are measured from the cargo-hold corner.
 
-import type { RotationRule, NestingState, Orientation } from './constants';
+import type { RotationRule, NestingState, NestingMode, Orientation } from './constants';
 
 /** Optimisation objective. MVP supports only `maxUnits`. */
 export type Objective = 'maxUnits';
@@ -23,9 +23,13 @@ export interface CargoStacking {
 
 export interface CargoNesting {
   nestable: boolean;
-  /** Δh — height added per nested unit, mm. */
+  /** sequential → Δh (height per nested unit); pairwise → h_д (height of the two top boards), mm. */
   stepHeight?: number;
   maxNested?: number;
+  /** How units nest; default 'sequential' (ADR 009). */
+  nestingMode?: NestingMode;
+  /** pairwise only: allow one unpaired pallet on top; default false. */
+  allowUnpairedTop?: boolean;
 }
 
 export interface CargoType {

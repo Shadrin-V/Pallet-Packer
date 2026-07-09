@@ -56,6 +56,18 @@ describe('domain types (api-contract 0.1.0)', () => {
     expect(layout.unplaced[0].count).toBe(5);
   });
 
+  it('models pairwise nesting fields (ADR 009)', () => {
+    const nesting: CargoType['nesting'] = {
+      nestable: true,
+      stepHeight: 22,
+      maxNested: 6,
+      nestingMode: 'pairwise',
+      allowUnpairedTop: true,
+    };
+    expect(nesting.nestingMode).toBe('pairwise');
+    expect(nesting.allowUnpairedTop).toBe(true);
+  });
+
   it('models a Report with a layout and per-type totals', () => {
     const report: Report = {
       layout: {

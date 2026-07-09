@@ -9,6 +9,10 @@ export type RotationRule = (typeof ROTATION_RULES)[number];
 export const NESTING_STATES = ['verschachtelt', 'entschachtelt'] as const;
 export type NestingState = (typeof NESTING_STATES)[number];
 
+/** How a nestable cargo type nests (ADR 009). Default is 'sequential'. */
+export const NESTING_MODES = ['sequential', 'pairwise'] as const;
+export type NestingMode = (typeof NESTING_MODES)[number];
+
 /**
  * Placement orientations: axis order mapped to (length, width, height).
  * `lwh`/`wlh` are the yaw-only pair; the full set covers all six.
