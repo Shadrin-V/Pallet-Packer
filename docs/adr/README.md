@@ -13,3 +13,4 @@
 | 006 | [i18n de/ru; движок возвращает коды ошибок](006-i18n-de-ru-error-codes.md)                | Принято |
 | 007 | [Хранение справочников — браузер + пресеты](007-browser-local-storage.md)                 | Принято |
 | 008 | [Интеграция @pallet/engine в Lovable](008-lovable-engine-integration.md)                  | Предложено |
+| 009 | [Модель вложения — pairwise (парами)](009-pairwise-nesting-model.md)                      | Принято |

@@ -12,6 +12,9 @@
 - Пресеты (реальные данные): LKW 13600×2430×2650; Европоддоны EPAL 1/2/3/6 + Viertel
   (см. spec.md, Приложение A). Параметры вложения — PLACEHOLDER (`LKWkalk-qrd.17`).
 - ADR 008 (предложено): интеграция `@pallet/engine` в Lovable — решается спайком `LKWkalk-qrd.16`.
+- ADR 009 + контракт **0.2.0**: модель вложения **pairwise** (парами) — поля `nestingMode`,
+  `allowUnpairedTop`, переинтерпретация `stepHeight` как h_д. Аддитивно; `sequential` по умолчанию.
+- `docs/qrd-17-preset-data.md` — точка сбора реальных данных каркасов (h_д для pairwise).
 
 ### Планируется (эпик «Pallet Packer MVP»)
 - `@pallet/engine`: домен, валидация, 2D shelf-упаковщик, вертикальный расчёт, метрики.

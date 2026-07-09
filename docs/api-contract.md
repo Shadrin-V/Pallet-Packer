@@ -2,7 +2,8 @@
 
 > Граница между ядром `@pallet/engine`, UI (Lovable) и будущим MCP-сервером.
 > Это источник истины по формам входа/выхода. **Ломающее изменение → ADR + правка этого файла
-> до реализации.** Версия контракта: `0.1.0`.
+> до реализации.** Версия контракта: `0.2.0` (0.1.0 → 0.2.0 — аддитивно добавлены поля вложения,
+> [ADR 009](adr/009-pairwise-nesting-model.md)).
 
 Единицы: все линейные размеры — **целые миллиметры**. Координаты — от угла грузового отсека
 (`x` — длина, `y` — ширина, `z` — высота). Движок текст не возвращает — только данные и коды ошибок.
@@ -36,7 +37,14 @@ interface CargoType {
   fill?: boolean;        // true → «разместить как можно больше», quantity игнорируется
   rotation: RotationRule;
   stacking: { stackable: boolean; maxTiers?: number };
-  nesting: { nestable: boolean; stepHeight?: number; maxNested?: number }; // stepHeight = Δh, мм
+  nesting: {
+    nestable: boolean;
+    /** sequential → Δh (прирост на вложение); pairwise → h_д (высота двух верхних досок), мм */
+    stepHeight?: number;
+    maxNested?: number;
+    nestingMode?: 'sequential' | 'pairwise'; // default 'sequential' (ADR 009)
+    allowUnpairedTop?: boolean;              // default false; только pairwise
+  };
   state: NestingState;   // состояние вложенности данного типа
   weightPerUnit?: number;// кг; опц.; в MVP не используется
 }
@@ -77,7 +85,7 @@ interface Layout {
     floorFillPercent: number;   // 0..100
     volumeFillPercent: number;  // 0..100
   };
-  contractVersion: string;      // напр. "0.1.0"
+  contractVersion: string;      // напр. "0.2.0"
 }
 ```
 
@@ -135,3 +143,8 @@ interface Report {
 - Ломающие изменения (переименование/удаление/смена семантики) — ADR + мажорная версия +
   синхронная правка UI и (в будущем) REST/MCP.
 - `contractVersion` в `Layout` позволяет клиентам проверять совместимость.
+
+### История версий
+- `0.2.0` — добавлены `nestingMode`, `allowUnpairedTop`; `stepHeight` переинтерпретируется как h_д
+  для `pairwise` (аддитивно, [ADR 009](adr/009-pairwise-nesting-model.md)).
+- `0.1.0` — исходный контракт.
