@@ -1,0 +1,17 @@
+// Domain constants (api-contract.md 0.1.0). Runtime lists drive validation and packing;
+// the string-literal unions are derived from them so the two never drift.
+
+/** Allowed rotation rules for a cargo type. */
+export const ROTATION_RULES = ['none', 'yawOnly', 'full'] as const;
+export type RotationRule = (typeof ROTATION_RULES)[number];
+
+/** Nesting state of a cargo type in a load. */
+export const NESTING_STATES = ['verschachtelt', 'entschachtelt'] as const;
+export type NestingState = (typeof NESTING_STATES)[number];
+
+/**
+ * Placement orientations: axis order mapped to (length, width, height).
+ * `lwh`/`wlh` are the yaw-only pair; the full set covers all six.
+ */
+export const ORIENTATIONS = ['lwh', 'wlh', 'lhw', 'hlw', 'whl', 'hwl'] as const;
+export type Orientation = (typeof ORIENTATIONS)[number];

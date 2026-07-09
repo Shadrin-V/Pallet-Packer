@@ -3,3 +3,5 @@
 
 /** Version of the engine JSON API contract (see docs/api-contract.md). */
 export const ENGINE_CONTRACT_VERSION = '0.1.0';
+
+export * from './model/index';
