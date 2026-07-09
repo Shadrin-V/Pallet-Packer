@@ -1,5 +1,5 @@
 {
-  "name": "@pallet/engine",
+  "name": "@shadrin-v/engine",
   "version": "0.1.0",
   "type": "module",
   "description": "Headless 2.5D pallet packing engine (isomorphic TypeScript)",

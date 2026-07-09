@@ -1,5 +1,5 @@
 {
-  "name": "@pallet/i18n",
+  "name": "@shadrin-v/i18n",
   "version": "0.1.0",
   "type": "module",
   "description": "Locale dictionaries and unit/number formatting for Pallet Packer (de, ru)",

@@ -103,7 +103,7 @@ export interface Report {
   perType: ReportPerType[];
 }
 
-/** Validation/engine error. Human-readable text is produced by the UI via @pallet/i18n. */
+/** Validation/engine error. Human-readable text is produced by the UI via @shadrin-v/i18n. */
 export interface EngineError {
   code: string;
   details?: Record<string, unknown>;

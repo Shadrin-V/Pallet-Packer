@@ -1,5 +1,5 @@
 // Validation error codes (api-contract.md 0.1.0, §3). The engine returns codes only;
-// human-readable text is produced by the UI via @pallet/i18n.
+// human-readable text is produced by the UI via @shadrin-v/i18n.
 
 export const VALIDATION_ERROR_CODES = [
   'ERR_INVALID_DIMENSION',

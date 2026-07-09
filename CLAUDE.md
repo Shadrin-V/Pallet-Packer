@@ -65,7 +65,7 @@
 
 > Зафиксированы по итогам брейншторма (фаза 1). Полные обоснования — в `docs/adr/`.
 
-- Язык/стек: **TypeScript**, изоморфный npm-пакет `@pallet/engine` (без DOM/Node); UI — Lovable/React.
+- Язык/стек: **TypeScript**, изоморфный npm-пакет `@shadrin-v/engine` (без DOM/Node); UI — Lovable/React.
 - Единицы измерения: внутренне — **целые миллиметры**; конвертация только на границе UI ([ADR 002](docs/adr/002-integer-millimeters.md)).
 - Учёт веса: **вне MVP** (опц. поля в контракте есть, логика не реализуется).
 - Алгоритм упаковки: **2.5D** — 2D shelf-упаковка по полу + вертикальный расчёт вложения; за интерфейсом `Packer` ([ADR 003](docs/adr/003-2p5d-computation-model.md), [ADR 004](docs/adr/004-packer-interface-shelf-heuristic.md)).

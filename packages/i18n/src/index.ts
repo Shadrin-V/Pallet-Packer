@@ -1,4 +1,4 @@
-// @pallet/i18n — public entry point.
+// @shadrin-v/i18n — public entry point.
 // Production exports are added test-first (TDD).
 
 /** Locales shipped in the MVP (ADR 006). Further languages add without code changes. */

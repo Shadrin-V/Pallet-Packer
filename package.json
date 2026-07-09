@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pallet Packer — headless 2.5D pallet loading engine (@pallet/engine) + i18n",
+  "description": "Pallet Packer — headless 2.5D pallet loading engine (@shadrin-v/engine) + i18n",
   "workspaces": [
     "packages/*"
   ],
