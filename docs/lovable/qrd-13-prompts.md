@@ -121,6 +121,14 @@ i18n (do this now — no hardcoded user-facing strings anywhere in components):
   stack.preview        de: "Stapel"                        ru: "Штабель"
   stack.pallets        de: "Paletten"                      ru: "поддонов"
   stack.invalid        de: "—"                             ru: "—"
+  action.computeStack  de: "Stapel berechnen"              ru: "Рассчитать штабель"
+  stack.result         de: "Im Stapel: {count} Paletten · {height}" ru: "В штабеле: {count} поддонов · {height}"
+  stack.formula.label  de: "Formel"                        ru: "Формула"
+  stack.formula.entschachtelt de: "⌊Hк / H⌋ = ⌊{hold} / {base}⌋ = {rawCount}" ru: "⌊Hк / H⌋ = ⌊{hold} / {base}⌋ = {rawCount}"
+  stack.formula.sequential    de: "1 + ⌊(Hк − H) / Δh⌋ = 1 + ⌊({hold} − {base}) / {step}⌋ = {rawCount}" ru: "1 + ⌊(Hк − H) / Δh⌋ = 1 + ⌊({hold} − {base}) / {step}⌋ = {rawCount}"
+  stack.formula.pairwise      de: "Paarweise, h_d = {step} mm → {rawCount} (vor Limit)" ru: "Парами, h_д = {step} мм → {rawCount} (до лимита)"
+  stack.formula.cap    de: "→ min({rawCount}, {cap}) = {count}" ru: "→ min({rawCount}, {cap}) = {count}"
+  stack.formula.notStackable  de: "nicht stapelbar → 1"    ru: "без штабелирования → 1"
   state.label          de: "Zustand"                        ru: "Состояние"
   state.verschachtelt  de: "Verschachtelt"                  ru: "Verschachtelt (вложено)"
   state.entschachtelt  de: "Entschachtelt"                  ru: "Entschachtelt (развложено)"
@@ -275,6 +283,41 @@ Refine the cargo editor's nesting and optional-cap inputs — style via semantic
 
 ---
 
+## Промпт 2-stack — кнопка «Рассчитать штабель» + формула вывода
+
+> Явный промежуточный шаг 2.5D: пользователь считает количество в одном штабеле и видит формулу
+> вывода ДО полной раскладки. Требует `@shadrin-v/engine >= 0.0.2` (StackPreview с операндами
+> формулы, контракт 0.7.0) и ключей `action.computeStack`, `stack.result`, `stack.formula.*` из
+> промпта 0. Живой инлайн-предпросмотр (Промпт 2-fix, п.4) остаётся — это его развёрнутая версия.
+
+```
+In each cargo row add an explicit "Stapel berechnen" button (t('action.computeStack')) next to the
+nesting block; style via semantic tokens only. On click, call computeStack(row, vehicle) and show a
+small result panel under the row (surface-card / border):
+
+    import { computeStack } from '@shadrin-v/engine';   // >= 0.0.2, returns formula operands
+    const s = computeStack(row, vehicle);
+    // s = { count, height, mode, pairs?, unpairedTop?, base, hold, stepHeight?, rawCount, cappedBy?, cap? }
+
+Panel content (all text via t(), all numbers via formatLength / Intl — NEVER hardcode):
+1) Result line: t('stack.result') with {count} = s.count and {height} = formatLength(s.height, locale).
+2) Formula line: label t('stack.formula.label') + the mode template, substituting placeholders from s
+   (do NOT compute any of these numbers yourself — only substitute):
+     - s.mode === 'entschachtelt' → t('stack.formula.entschachtelt') with {hold},{base},{rawCount}
+     - s.mode === 'sequential'    → t('stack.formula.sequential')    with {hold},{base},{step}=s.stepHeight,{rawCount}
+     - s.mode === 'pairwise'      → t('stack.formula.pairwise')      with {step}=s.stepHeight,{rawCount}
+3) Cap line (only if s.cappedBy is set):
+     - 'maxTiers' | 'maxNested' → t('stack.formula.cap') with {rawCount},{cap}=s.cap,{count}=s.count
+     - 'notStackable'           → t('stack.formula.notStackable')
+4) If s.count === 0 (unit taller than the hold) show t('stack.invalid') ("—") instead of the panel.
+
+Numbers come entirely from the engine (single source of truth) — the UI only fills the templates.
+Leave room under the panel for a future graphical stack scheme (do not build the graphic now).
+This is pure/synchronous — no async.
+```
+
+---
+
 ## Промпт 3 — вызов `calculateLayout`, обработка ошибок, минимальная сводка
 
 ```
@@ -327,6 +370,8 @@ Do not add CSV/Excel import (out of MVP).
 - Глобальный переключатель Verschachtelt/Entschachtelt работает на все типы.
 - Под каждой строкой груза — живой предпросмотр штабеля (`computeStack`): «Штабель: N поддонов · H мм»,
   обновляется при вводе Δh/режима/высоты; при невалидном вложении — «—» (промежуточный шаг 2.5D).
+- Кнопка «Рассчитать штабель» (Промпт 2-stack): показывает количество в штабеле + читаемую формулу
+  вывода (операнды из `computeStack`, UI не считает сам); место под будущую графсхему.
 - Ни одной хардкод-строки в компонентах — всё через `t()`; локали de/ru, de по умолчанию.
 - **Ни одного hex-цвета в компонентах** — все цвета/шрифты/радиусы/отступы через токены темы
   (ребренд = правка одного файла); палитра из логотипа Holz Schäfer; только светлая тема; Inter.
