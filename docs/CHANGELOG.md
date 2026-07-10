@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- Контракт API движка **0.6.0** + `computeStack(CargoType, Vehicle) → StackPreview`: публичный
+  предпросмотр вертикального штабеля (промежуточный шаг 2.5D — сколько поддонов в одном штабеле — до
+  2D-раскроя пола). Чистая функция, поведение расчёта не меняет; UI показывает эффект `Δh`/режима
+  вложения до полного расчёта (`LKWkalk-qrd.25`).
 - `@shadrin-v/engine`: метрики заполнения — `computeFillMetrics` (floor/volume %, column-aware
   bounding-box объём, уважает инвариант вложения; 0..100); `packLoad` проставляет реальные метрики
   в `Layout` (`LKWkalk-qrd.8`).

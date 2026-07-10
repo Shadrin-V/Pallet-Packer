@@ -1,7 +1,21 @@
-import type { EngineError, Layout, Load, Report, ReportPerType } from '../model/index';
+import type { CargoType, EngineError, Layout, Load, Report, ReportPerType, Vehicle } from '../model/index';
 import { ENGINE_CONTRACT_VERSION } from '../index';
 import { validateLoad } from '../validation/validate';
 import { packLoad } from '../packing/orchestrator';
+import { computeVerticalStack, type VerticalStack } from '../packing/vertical';
+
+/** Units in one vertical stack of a single type (2.5D intermediate; api-contract 0.6.0). */
+export type StackPreview = VerticalStack;
+
+/**
+ * Compute the vertical stack of one cargo type against a vehicle (qrd.25) — the 2.5D intermediate
+ * step: how many pallets fit in ONE stack (and its height) before the 2D floor layout. Pure preview
+ * of the same calculation `calculateLayout` runs internally; lets the UI show the effect of
+ * `stepHeight`/nesting mode live. Returns `count: 0` when the unit does not fit (H ≤ 0 or Hк < H).
+ */
+export function computeStack(cargo: CargoType, vehicle: Vehicle): StackPreview {
+  return computeVerticalStack(cargo, vehicle.height);
+}
 
 /** Empty layout (zero metrics), optionally carrying validation error codes (api-contract 0.5.0). */
 function emptyLayout(errors?: EngineError[]): Layout {
