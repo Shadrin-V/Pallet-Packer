@@ -1,3 +1,4 @@
+import { floorOrientations } from '../model/orientation';
 import type { RotationRule } from '../model/index';
 
 export type LoadingMode = 'rear' | 'side' | 'combined';
@@ -48,7 +49,7 @@ function gridCapacity(region: Region, fp: Footprint, clearance: number): number 
 /** Выбор yaw-ориентации по макс-влезанию (ADR 011). Тай-брейк → 'lwh'. */
 export function chooseOrientation(req: FloorRequest, region: Region, clearance: number): Footprint {
   const lwh: Footprint = { dx: req.length, dy: req.width, orientation: 'lwh' };
-  const canYaw = req.rotation === 'yawOnly' || req.rotation === 'full';
+  const canYaw = floorOrientations(req.rotation).includes('wlh');
   if (!canYaw) return lwh;
   const wlh: Footprint = { dx: req.width, dy: req.length, orientation: 'wlh' };
   return gridCapacity(region, wlh, clearance) > gridCapacity(region, lwh, clearance) ? wlh : lwh;
