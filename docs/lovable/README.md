@@ -8,6 +8,7 @@ UI-прототип «**Ladungsplaner** by Holz Schäfer» строится в L
 
 | Файл | Что покрывает |
 |------|----------------|
+| **[design-system.md](design-system.md)** | **Дизайн-система: токены + Tailwind + компоненты. Вставлять в Lovable напрямую (артефакты по ссылке недоступны).** |
 | [qrd-13-prompts.md](qrd-13-prompts.md) | Экран 1: выбор кузова + редактор заявки (каркас, i18n, токены, расчёт). |
 | [qrd-14-prompts.md](qrd-14-prompts.md) | Виды сверху/сбоку + сводка; рефайнмент (full-width, direction, print). |
 | [qrd-30-prompts.md](qrd-30-prompts.md) | Заказы (Auftrags-ID), цвет по заказу, drag штабелей; рефайнмент 2. |
