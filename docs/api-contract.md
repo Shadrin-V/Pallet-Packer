@@ -134,7 +134,7 @@ interface Report {
 | `ERR_INVALID_DIMENSION`     | Размер ≤ 0 или не целое число мм                       |
 | `ERR_CARGO_EXCEEDS_VEHICLE` | Габарит единицы (в любой разрешённой ориентации) > кузова |
 | `ERR_INVALID_QUANTITY`      | `quantity` < 0 и не задан `fill`                       |
-| `ERR_INVALID_NESTING`       | `nestable:true` без корректного `stepHeight` (0..H)    |
+| `ERR_INVALID_NESTING`       | `nestable:true` без корректного `stepHeight` (целое `0 < stepHeight ≤ H`) |
 | `ERR_INVALID_ROTATION`      | Неизвестный режим вращения                             |
 | `ERR_EMPTY_LOAD`            | `cargo` пуст                                           |
 | `ERR_UNKNOWN_VEHICLE`       | Кузов не найден в хранилище (для list/upsert-сценариев)|

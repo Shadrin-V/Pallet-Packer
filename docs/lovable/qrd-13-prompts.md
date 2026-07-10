@@ -27,7 +27,9 @@
 - **Типографика:** чистый современный sans-serif (Inter); без декоративных шрифтов.
 - **Desktop-first:** макет обязан работать на desktop (≥1280px); планшет — nice-to-have, мобильный —
   вне MVP.
-- **Зависимость:** только `@shadrin-v/engine` (публичный npm, без `.npmrc`/секретов). Пакета
+- **Зависимость:** только `@shadrin-v/engine` **≥ 0.0.2** (публичный npm, без `.npmrc`/секретов).
+  0.0.1 рассинхронизирован с ядром (неверная `volumeFillPercent`, не отклоняет `Δh=0`) — обнови до
+  0.0.2. Пакета
   `@shadrin-v/i18n` в Lovable нет — UI держит собственные словари `de`/`ru` (зеркалят ключи ядра +
   ключи редактора). Канонизация ключей обратно в `@shadrin-v/i18n` — бид `LKWkalk-qrd.23`.
 - **i18n:** ни одной пользовательской строки в компонентах — только `t(key, locale)`. Локали
@@ -110,9 +112,12 @@ i18n (do this now — no hardcoded user-facing strings anywhere in components):
   cargoType.nesting.mode       de: "Verschachtelungsmodus"  ru: "Режим вложения"
   cargoType.nesting.sequential de: "Sequenziell"            ru: "Последовательный"
   cargoType.nesting.pairwise   de: "Paarweise"              ru: "Парами"
-  cargoType.nesting.stepHeight de: "Höhe der oberen Bretter (Δh)" ru: "Прирост высоты (Δh)"
+  cargoType.nesting.stepHeightSeq  de: "Höhenzuwachs je Palette (Δh)"     ru: "Прирост высоты на паллету (Δh)"
+  cargoType.nesting.stepHeightPair de: "Höhe der oberen Bretter (h_d)"    ru: "Высота верхних досок (h_д)"
+  cargoType.nesting.stepHeightHint de: "1…{H} mm — Höhenzuwachs pro verschachtelter Palette; 0 ist ungültig." ru: "1…{H} мм — прирост высоты на вложенную паллету; 0 недопустимо."
   cargoType.nesting.maxNested  de: "Max. Verschachtelung"   ru: "Макс. вложений"
   cargoType.nesting.allowUnpairedTop de: "Einzelne oberste Palette erlauben" ru: "Разрешить непарный верх"
+  hint.optionalUnlimited de: "leer = unbegrenzt"           ru: "пусто = без лимита"
   state.label          de: "Zustand"                        ru: "Состояние"
   state.verschachtelt  de: "Verschachtelt"                  ru: "Verschachtelt (вложено)"
   state.entschachtelt  de: "Entschachtelt"                  ru: "Entschachtelt (развложено)"
@@ -191,11 +196,20 @@ Row controls (every label via t(); no hardcoded strings):
 - orderId (field.orderId, optional free text — pallets sharing an orderId are packed as one zone).
 - rotation: select with options none / yawOnly / full (cargoType.rotation.*).
 - stacking: checkbox stackable (cargoType.stacking.label) + optional maxTiers number
-  (cargoType.stacking.maxTiers) shown when stackable.
-- nesting: checkbox nestable (cargoType.nesting.label). When nestable, show: nestingMode select
-  (sequential/pairwise, cargoType.nesting.*), stepHeight Δh number (cargoType.nesting.stepHeight,
-  must be 0..height), maxNested number (cargoType.nesting.maxNested), and — only for pairwise —
-  allowUnpairedTop checkbox (cargoType.nesting.allowUnpairedTop).
+  (cargoType.stacking.maxTiers) shown when stackable. IMPORTANT: optional caps must default to
+  EMPTY (undefined → unlimited), NEVER 0 — send the field to the engine only when the user typed a
+  positive integer; an empty input means "omit the field". Show hint.optionalUnlimited under it.
+- nesting: checkbox nestable (cargoType.nesting.label). When nestable, show:
+    - nestingMode select (sequential/pairwise, cargoType.nesting.sequential / .pairwise).
+    - stepHeight number — REQUIRED, integer 1..height (0 is invalid → the engine returns
+      ERR_INVALID_NESTING). Its LABEL depends on the mode: sequential →
+      cargoType.nesting.stepHeightSeq (Δh, per-pallet height gain), pairwise →
+      cargoType.nesting.stepHeightPair (h_d, height of the two top boards). Show
+      cargoType.nesting.stepHeightHint underneath with {H} replaced by the row's height; mark the
+      field invalid (danger token) if empty, ≤0 or > height, and disable "Berechnen" while any
+      nestable row has an invalid stepHeight.
+    - maxNested number — OPTIONAL, default EMPTY (undefined → unlimited), never 0; hint.optionalUnlimited.
+    - only for pairwise: allowUnpairedTop checkbox (cargoType.nesting.allowUnpairedTop).
 - Remove-row button (cargoType.remove) and an "add cargo type" button (cargoType.add).
 
 Quick-add preset pallets (button per preset that appends a row prefilled with these dims,
@@ -215,6 +229,32 @@ Also add a Load-level "clearance" number input (field.clearance, mm, default 0) 
 loadingMode select (loadingMode.label; options rear/side/combined, default 'combined').
 
 Keep everything in state; still no engine call.
+```
+
+---
+
+## Промпт 2-fix — доработка вложения/лимитов (если Cargo уже собран)
+
+> Патч к уже построенной секции Cargo: делает ввод при «Verschachtelt» нативным и убирает
+> вредные нули-по-умолчанию. Требует ключей `cargoType.nesting.stepHeightSeq/…Pair/…Hint`,
+> `hint.optionalUnlimited` из промпта 0 (добавь их в DICT, если их ещё нет).
+
+```
+Refine the cargo editor's nesting and optional-cap inputs — style via semantic tokens only:
+
+1) Optional numeric caps must never default to 0. For stacking.maxTiers and nesting.maxNested:
+   default the input to EMPTY; treat empty as "field omitted" (undefined = unlimited) when building
+   the CargoType — do NOT send 0. Add the hint hint.optionalUnlimited under each. Reason: the engine
+   reads 0 as "cap = 1", so a stray 0 silently collapses stacking/nesting to a single unit.
+
+2) When nestable is on, stepHeight (Δh) is REQUIRED and must be an integer 1..height (0 is invalid
+   and makes the engine return ERR_INVALID_NESTING). Default the field to EMPTY (not 0). Its label
+   depends on nestingMode: sequential → t('cargoType.nesting.stepHeightSeq'), pairwise →
+   t('cargoType.nesting.stepHeightPair'). Show t('cargoType.nesting.stepHeightHint') under it with
+   {H} replaced by that row's height. Mark the field invalid (danger token) and disable the
+   "Berechnen" button whenever any nestable row has stepHeight empty, <=0 or > its height.
+
+3) Keep allowUnpairedTop visible only in pairwise mode.
 ```
 
 ---
