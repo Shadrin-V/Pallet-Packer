@@ -1,5 +1,6 @@
 import type { CargoType, Layout, Load, Placement, UnplacedCount } from '../model/index';
 import { ENGINE_CONTRACT_VERSION } from '../index';
+import { computeFillMetrics } from '../metrics/metrics';
 import { packFloor, type FloorRequest } from './floor';
 import { computeVerticalStack } from './vertical';
 
@@ -108,10 +109,14 @@ export function packLoad(load: Load): Layout {
     if (placed < c.quantity) unplaced.push({ cargoTypeId: c.id, count: c.quantity - placed });
   }
   const totalPlaced = [...placedByType.values()].reduce((a, b) => a + b, 0);
-  return {
+  const layout: Layout = {
     placements,
     unplaced,
     metrics: { totalPlaced, usedFloorPositions, floorFillPercent: 0, volumeFillPercent: 0 },
     contractVersion: ENGINE_CONTRACT_VERSION,
   };
+  const fill = computeFillMetrics(load, layout);
+  layout.metrics.floorFillPercent = fill.floorFillPercent;
+  layout.metrics.volumeFillPercent = fill.volumeFillPercent;
+  return layout;
 }
