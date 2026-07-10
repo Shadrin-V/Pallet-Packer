@@ -1,8 +1,16 @@
 {
   "name": "@shadrin-v/engine",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "description": "Headless 2.5D pallet packing engine (isomorphic TypeScript)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shadrin-V/Pallet-Packer.git",
+    "directory": "packages/engine"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
