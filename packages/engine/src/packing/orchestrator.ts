@@ -3,7 +3,12 @@ import { ENGINE_CONTRACT_VERSION } from '../index';
 import { packFloor, type FloorRequest } from './floor';
 import { computeVerticalStack } from './vertical';
 
-/** Per-tier placements for one floor column. dz = H (entschachtelt) or stepHeight (nested). */
+/**
+ * Per-tier placements for one floor column. dz = H (entschachtelt) or stepHeight (nested); when
+ * nested with no stepHeight (contract-valid when nestable:false — validate.ts gates the stepHeight
+ * check on nestable:true), dz falls back to 0, matching computeVerticalStack's own `stepHeight ?? 0`
+ * fallback (vertical.ts) so the emitted column never exceeds the count/height it computed.
+ */
 export function columnPlacements(
   cargo: CargoType,
   x: number,
@@ -11,8 +16,7 @@ export function columnPlacements(
   orientation: Placement['orientation'],
   units: number,
 ): Placement[] {
-  const dz =
-    cargo.state === 'entschachtelt' ? cargo.height : (cargo.nesting.stepHeight ?? cargo.height);
+  const dz = cargo.state === 'entschachtelt' ? cargo.height : (cargo.nesting.stepHeight ?? 0);
   const out: Placement[] = [];
   for (let t = 0; t < units; t++) {
     out.push({

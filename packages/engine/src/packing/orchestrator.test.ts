@@ -207,7 +207,40 @@ describe('packLoad (qrd.7)', () => {
   });
 });
 
-/** Cargo arbitrary: small dims, random rotation/state/nesting/orderId; ids assigned by array index. */
+describe('packLoad — regression (qrd.7 whole-branch review): column dz vs computeVerticalStack', () => {
+  it('verschachtelt + nestable:false + pairwise, no stepHeight: dz falls back to 0, no OOB', () => {
+    // Contract-valid degenerate input: stepHeight validation is gated on nestable:true (validate.ts),
+    // so nestable:false + state:'verschachtelt' + nestingMode:'pairwise' with no stepHeight is legal.
+    // computeVerticalStack (pairwise, hd = stepHeight ?? 0 = 0) reports a tight count of 5 for
+    // H=1000, Hk=3000 (1 bottom single + 2 pairs, pairAdd=H). columnPlacements must not space those
+    // 5 tiers by full cargo.height (which would put the column at 5*1000=5000mm, over the 3000mm hold).
+    const l = load({
+      vehicle: { id: 'v', name: 'V', length: 1000, width: 1000, height: 3000 },
+      cargo: [
+        cargo({
+          id: 'nested-fallback',
+          length: 800,
+          width: 600,
+          height: 1000,
+          quantity: 5,
+          state: 'verschachtelt',
+          nesting: { nestable: false, nestingMode: 'pairwise' },
+        }),
+      ],
+    });
+    const layout = packLoad(l);
+    expect(layout.metrics.totalPlaced).toBe(5);
+    expect(findGeometryViolations(l, layout)).toEqual([]);
+  });
+});
+
+/**
+ * Cargo arbitrary: small dims, random rotation/state/nesting/orderId; ids assigned by array index.
+ * `nestable` and `state` vary independently (NOT hard-coupled: a validated load only requires
+ * stepHeight when nestable:true — validate.ts — but the packer itself keys off `state`, not
+ * `nestable`; see the regression test above), and `stepHeight` is sometimes omitted, so the
+ * generator can reach the nested + no-stepHeight fallback path (qrd.7 review).
+ */
 function arbCargo(): fc.Arbitrary<CargoType> {
   return fc
     .record({
@@ -217,6 +250,7 @@ function arbCargo(): fc.Arbitrary<CargoType> {
       quantity: fc.integer({ min: 0, max: 30 }),
       rotation: fc.constantFrom<RotationRule>('none', 'yawOnly', 'full'),
       state: fc.constantFrom<NestingState>('verschachtelt', 'entschachtelt'),
+      nestable: fc.boolean(),
       nestingMode: fc.constantFrom<NestingMode>('sequential', 'pairwise'),
       allowUnpairedTop: fc.boolean(),
       stackable: fc.boolean(),
@@ -225,7 +259,9 @@ function arbCargo(): fc.Arbitrary<CargoType> {
       orderId: fc.option(fc.constantFrom('A', 'B'), { nil: undefined }),
     })
     .chain((base) =>
-      fc.integer({ min: 1, max: base.height }).map((stepHeight) => ({ ...base, stepHeight })),
+      fc
+        .option(fc.integer({ min: 1, max: base.height }), { nil: undefined })
+        .map((stepHeight) => ({ ...base, stepHeight })),
     )
     .map(
       (g): CargoType => ({
@@ -239,7 +275,7 @@ function arbCargo(): fc.Arbitrary<CargoType> {
         rotation: g.rotation,
         stacking: { stackable: g.stackable, maxTiers: g.maxTiers },
         nesting: {
-          nestable: g.state === 'verschachtelt',
+          nestable: g.nestable,
           stepHeight: g.stepHeight,
           maxNested: g.maxNested,
           nestingMode: g.nestingMode,
