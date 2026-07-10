@@ -1,5 +1,6 @@
 import type { Load, EngineError, CargoType, Vehicle } from '../model/index';
 import { ROTATION_RULES, NESTING_MODES } from '../model/index';
+import { allowedOrientations, orientedDims } from '../model/orientation';
 
 function isPositiveInt(n: number): boolean {
   return Number.isInteger(n) && n > 0;
@@ -7,27 +8,9 @@ function isPositiveInt(n: number): boolean {
 
 /** Footprint/height triples (dx, dy, dz) the cargo may occupy under its rotation rule. */
 function orientationTriples(cargo: CargoType): Array<[number, number, number]> {
-  const { length: l, width: w, height: h } = cargo;
-  switch (cargo.rotation) {
-    case 'none':
-      return [[l, w, h]];
-    case 'yawOnly':
-      return [
-        [l, w, h],
-        [w, l, h],
-      ];
-    case 'full':
-      return [
-        [l, w, h],
-        [w, l, h],
-        [l, h, w],
-        [h, l, w],
-        [w, h, l],
-        [h, w, l],
-      ];
-    default:
-      return [];
-  }
+  return allowedOrientations(cargo.rotation).map((o) =>
+    orientedDims(cargo.length, cargo.width, cargo.height, o),
+  );
 }
 
 function fitsInVehicle(cargo: CargoType, vehicle: Vehicle): boolean {
