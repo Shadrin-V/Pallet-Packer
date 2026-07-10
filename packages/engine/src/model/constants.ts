@@ -19,3 +19,7 @@ export type NestingMode = (typeof NESTING_MODES)[number];
  */
 export const ORIENTATIONS = ['lwh', 'wlh', 'lhw', 'hlw', 'whl', 'hwl'] as const;
 export type Orientation = (typeof ORIENTATIONS)[number];
+
+/** Loading mode for the vehicle (api-contract 0.4.0). */
+export const LOADING_MODES = ['rear', 'side', 'combined'] as const;
+export type LoadingMode = (typeof LOADING_MODES)[number];
