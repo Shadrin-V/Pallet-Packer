@@ -17,3 +17,4 @@
 | 010 | [Интеграция в Lovable — приватный npm-пакет](010-lovable-private-npm.md)                  | Принято |
 | 011 | [Группировка по заказам (без LIFO-очередности)](011-order-grouping.md)                    | Принято |
 | 012 | [Режимы загрузки (rear/side/combined)](012-loading-modes.md)                              | Принято |
+| 013 | [Вращение в MVP: full ≈ yaw в упаковщике](013-rotation-mvp-yaw.md)                        | Принято |

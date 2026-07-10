@@ -26,6 +26,10 @@
   `combined`; combined = плотнейшая из rear/side). Затрагивает floor-упаковщик (`LKWkalk-qrd.4`).
 - `docs/superpowers/specs/2026-07-10-qrd4-shelf-packer-design.md` — дизайн floor-упаковщика:
   ShelfPacker как чистый примитив, ориентация по макс-влезанию, shelf next-fit, режимы загрузки.
+- ADR 013: вращение в MVP — `full` ≈ yaw в упаковщике (переворот на грань отложен, вне 2.5D);
+  валидация лояльна (full-груз, влезающий только tipped, → `unplaced`). Единый модуль
+  `model/orientation.ts` устраняет дублирование rotation-логики (`LKWkalk-qrd.6`). Контракт без изменений.
+- `docs/superpowers/specs/2026-07-10-qrd6-rotation-rules-design.md` — дизайн интеграции правил вращения.
 
 ### Планируется (эпик «Pallet Packer MVP»)
 - `@shadrin-v/engine`: домен, валидация, 2D shelf-упаковщик, вертикальный расчёт, метрики.
