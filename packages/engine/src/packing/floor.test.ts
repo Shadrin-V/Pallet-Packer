@@ -212,3 +212,19 @@ describe('packFloor — property: no geometry violations', () => {
     );
   });
 });
+
+describe('packFloor — rotation modes (qrd.6)', () => {
+  it('full is treated as yaw: EUR full -> 34 in wlh', () => {
+    const eurFull: FloorRequest = { ...eur(), rotation: 'full' };
+    const out = packFloor(REGION, [eurFull], { loadingMode: 'side' });
+    expect(out).toHaveLength(34);
+    expect(out.every((p) => p.orientation === 'wlh')).toBe(true);
+  });
+
+  it('none never changes orientation (every placement lwh)', () => {
+    const eurNone: FloorRequest = { ...eur(), rotation: 'none' };
+    const out = packFloor(REGION, [eurNone], { loadingMode: 'side' });
+    expect(out.length).toBeGreaterThan(0);
+    expect(out.every((p) => p.orientation === 'lwh')).toBe(true);
+  });
+});

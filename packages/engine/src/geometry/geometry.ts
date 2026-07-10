@@ -1,28 +1,9 @@
-import type { CargoType, Layout, Load, Orientation, Placement, RotationRule } from '../model/index';
+import type { Layout, Load, Placement } from '../model/index';
+import { allowedOrientations, orientedDims } from '../model/orientation';
 
 export interface GeometryViolation {
   kind: 'out-of-bounds' | 'overlap' | 'orientation';
   details: Record<string, unknown>;
-}
-
-/** Map an orientation string (axis order l/w/h → x/y/z) to (dx, dy, dz). */
-function orientedDims(cargo: CargoType, orientation: Orientation): [number, number, number] {
-  const src = { l: cargo.length, w: cargo.width, h: cargo.height };
-  const axes = orientation.split('') as Array<'l' | 'w' | 'h'>;
-  return [src[axes[0]], src[axes[1]], src[axes[2]]];
-}
-
-function allowedOrientations(rotation: RotationRule): Orientation[] {
-  switch (rotation) {
-    case 'none':
-      return ['lwh'];
-    case 'yawOnly':
-      return ['lwh', 'wlh'];
-    case 'full':
-      return ['lwh', 'wlh', 'lhw', 'hlw', 'whl', 'hwl'];
-    default:
-      return [];
-  }
 }
 
 /** Half-open interval overlap: touching edges do not count as overlapping. */
@@ -51,7 +32,7 @@ export function findGeometryViolations(load: Load, layout: Layout): GeometryViol
   for (const p of layout.placements) {
     const c = byId.get(p.cargoTypeId);
     if (c === undefined) continue;
-    const [dx, dy, dz] = orientedDims(c, p.orientation);
+    const [dx, dy, dz] = orientedDims(c.length, c.width, c.height, p.orientation);
     boxes.push({ p, dx, dy, dz });
 
     if (!allowedOrientations(c.rotation).includes(p.orientation)) {
