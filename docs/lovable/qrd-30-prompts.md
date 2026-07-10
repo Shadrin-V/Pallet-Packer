@@ -100,6 +100,77 @@ Make stacks draggable in the Draufsicht (top view). Import the validator:
 - Ручные правки — слой поверх авто-раскладки; **«Пересчитать/Berechnen» их сбрасывает** (с
   подтверждением). Метрики при перемещении не меняются.
 
+## Рефайнмент 2 (после O1–O2–D1) — по обратной связи
+
+> Всё ниже — **чисто UI, движок не меняется** (работает на опубликованной версии). Три темы:
+> логика заказов, полноширинные разрезы (калька + штриховка, печатопригодно), печать на один A4.
+
+Добавь в DICT (de И ru):
+```
+  order.add        de: "Auftrag hinzufügen"     ru: "Добавить заказ"
+  order.title      de: "Auftrag"                ru: "Заказ"
+  position.add     de: "Position hinzufügen"    ru: "Добавить позицию"
+  position.preset  de: "Standard-Palette"       ru: "Стандартная паллета"
+  position.custom  de: "Eigene Maße"            ru: "Свои размеры"
+```
+
+### Промпт F1 — логика заказов (заказ → позиции; разделение; state только у позиции)
+
+```
+Restructure the cargo editor around ORDERS and POSITIONS (tokens only, i18n via t()):
+- REMOVE the global Entschachtelt/Verschachtelt (ZUSTAND) toggle at the top of the cargo section.
+  The Verschachtelt/Entschachtelt state is a PER-POSITION setting only (each position row keeps its
+  own state select). Keep the Load-level Abstand (clearance) and Beladmodus (loadingMode) controls.
+- The cargo section is a list of ORDER cards. Each order card = an editable "Auftrags-ID" header
+  (t('order.title'); may be left EMPTY) + the positions belonging to that order + a "Position
+  hinzufügen" (t('position.add')) control INSIDE the card. Add a top-level "Auftrag hinzufügen"
+  (t('order.add')) button that creates a NEW empty order card.
+- "Position hinzufügen" opens a picker offering BOTH the standard presets (EPAL 1/2/3/6, Viertel-
+  palette — t('position.preset')) AND custom size (t('position.custom')); the chosen position is
+  added to THAT order (inherits its Auftrags-ID). This must work inside every order card — the bug
+  where presets couldn't be chosen when adding to an order is fixed.
+- Logical separation: choosing the pallet (preset/custom) is one step; the Auftrags-ID lives on the
+  order card (a position may still be reassigned via its own order-id field). An empty Auftrags-ID =
+  the shared "Ohne Auftrag" zone (the engine merges empty-id positions into one zone).
+- Everything else per position (dims, qty, fill, rotation, state, stacking, nesting, stack preview,
+  "Stapel berechnen") stays as-is, now living inside the order card.
+```
+
+### Промпт F2 — разрезы на всю ширину экрана, калька, штриховка (печатопригодно)
+
+```
+Make the two views the full-bleed hero of the screen (tokens only):
+- Remove width limits: the whole app must use the FULL screen width — drop the centered max-width
+  container / mx-auto / max-w-* on the app shell and on the Result section. Content spans 100% width
+  (keep small side gutters only).
+- Draufsicht and Seitenansicht each span the FULL screen width, one under the other, as large as
+  possible. The truck is long and thin, so a full-width strip is exactly right.
+- Diagram background = tracing-paper / vellum look: a warm translucent off-white with a very faint
+  blueprint grid (every 1000 mm), all from theme tokens (no hex). It must read on screen and in print.
+- Fill each order's stacks with a DISTINCT COLOUR **and** a DISTINCT SVG HATCH pattern (define
+  <pattern> fills: diagonal /, diagonal \, cross-hatch, dots, horizontal, vertical, grid, dense-dots
+  — 8 variants), one (colour+pattern) per order. NOT solid black. Choose print-friendly colours and
+  MODERATE fill density (~30–40% ink) so: (a) it prints clearly in colour AND legibly in grayscale,
+  (b) the position number / tier-count labels stay readable on top. Reuse the same (colour+pattern)
+  for that order in the top view, side view and legend.
+- Keep front/rear + loading-direction labels, axis/scale, numbers and tier badges.
+```
+
+### Промпт F3 — печать на один лист A4 (лого + графики по максимуму)
+
+```
+Add a print layout that fits EVERYTHING on ONE A4 page (landscape), maximising the diagrams:
+- @page { size: A4 landscape; margin: 8mm }. In print, HIDE the editor/controls/buttons; show only:
+  the Holz Schäfer logo (top-left), the title block (vehicle + dims + Auftrag/Datum + totals +
+  fill %), then BOTH views as large as the page allows (the two full-width strips stacked), then a
+  compact legend (orders) and the per-type/KPI numbers in a small row.
+- Priority when fitting: the two diagrams get the maximum area; textual info (KPIs, legend, per-type
+  table) shrinks to a compact footer band. Everything must fit on a single page — scale the diagram
+  block to the available height so nothing overflows to page 2.
+- Colours/patterns must render in print (rely on tokens; set print-color-adjust: exact so the vellum
+  and hatch fills are kept). The existing "Drucken" button triggers window.print().
+```
+
 ## Definition of Done для qrd.30
 
 - Поле **Auftrags-ID** вводится до добавления груза; новые паллеты попадают в текущий заказ; редактор
