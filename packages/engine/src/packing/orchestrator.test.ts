@@ -181,7 +181,7 @@ describe('packLoad (qrd.7)', () => {
     expect(findGeometryViolations(l, layout)).toEqual([]);
   });
 
-  it('loadingMode default (rear): homogeneous load grows along x', () => {
+  it('loadingMode default (combined): homogeneous load grows along x', () => {
     const l = load({
       vehicle: { id: 'v', name: 'V', length: 2000, width: 1000, height: 1000 },
       cargo: [

@@ -55,7 +55,7 @@ function zonesOf(cargo: CargoType[]): CargoType[][] {
 export function packLoad(load: Load): Layout {
   const { vehicle } = load;
   const clearance = load.clearance ?? 0;
-  const loadingMode = load.loadingMode ?? 'rear';
+  const loadingMode = load.loadingMode ?? 'combined'; // contract/ADR-012 default
   const placements: Placement[] = [];
   const placedByType = new Map<string, number>();
   let usedFloorPositions = 0;
