@@ -16,3 +16,4 @@
 | 009 | [Модель вложения — pairwise (парами)](009-pairwise-nesting-model.md)                      | Принято |
 | 010 | [Интеграция в Lovable — приватный npm-пакет](010-lovable-private-npm.md)                  | Принято |
 | 011 | [Группировка по заказам (без LIFO-очередности)](011-order-grouping.md)                    | Принято |
+| 012 | [Режимы загрузки (rear/side/combined)](012-loading-modes.md)                              | Принято |

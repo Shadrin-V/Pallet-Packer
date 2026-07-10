@@ -22,6 +22,10 @@
   частый кейс; ориентация упаковки — по макс-влезанию (EUR → 34). LIFO-очередность точек — вне MVP.
 - `docs/onboarding.md` — чеклист поднятия окружения с нуля; восстановление реестра beads — проверенная
   команда `bd bootstrap`. `.npmrc` добавлен в `.gitignore` (для qrd.19, не коммитить).
+- ADR 012 + контракт **0.4.0**: режимы загрузки `Load.loadingMode` (rear/side/combined, default
+  `combined`; combined = плотнейшая из rear/side). Затрагивает floor-упаковщик (`LKWkalk-qrd.4`).
+- `docs/superpowers/specs/2026-07-10-qrd4-shelf-packer-design.md` — дизайн floor-упаковщика:
+  ShelfPacker как чистый примитив, ориентация по макс-влезанию, shelf next-fit, режимы загрузки.
 
 ### Планируется (эпик «Pallet Packer MVP»)
 - `@shadrin-v/engine`: домен, валидация, 2D shelf-упаковщик, вертикальный расчёт, метрики.
