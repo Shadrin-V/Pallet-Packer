@@ -318,6 +318,24 @@ This is pure/synchronous — no async.
 
 ---
 
+## Промпт 2-state-cleanup — один переключатель состояния (полировка, LKWkalk-qrd.28)
+
+> Сейчас «Verschachtelt/Entschachtelt» встречается в 3 местах (глобальный тумблер СОСТОЯНИЕ +
+> per-row ZUSTAND + блок VERSCHACHTELN), они рассинхронизируются. Оставляем один источник истины.
+
+```
+Simplify the Verschachtelt/Entschachtelt state control to ONE place:
+- The global СОСТОЯНИЕ / ZUSTAND toggle at the top of the Cargo section is the single source of
+  truth for `state`. Remove the per-row ZUSTAND dropdown; every cargo row inherits the global state.
+- Hide the whole VERSCHACHTELN (nesting) block for a row when the global state is Entschachtelt —
+  nesting (Δh) only applies to Verschachtelt. Show it only in Verschachtelt.
+- Keep t()-keys as-is (state.label / state.verschachtelt / state.entschachtelt); no new strings.
+(If per-type mixed states are needed later, reintroduce the per-row control behind an "advanced"
+disclosure — the engine already accepts per-type state, so this is UI-only.)
+```
+
+---
+
 ## Промпт 3 — вызов `calculateLayout`, обработка ошибок, минимальная сводка
 
 ```
