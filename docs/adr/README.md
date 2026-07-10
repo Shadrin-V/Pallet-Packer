@@ -18,3 +18,4 @@
 | 011 | [Группировка по заказам (без LIFO-очередности)](011-order-grouping.md)                    | Принято |
 | 012 | [Режимы загрузки (rear/side/combined)](012-loading-modes.md)                              | Принято |
 | 013 | [Вращение в MVP: full ≈ yaw в упаковщике](013-rotation-mvp-yaw.md)                        | Принято |
+| 014 | [Геометрия вложенных/штабельных колонок (column-aware)](014-nested-column-geometry.md)    | Принято |
