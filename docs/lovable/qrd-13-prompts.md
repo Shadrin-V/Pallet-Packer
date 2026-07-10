@@ -212,6 +212,8 @@ Row controls (every label via t(); no hardcoded strings):
   positive integer; an empty input means "omit the field". Show hint.optionalUnlimited under it.
 - nesting: checkbox nestable (cargoType.nesting.label). When nestable, show:
     - nestingMode select (sequential/pairwise, cargoType.nesting.sequential / .pairwise).
+      DEFAULT = **pairwise** (Paarweise) — this is a pallet/EPAL tool, pairwise nesting is the norm;
+      pre-select it for every new nestable row.
     - stepHeight number — REQUIRED, integer 1..height (0 is invalid → the engine returns
       ERR_INVALID_NESTING). Its LABEL depends on the mode: sequential →
       cargoType.nesting.stepHeightSeq (Δh, per-pallet height gain), pairwise →

@@ -109,6 +109,81 @@ Finish the Result section:
 
 ---
 
+## Рефайнмент (после первого прогона V0–V3) — по обратной связи
+
+> Схемы «вид сверху/сбоку» — **основной артефакт, который шлём поставщикам, грузящим авто**.
+> Поэтому: setup компактнее, схемы — на всю ширину и максимально практичные. Работает на текущей
+> опубликованной версии движка (доп. API не требуется).
+
+Добавь в DICT (de И ru):
+```
+  view.front           de: "Vorne (Fahrerhaus)"    ru: "Перёд (кабина)"
+  view.rear            de: "Hinten (Türen)"        ru: "Зад (двери)"
+  view.loadingDir      de: "Beladerichtung"        ru: "Направление загрузки"
+  diagram.title        de: "Ladeplan"              ru: "План загрузки"
+  diagram.pallets      de: "Paletten gesamt"       ru: "Всего паллет"
+  field.orderRef       de: "Auftrag / Datum"       ru: "Заказ / дата"
+  action.print         de: "Drucken"               ru: "Печать"
+```
+
+### Промпт R1 — компактный setup + схемы на всю ширину
+
+```
+Rework the page layout for a work tool where the loading diagram is the hero (style via semantic
+tokens only, desktop-first):
+- Make the setup compact. Vehicle section: after a preset/vehicle is chosen, collapse it to a single
+  compact summary bar (name + "13.600 × 2.430 × 2.650 mm" via formatLength) with an "edit" toggle
+  that expands the full form; collapsed by default once valid. Cargo section: tighten paddings and
+  row spacing, put each cargo row's fields in a denser grid, so the setup occupies clearly less
+  vertical space. No feature removed — only denser and collapsible.
+- Move the two views OUT of the small side-by-side panels. Render "Draufsicht" (top) and
+  "Seitenansicht" (side) as TWO FULL-WIDTH stacked panels (each spans the whole content width), large,
+  as the primary output below the KPIs. They must read clearly at full width.
+- Keep KPIs + per-type table + legend, but place them compactly around the full-width diagrams.
+- Ensure the diagrams print cleanly (A4 landscape): a print stylesheet where the setup/controls are
+  hidden and only the title block + both views + legend + KPIs print on white with token colours.
+  Add a "Drucken" button (action.print) that triggers window.print().
+```
+
+### Промпт R2 — практичная схема для поставщика (шапка, перёд/двери, оси, шкала)
+
+```
+Make both views into a self-describing loading diagram a supplier can act on (tokens only, i18n via t):
+1) Title block above the views: t('diagram.title') + vehicle name + inner dimensions (formatLength),
+   t('diagram.pallets') = totalPlaced, Bodenfüllung / Volumenfüllung %, and an editable
+   t('field.orderRef') text field (order id / date) that prints in the header. This makes a printed
+   sheet self-explanatory.
+2) Orientation of the truck on BOTH views — critical so the loader matches the diagram to the real
+   vehicle: label the x=0 edge t('view.front') (Fahrerhaus) and the x=length edge t('view.rear')
+   (Türen). Draw a t('view.loadingDir') arrow along x whose direction follows loadingMode: 'rear' and
+   'combined' → front→rear (load toward the doors); 'side' → an arrow along y from the loading side.
+3) Axes + scale: on the top view label the length axis (field.length) and width axis (field.width)
+   with the hold size via formatLength; on the side view label height (field.height) with 0 and
+   vehicle.height ticks. A light metre grid (e.g. every 1000 mm) under the shapes helps estimate
+   positions — keep it faint (border token, low opacity).
+4) Keep per-stack position numbers, the stack unit-count badge (view.tiers), and colour-by-type with
+   the legend. Numbers/labels stay a fixed screen size (do not scale with the SVG viewBox).
+All numbers come from the engine's Layout / orientedDims; the UI only draws and labels.
+```
+
+> Что ещё можно добавить позже (не сейчас): порядок загрузки (нумерация = последовательность
+> установки по зонам/orderId), фильтр «показать только заказ X», экспорт PDF/PNG (qrd.15), вес/оси
+> (вне MVP). Сейчас важнее чистая, ориентированная, печатаемая схема.
+
+---
+
+## Дефолт вложения — «парами» (Paarweise)
+
+> Программа в первую очередь для паллет/поддонов → режим вложения по умолчанию **pairwise**.
+
+```
+In the cargo editor, default nestingMode to 'pairwise' (Paarweise) for every new nestable row and as
+the pre-selected value of the nestingMode dropdown. (UI default only; the engine accepts the mode
+explicitly.)
+```
+
+---
+
 ## Definition of Done для qrd.14
 
 - Два вида из `Layout`: **вид сверху** (план пола, пронумерованные штабели, цвет по типу) и **вид
