@@ -61,6 +61,7 @@ export function findGeometryViolations(load: Load, layout: Layout): GeometryViol
     for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i];
       const b = boxes[j];
+      if (a.p.x === b.p.x && a.p.y === b.p.y && a.p.cargoTypeId === b.p.cargoTypeId) continue;
       if (
         overlaps1d(a.p.x, a.p.x + a.dx, b.p.x, b.p.x + b.dx) &&
         overlaps1d(a.p.y, a.p.y + a.dy, b.p.y, b.p.y + b.dy) &&

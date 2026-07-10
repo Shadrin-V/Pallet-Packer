@@ -30,6 +30,10 @@
   валидация лояльна (full-груз, влезающий только tipped, → `unplaced`). Единый модуль
   `model/orientation.ts` устраняет дублирование rotation-логики (`LKWkalk-qrd.6`). Контракт без изменений.
 - `docs/superpowers/specs/2026-07-10-qrd6-rotation-rules-design.md` — дизайн интеграции правил вращения.
+- ADR 014: геометрия вложенных/штабельных колонок — валидатор column-aware (единицы одной `(x,y)`-колонки
+  одного типа делят колонку, вертикальное перекрытие законно). Инвариант spec §11 уточнён (`LKWkalk-qrd.7`).
+- `docs/superpowers/specs/2026-07-10-qrd7-orchestrator-design.md` — дизайн оркестратора: зоны по orderId
+  (смежные по длине), fill/quantity, floor+vertical → Layout, contract 0.4.0 в коде.
 
 ### Планируется (эпик «Pallet Packer MVP»)
 - `@shadrin-v/engine`: домен, валидация, 2D shelf-упаковщик, вертикальный расчёт, метрики.

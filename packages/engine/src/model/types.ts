@@ -1,7 +1,7 @@
 // Domain types (api-contract.md 0.1.0). All linear dimensions and coordinates are integer
 // millimetres (ADR 002); coordinates are measured from the cargo-hold corner.
 
-import type { RotationRule, NestingState, NestingMode, Orientation } from './constants';
+import type { RotationRule, NestingState, NestingMode, Orientation, LoadingMode } from './constants';
 
 /** Optimisation objective. MVP supports only `maxUnits`. */
 export type Objective = 'maxUnits';
@@ -47,6 +47,8 @@ export interface CargoType {
   stacking: CargoStacking;
   nesting: CargoNesting;
   state: NestingState;
+  /** Order ID this cargo belongs to; optional, api-contract 0.4.0. */
+  orderId?: string;
   /** kg; optional, unused in the MVP. */
   weightPerUnit?: number;
 }
@@ -56,6 +58,8 @@ export interface Load {
   cargo: CargoType[];
   /** Uniform gap, mm; default 0. */
   clearance?: number;
+  /** Loading mode for the vehicle; api-contract 0.4.0. */
+  loadingMode?: LoadingMode;
   objective?: Objective;
 }
 

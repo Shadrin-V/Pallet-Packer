@@ -82,4 +82,19 @@ describe('findGeometryViolations (qrd.9)', () => {
     const yaw = load([cargo({ rotation: 'yawOnly' })]);
     expect(kinds(yaw, layout([place({ orientation: 'wlh' })]))).not.toContain('orientation');
   });
+
+  it('allows overlapping nested column placements with same cargoTypeId and x,y', () => {
+    const cargoType = cargo({ id: 'a', state: 'verschachtelt' });
+    const a = place({ cargoTypeId: 'a', x: 0, y: 0, z: 0, state: 'verschachtelt' });
+    const b = place({ cargoTypeId: 'a', x: 0, y: 0, z: 100, state: 'verschachtelt' });
+    expect(kinds(load([cargoType]), layout([a, b]))).not.toContain('overlap');
+  });
+
+  it('still detects overlap between different cargoTypeIds at same x,y', () => {
+    const cargoA = cargo({ id: 'a', state: 'verschachtelt' });
+    const cargoB = cargo({ id: 'b', state: 'verschachtelt' });
+    const a = place({ cargoTypeId: 'a', x: 0, y: 0, z: 0 });
+    const b = place({ cargoTypeId: 'b', x: 0, y: 0, z: 100 });
+    expect(kinds(load([cargoA, cargoB]), layout([a, b]))).toContain('overlap');
+  });
 });

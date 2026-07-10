@@ -86,4 +86,31 @@ describe('domain types (api-contract 0.1.0)', () => {
 
     expect(report.perType[0].unplaced).toBe(10);
   });
+
+  it('models CargoType with orderId and Load with loadingMode (api-contract 0.4.0)', () => {
+    const vehicle: Vehicle = {
+      id: 'lkw-std',
+      name: 'LKW Standard',
+      length: 13600,
+      width: 2430,
+      height: 2650,
+    };
+    const cargo: CargoType = {
+      id: 'epal1',
+      name: 'EPAL 1',
+      length: 800,
+      width: 1200,
+      height: 144,
+      quantity: 33,
+      orderId: 'A',
+      rotation: 'yawOnly',
+      stacking: { stackable: true, maxTiers: 2 },
+      nesting: { nestable: false },
+      state: 'entschachtelt',
+    };
+    const load: Load = { vehicle, cargo: [cargo], clearance: 0, loadingMode: 'rear', objective: 'maxUnits' };
+
+    expect(cargo.orderId).toBe('A');
+    expect(load.loadingMode).toBe('rear');
+  });
 });
