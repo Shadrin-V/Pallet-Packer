@@ -118,6 +118,9 @@ i18n (do this now — no hardcoded user-facing strings anywhere in components):
   cargoType.nesting.maxNested  de: "Max. Verschachtelung"   ru: "Макс. вложений"
   cargoType.nesting.allowUnpairedTop de: "Einzelne oberste Palette erlauben" ru: "Разрешить непарный верх"
   hint.optionalUnlimited de: "leer = unbegrenzt"           ru: "пусто = без лимита"
+  stack.preview        de: "Stapel"                        ru: "Штабель"
+  stack.pallets        de: "Paletten"                      ru: "поддонов"
+  stack.invalid        de: "—"                             ru: "—"
   state.label          de: "Zustand"                        ru: "Состояние"
   state.verschachtelt  de: "Verschachtelt"                  ru: "Verschachtelt (вложено)"
   state.entschachtelt  de: "Entschachtelt"                  ru: "Entschachtelt (развложено)"
@@ -228,7 +231,8 @@ cargo rows at once (per-row override still allowed after).
 Also add a Load-level "clearance" number input (field.clearance, mm, default 0) and an optional
 loadingMode select (loadingMode.label; options rear/side/combined, default 'combined').
 
-Keep everything in state; still no engine call.
+Keep everything in state; still no engine call (the live stack preview + the invalid-Δh/empty-caps
+hardening are added right after, in Prompt 2-fix).
 ```
 
 ---
@@ -255,6 +259,18 @@ Refine the cargo editor's nesting and optional-cap inputs — style via semantic
    "Berechnen" button whenever any nestable row has stepHeight empty, <=0 or > its height.
 
 3) Keep allowUnpairedTop visible only in pairwise mode.
+
+4) Live stack preview (2.5D intermediate step). Import computeStack from '@shadrin-v/engine':
+       import { computeStack } from '@shadrin-v/engine';   // needs @shadrin-v/engine >= 0.0.2
+   Under EACH cargo row, show a small inline preview line that recomputes live as the user edits
+   dimensions, state, nestingMode or stepHeight — it answers "how many pallets go in ONE stack"
+   before the full floor layout:
+       const s = computeStack(cargoRow, vehicle);   // { count, height, mode, pairs?, unpairedTop? }
+       // render: `${t('stack.preview')}: ${s.count} ${t('stack.pallets')} · ${formatLength(s.height, locale)}`
+   Rules: only render the preview when the row is valid for stacking/nesting (for nestable rows,
+   stepHeight must be 1..height); otherwise show t('stack.invalid') ("—"). If s.count === 0 (unit
+   taller than the hold) show "—" too. This is pure/synchronous — no async. The preview is
+   informational; the full 2D layout still happens on the "Berechnen" button (Prompt 3).
 ```
 
 ---
@@ -309,6 +325,8 @@ Do not add CSV/Excel import (out of MVP).
 - Можно собрать `Load` (кузов + типы + правила + состояние + clearance) и получить `Layout`
   из `calculateLayout`; ошибки показываются переводом кодов `ERR_*` (danger-токен).
 - Глобальный переключатель Verschachtelt/Entschachtelt работает на все типы.
+- Под каждой строкой груза — живой предпросмотр штабеля (`computeStack`): «Штабель: N поддонов · H мм»,
+  обновляется при вводе Δh/режима/высоты; при невалидном вложении — «—» (промежуточный шаг 2.5D).
 - Ни одной хардкод-строки в компонентах — всё через `t()`; локали de/ru, de по умолчанию.
 - **Ни одного hex-цвета в компонентах** — все цвета/шрифты/радиусы/отступы через токены темы
   (ребренд = правка одного файла); палитра из логотипа Holz Schäfer; только светлая тема; Inter.
