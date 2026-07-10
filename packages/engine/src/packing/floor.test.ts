@@ -122,3 +122,93 @@ describe('packFloor — combined (default)', () => {
     expect(packFloor(REGION, reqs)).toEqual(packFloor(REGION, reqs));
   });
 });
+
+import fc from 'fast-check';
+import type { CargoType, Layout, Load, RotationRule } from '../model/index';
+import type { LoadingMode } from './floor';
+import { findGeometryViolations } from '../geometry/geometry';
+
+describe('packFloor — clearance, priority, edges', () => {
+  it('clearance reduces the count below 34', () => {
+    expect(packFloor(REGION, [eur()], { clearance: 50, loadingMode: 'side' }).length).toBeLessThan(34);
+  });
+
+  it('places nothing when the footprint exceeds the region in both orientations', () => {
+    const big: FloorRequest = { cargoTypeId: 'big', length: 5000, width: 5000, rotation: 'yawOnly', count: 3 };
+    expect(packFloor({ length: 2000, width: 2000 }, [big])).toEqual([]);
+  });
+
+  it('respects input order as priority under space pressure', () => {
+    const region = { length: 2000, width: 1000 };
+    const A: FloorRequest = { cargoTypeId: 'A', length: 1000, width: 1000, rotation: 'none', count: 2 };
+    const B: FloorRequest = { cargoTypeId: 'B', length: 1000, width: 1000, rotation: 'none', count: 5 };
+    const out = packFloor(region, [A, B], { loadingMode: 'side' });
+    expect(out).toHaveLength(2);
+    expect(out.every((p) => p.cargoTypeId === 'A')).toBe(true);
+  });
+});
+
+function toLoadAndLayout(
+  region: { length: number; width: number },
+  requests: FloorRequest[],
+  placements: FloorPlacement[],
+): { load: Load; layout: Layout } {
+  const cargo: CargoType[] = requests.map((r) => ({
+    id: r.cargoTypeId,
+    name: r.cargoTypeId,
+    length: r.length,
+    width: r.width,
+    height: 100,
+    quantity: r.count,
+    rotation: r.rotation,
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt',
+  }));
+  const layout: Layout = {
+    placements: placements.map((fp) => ({
+      cargoTypeId: fp.cargoTypeId,
+      x: fp.x,
+      y: fp.y,
+      z: 0,
+      orientation: fp.orientation,
+      tier: 1,
+      state: 'entschachtelt',
+    })),
+    unplaced: [],
+    metrics: { totalPlaced: placements.length, usedFloorPositions: placements.length, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.0.0',
+  };
+  const load: Load = {
+    vehicle: { id: 'v', name: 'v', length: region.length, width: region.width, height: 1000 },
+    cargo,
+  };
+  return { load, layout };
+}
+
+describe('packFloor — property: no geometry violations', () => {
+  it('never overlaps or exceeds bounds for random inputs', () => {
+    const arbReq = fc.record({
+      length: fc.integer({ min: 100, max: 3000 }),
+      width: fc.integer({ min: 100, max: 3000 }),
+      rotation: fc.constantFrom<RotationRule>('none', 'yawOnly', 'full'),
+      count: fc.integer({ min: 0, max: 40 }),
+    });
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 500, max: 14000 }),
+        fc.integer({ min: 500, max: 3000 }),
+        fc.array(arbReq, { minLength: 0, maxLength: 5 }),
+        fc.constantFrom<LoadingMode>('rear', 'side', 'combined'),
+        fc.integer({ min: 0, max: 50 }),
+        (L, W, rawReqs, mode, clearance) => {
+          const region = { length: L, width: W };
+          const requests: FloorRequest[] = rawReqs.map((r, i) => ({ cargoTypeId: `c${i}`, ...r }));
+          const placements = packFloor(region, requests, { clearance, loadingMode: mode });
+          const { load, layout } = toLoadAndLayout(region, requests, placements);
+          expect(findGeometryViolations(load, layout)).toEqual([]);
+        },
+      ),
+    );
+  });
+});
