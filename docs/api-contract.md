@@ -2,7 +2,7 @@
 
 > Граница между ядром `@shadrin-v/engine`, UI (Lovable) и будущим MCP-сервером.
 > Это источник истины по формам входа/выхода. **Ломающее изменение → ADR + правка этого файла
-> до реализации.** Версия контракта: `0.3.0` (аддитивно; полная история версий — в конце файла).
+> до реализации.** Версия контракта: `0.4.0` (аддитивно; полная история версий — в конце файла).
 
 Единицы: все линейные размеры — **целые миллиметры**. Координаты — от угла грузового отсека
 (`x` — длина, `y` — ширина, `z` — высота). Движок текст не возвращает — только данные и коды ошибок.
@@ -52,10 +52,13 @@ interface CargoType {
 
 ### Load (запрос)
 ```ts
+type LoadingMode = 'rear' | 'side' | 'combined';  // сторона загрузки (ADR 012)
+
 interface Load {
   vehicle: Vehicle;
   cargo: CargoType[];
   clearance?: number;         // мм, равномерный зазор; по умолчанию 0
+  loadingMode?: LoadingMode;  // сторона загрузки; default 'combined' (ADR 012)
   objective?: 'maxUnits';     // MVP: только maxUnits
 }
 ```
@@ -145,6 +148,8 @@ interface Report {
 - `contractVersion` в `Layout` позволяет клиентам проверять совместимость.
 
 ### История версий
+- `0.4.0` — добавлен `Load.loadingMode` (режимы загрузки rear/side/combined; default `combined`,
+  [ADR 012](adr/012-loading-modes.md)).
 - `0.3.0` — добавлен `CargoType.orderId` (группировка по заказам, [ADR 011](adr/011-order-grouping.md)).
 - `0.2.0` — добавлены `nestingMode`, `allowUnpairedTop`; `stepHeight` переинтерпретируется как h_д
   для `pairwise` (аддитивно, [ADR 009](adr/009-pairwise-nesting-model.md)).
