@@ -3,6 +3,20 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/);
 версионирование — [SemVer](https://semver.org/lang/ru/).
 
+## Соответствие версий (`@shadrin-v/engine`)
+
+По версии пакета в Lovable видно, какой контракт внутри. Процесс публикации — в
+[onboarding.md §6](onboarding.md). Каждое контрактное изменение → ≥ patch-бамп пакета.
+
+| Пакет npm | Контракт | Что вошло |
+|-----------|----------|-----------|
+| `0.0.1`   | `0.5.0`  | Первый публичный публиш: `calculateLayout`/`getLayoutReport`, `Layout.errors`. |
+| `0.0.2`   | `0.6.0`  | Корректные метрики floor/volume; отклонение вложения `Δh ≤ 0`; `computeStack` (предпросмотр штабеля 2.5D). |
+| `0.0.3`   | `0.7.0`  | `StackPreview` операнды формулы (`base`/`hold`/`stepHeight`/`rawCount`/`cappedBy`/`cap`) — вывод формулы штабеля в UI. |
+
+> `latest` в npm может отставать от main: публикует пользователь по запросу (см. onboarding.md §6).
+> Строку добавляем при бампе версии в `packages/engine/package.json` во время merge.
+
 ## [Unreleased]
 
 ### Added

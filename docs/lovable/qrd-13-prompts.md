@@ -1,6 +1,6 @@
 # qrd.13 — серия промптов для Lovable: «Ladungsplaner» (выбор кузова + редактор заявки)
 
-> UI-прототип **«Ladungsplaner» by Holz Schäfer** поверх `@shadrin-v/engine@0.0.1`
+> UI-прототип **«Ladungsplaner» by Holz Schäfer** поверх `@shadrin-v/engine` (актуальная опубликованная версия — см. CHANGELOG «Соответствие версий»)
 > (контракт **0.5.0**). Внутренний инструмент логистики Schäfer GmbH & Co. KG (holz-schaefer.de).
 > Движок считает в браузере; UI — заменяемый слой (правки логики → в ядро, правки интерфейса → здесь).
 > Визуализация результата (виды сверху/сбоку, экспорт PDF/PNG) — задача **qrd.14**; здесь только
@@ -27,9 +27,9 @@
 - **Типографика:** чистый современный sans-serif (Inter); без декоративных шрифтов.
 - **Desktop-first:** макет обязан работать на desktop (≥1280px); планшет — nice-to-have, мобильный —
   вне MVP.
-- **Зависимость:** только `@shadrin-v/engine` **≥ 0.0.2** (публичный npm, без `.npmrc`/секретов).
-  0.0.1 рассинхронизирован с ядром (неверная `volumeFillPercent`, не отклоняет `Δh=0`) — обнови до
-  0.0.2. Пакета
+- **Зависимость:** только `@shadrin-v/engine` **последней опубликованной версии** (сейчас `0.0.3`,
+  контракт 0.7.0; публичный npm, без `.npmrc`/секретов). Соответствие пакет↔контракт — в CHANGELOG.
+  Обновление версии — по запросу автора в формате из onboarding.md §6. Пакета
   `@shadrin-v/i18n` в Lovable нет — UI держит собственные словари `de`/`ru` (зеркалят ключи ядра +
   ключи редактора). Канонизация ключей обратно в `@shadrin-v/i18n` — бид `LKWkalk-qrd.23`.
 - **i18n:** ни одной пользовательской строки в компонентах — только `t(key, locale)`. Локали
@@ -269,7 +269,7 @@ Refine the cargo editor's nesting and optional-cap inputs — style via semantic
 3) Keep allowUnpairedTop visible only in pairwise mode.
 
 4) Live stack preview (2.5D intermediate step). Import computeStack from '@shadrin-v/engine':
-       import { computeStack } from '@shadrin-v/engine';   // needs @shadrin-v/engine >= 0.0.2
+       import { computeStack } from '@shadrin-v/engine';   // >= 0.0.2 (live preview)
    Under EACH cargo row, show a small inline preview line that recomputes live as the user edits
    dimensions, state, nestingMode or stepHeight — it answers "how many pallets go in ONE stack"
    before the full floor layout:
@@ -286,7 +286,7 @@ Refine the cargo editor's nesting and optional-cap inputs — style via semantic
 ## Промпт 2-stack — кнопка «Рассчитать штабель» + формула вывода
 
 > Явный промежуточный шаг 2.5D: пользователь считает количество в одном штабеле и видит формулу
-> вывода ДО полной раскладки. Требует `@shadrin-v/engine >= 0.0.2` (StackPreview с операндами
+> вывода ДО полной раскладки. Требует `@shadrin-v/engine >= 0.0.3` (StackPreview с операндами
 > формулы, контракт 0.7.0) и ключей `action.computeStack`, `stack.result`, `stack.formula.*` из
 > промпта 0. Живой инлайн-предпросмотр (Промпт 2-fix, п.4) остаётся — это его развёрнутая версия.
 
@@ -295,7 +295,7 @@ In each cargo row add an explicit "Stapel berechnen" button (t('action.computeSt
 nesting block; style via semantic tokens only. On click, call computeStack(row, vehicle) and show a
 small result panel under the row (surface-card / border):
 
-    import { computeStack } from '@shadrin-v/engine';   // >= 0.0.2, returns formula operands
+    import { computeStack } from '@shadrin-v/engine';   // >= 0.0.3, returns formula operands
     const s = computeStack(row, vehicle);
     // s = { count, height, mode, pairs?, unpairedTop?, base, hold, stepHeight?, rawCount, cappedBy?, cap? }
 
