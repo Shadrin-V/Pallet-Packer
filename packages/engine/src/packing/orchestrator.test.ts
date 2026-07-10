@@ -10,6 +10,7 @@ import type {
 } from '../model/index';
 import { findGeometryViolations } from '../geometry/geometry';
 import { columnPlacements, packLoad } from './orchestrator';
+import { computeVerticalStack } from './vertical';
 
 describe('columnPlacements', () => {
   it('places entschachtelt cargo units as separate tiers with dz=height', () => {
@@ -103,6 +104,32 @@ describe('columnPlacements', () => {
       tier: 3,
       state: 'verschachtelt',
     });
+  });
+
+  it('pairwise column reaches the true stack height (qrd.22), not a collapsed t·h_д', () => {
+    const c: CargoType = {
+      id: 'pw',
+      name: 'Pairwise',
+      length: 800,
+      width: 600,
+      height: 144,
+      quantity: 100,
+      rotation: 'yawOnly',
+      stacking: { stackable: true },
+      nesting: { nestable: true, stepHeight: 22, nestingMode: 'pairwise' },
+      state: 'verschachtelt',
+    };
+    const stack = computeVerticalStack(c, 2650); // n and true height
+    const placements = columnPlacements(c, 0, 0, 'lwh', stack.count);
+
+    expect(placements).toHaveLength(stack.count);
+    // bottom at 0; top pallet top (z + H) equals the computed stack height, not the old ~t·22 collapse.
+    const topZ = Math.max(...placements.map((p) => p.z));
+    expect(placements[0].z).toBe(0);
+    expect(topZ + c.height).toBe(stack.height);
+    expect(topZ + c.height).toBeGreaterThan(2500); // ~full 2650 hold, not ~800
+    // every tier fits under the hold.
+    for (const p of placements) expect(p.z + c.height).toBeLessThanOrEqual(2650);
   });
 });
 

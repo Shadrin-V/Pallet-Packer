@@ -5,11 +5,35 @@ import { packFloor, type FloorRequest } from './floor';
 import { computeVerticalStack } from './vertical';
 
 /**
- * Per-tier placements for one floor column. dz = H (entschachtelt) or stepHeight (nested); when
- * nested with no stepHeight (contract-valid when nestable:false — validate.ts gates the stepHeight
- * check on nestable:true), dz falls back to 0, matching computeVerticalStack's own `stepHeight ?? 0`
- * fallback (vertical.ts) so the emitted column never exceeds the count/height it computed.
+ * Height (mm) of tier `t` (0-based, bottom = 0) in one vertical column of `cargo` (qrd.22).
+ *
+ * - entschachtelt: `t·H` (full pallets stacked).
+ * - sequential:    `t·Δh` (each pallet nests Δh above the one below); Δh guarded to H if ≤ 0.
+ * - pairwise (ADR 009): bottom single at 0, then pairs — pair p (1-based) spans `[H+(p−1)(H+h_д),
+ *   H+p(H+h_д)]` with its two pallets at that base and at `+h_д`. So the top pallet of a full column
+ *   reaches `computeVerticalStack.height` (matching the stack preview/metrics), instead of the old
+ *   collapsed `t·h_д` sub-representation. A partial column (`units < n`) just takes the first tiers.
  */
+function tierZ(cargo: CargoType, t: number): number {
+  const H = cargo.height;
+  if (cargo.state === 'entschachtelt') return t * H;
+
+  const step = cargo.nesting.stepHeight;
+  const mode = cargo.nesting.nestingMode ?? 'sequential';
+  if (mode === 'pairwise') {
+    if (t === 0) return 0;
+    const hd = step ?? 0;
+    const p = Math.ceil(t / 2); // which pair this tier belongs to (1-based)
+    const base = H + (p - 1) * (H + hd);
+    return t % 2 === 1 ? base : base + hd; // odd tier = pair base, even tier = +h_д
+  }
+  // sequential
+  const dh = step && step > 0 ? step : H;
+  return t * dh;
+}
+
+/** Per-tier placements for one floor column (qrd.7); z per {@link tierZ} so the column reaches its
+ * true computed height (esp. pairwise — see qrd.22). */
 export function columnPlacements(
   cargo: CargoType,
   x: number,
@@ -17,14 +41,13 @@ export function columnPlacements(
   orientation: Placement['orientation'],
   units: number,
 ): Placement[] {
-  const dz = cargo.state === 'entschachtelt' ? cargo.height : (cargo.nesting.stepHeight ?? 0);
   const out: Placement[] = [];
   for (let t = 0; t < units; t++) {
     out.push({
       cargoTypeId: cargo.id,
       x,
       y,
-      z: t * dz,
+      z: tierZ(cargo, t),
       orientation,
       tier: t + 1,
       state: cargo.state,

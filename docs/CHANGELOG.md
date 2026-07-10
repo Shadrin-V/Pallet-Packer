@@ -15,11 +15,17 @@
 | `0.0.3`   | `0.7.0`  | `StackPreview` операнды формулы (`base`/`hold`/`stepHeight`/`rawCount`/`cappedBy`/`cap`) — вывод формулы штабеля в UI. |
 | `0.0.4`   | `0.8.0`  | `orientedDims(l,w,h,Orientation) → [dx,dy,dz]` — UI рисует виды сверху/сбоку из `Layout`. |
 | `0.0.5`   | `0.9.0`  | `findGeometryViolations(Load,Layout) → GeometryViolation[]` — проверка отредактированной вручную раскладки (drag штабелей). |
+| `0.0.6`   | `0.9.0`  | Bugfix: per-tier z колонки «парами» достигает истинной высоты штабеля (был сжат до `t·h_д`) → верный вид сбоку и `volumeFillPercent` (qrd.22). |
 
 > `latest` в npm может отставать от main: публикует пользователь по запросу (см. onboarding.md §6).
 > Строку добавляем при бампе версии в `packages/engine/package.json` во время merge.
 
 ## [Unreleased]
+
+### Fixed
+- Колонка «парами» (pairwise): per-tier `z` теперь достигает истинной высоты штабеля
+  `H + k·(H + h_д)` вместо сжатого `t·h_д` — корректный вид сбоку и `volumeFillPercent`
+  (`LKWkalk-qrd.22`). Геометрия остаётся валидной (column-aware, ADR 014).
 
 ### Added
 - Контракт API движка **0.9.0**: экспонирована `findGeometryViolations(Load, Layout) →
