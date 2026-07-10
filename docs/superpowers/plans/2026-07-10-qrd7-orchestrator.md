@@ -13,7 +13,7 @@
 - **Геометрия-валидатор на КАЖДОМ результате упаковки** (property + по-кейсам) — не срезать.
 - `full`≈yaw и правила nesting/stacking/rotation не нарушаются (наследуются).
 - Column-aware ([ADR 014](../../adr/014-nested-column-geometry.md)): вертикальное перекрытие законно только для пары с одинаковыми `(x,y,cargoTypeId)`.
-- `loadingMode` дефолт `rear`; зоны смежны по длине, порядок = первое появление orderId; типы в зоне — порядок списка; не влезает целиком → остаток в `unplaced`.
+- `loadingMode` дефолт `combined` (контрактный, ADR 012); зоны смежны по длине, порядок = первое появление orderId; типы в зоне — порядок списка; не влезает целиком → остаток в `unplaced`. Для многозонных загрузок явный `rear` плотнее, но дефолт — `combined`.
 - `orchestrator.ts` НЕ в публичном `index.ts`.
 - Из корня: `npx vitest run <path>`; `npm test`; `npm run typecheck`; `npm run lint`. Коммиты атомарные после зелёных гейтов.
 
@@ -95,7 +95,7 @@ export function columnPlacements(
   - **fill:** vehicle small, cargo `fill:true` → places capacity, `unplaced` empty; a quantity that exceeds capacity → `unplaced` has the remainder; totalPlaced ≤ Σquantity.
   - **nothing fits:** cargo bigger than vehicle → placements empty, all in `unplaced`.
   - **zones:** two types with `orderId:'A'` and `orderId:'B'` → all B-placements have `x ≥` max A-placement x (adjacent along length, A first); `findGeometryViolations === []`.
-  - **loadingMode default rear:** homogeneous load default → arrangement grows along x (rear).
+  - **loadingMode default combined:** default → densest of rear/side; explicit `rear` → arrangement grows along x.
   - **property (fast-check):** random `Load` → `findGeometryViolations(load, packLoad(load)) === []`; `totalPlaced ≤ Σ quantity`; `packLoad(load)` deep-equals a second call (determinism). Build cargo with small dims, random rotation/state/orderId, vehicle bounds.
 - [ ] **Step 2: Run — fail** (`packLoad` undefined).
 - [ ] **Step 3: Implement** `packLoad` in `orchestrator.ts`:
@@ -113,7 +113,7 @@ function zonesOf(cargo: CargoType[]): CargoType[][] {
 export function packLoad(load: Load): Layout {
   const { vehicle } = load;
   const clearance = load.clearance ?? 0;
-  const loadingMode = load.loadingMode ?? 'rear';
+  const loadingMode = load.loadingMode ?? 'combined';
   const placements: Placement[] = [];
   const placedByType = new Map<string, number>();
   let usedFloorPositions = 0;

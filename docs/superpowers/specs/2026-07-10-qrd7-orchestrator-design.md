@@ -31,7 +31,7 @@ export function packLoad(load: Load): Layout;
 
 ## 4. Алгоритм `packLoad`
 
-`loadingMode = load.loadingMode ?? 'rear'` (дефолт директивы); `clearance = load.clearance ?? 0`.
+`loadingMode = load.loadingMode ?? 'combined'` (контрактный дефолт, ADR 012); `clearance = load.clearance ?? 0`.
 
 ### 4.1 Зоны по orderId (смежные по длине)
 - Группировка `load.cargo` по `orderId`; `orderId === undefined` → одна неявная группа.
@@ -49,8 +49,10 @@ export function packLoad(load: Load): Layout;
    где `maxX = max(fp.x + fp.dx)` в зоне (0 если зона пуста).
 
 Заказ не влезает целиком → размещается что влезло, остаток → `unplaced` (директива). Смежность зон —
-1D вдоль длины; для `side`/`combined` многозонных загрузок плотность может падать (документированное
-ограничение MVP; дефолт `rear` — оптимальный для зон-вдоль-длины).
+1D вдоль длины. Замечание о плотности: контрактный дефолт — `combined` (плотнейшая из rear/side).
+Для многозонных загрузок (зоны смежны по длине кузова) `rear` (полки по ширине, рост вдоль длины)
+даёт бóльшую плотность, но дефолтом остаётся `combined`; кому нужна максимальная плотность на
+мультизаказах — передаёт `loadingMode: 'rear'` явно (документированное ограничение MVP).
 
 ### 4.3 Колонка → per-tier Placements
 Для каждого напольного места (из `packFloor`: `cargoTypeId, x, y, dx, dy, orientation`) и типа:
@@ -83,7 +85,7 @@ export function packLoad(load: Load): Layout;
    - `fill: true` покрывает остаток; `unplaced` корректен; «ничего не влезает» → все в `unplaced`.
    - Смешанные типы; два `orderId` → зоны смежны по `x` (первая зона при `x < xOffset2`), обе
      непересекающиеся.
-   - `loadingMode` из `Load` доходит до packFloor (rear-дефолт: раскладка растёт вдоль x).
+   - `loadingMode` из `Load` доходит до packFloor (дефолт `combined`; при явном `rear` раскладка растёт вдоль x).
 5. **Property-based (fast-check):** случайные `Load` → `findGeometryViolations === []`; `totalPlaced ≤
    Σ quantity`; детерминизм (два прогона равны).
 
