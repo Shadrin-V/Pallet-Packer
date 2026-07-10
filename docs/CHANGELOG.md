@@ -13,6 +13,7 @@
 | `0.0.1`   | `0.5.0`  | Первый публичный публиш: `calculateLayout`/`getLayoutReport`, `Layout.errors`. |
 | `0.0.2`   | `0.6.0`  | Корректные метрики floor/volume; отклонение вложения `Δh ≤ 0`; `computeStack` (предпросмотр штабеля 2.5D). |
 | `0.0.3`   | `0.7.0`  | `StackPreview` операнды формулы (`base`/`hold`/`stepHeight`/`rawCount`/`cappedBy`/`cap`) — вывод формулы штабеля в UI. |
+| `0.0.4`   | `0.8.0`  | `orientedDims(l,w,h,Orientation) → [dx,dy,dz]` — UI рисует виды сверху/сбоку из `Layout`. |
 
 > `latest` в npm может отставать от main: публикует пользователь по запросу (см. onboarding.md §6).
 > Строку добавляем при бампе версии в `packages/engine/package.json` во время merge.
@@ -20,6 +21,8 @@
 ## [Unreleased]
 
 ### Added
+- Контракт API движка **0.8.0**: экспонирована `orientedDims(l, w, h, Orientation) → [dx, dy, dz]`
+  — UI рисует виды сверху/сбоку из `Layout` без дублирования маппинга ориентаций (`LKWkalk-qrd.14`).
 - Контракт API движка **0.7.0**: `StackPreview` расширен операндами формулы (`base`, `hold`,
   `stepHeight`, `rawCount`, `cappedBy`, `cap`) — UI показывает читаемый вывод «как получено N в
   штабеле» (кнопка «Рассчитать штабель») без дублирования доменной логики (`LKWkalk-qrd.26`).
