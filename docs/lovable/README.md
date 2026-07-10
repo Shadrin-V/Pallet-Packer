@@ -12,8 +12,10 @@ UI-прототип «**Ladungsplaner** by Holz Schäfer» строится в L
 | [qrd-14-prompts.md](qrd-14-prompts.md) | Виды сверху/сбоку + сводка; рефайнмент (full-width, direction, print). |
 | [qrd-30-prompts.md](qrd-30-prompts.md) | Заказы (Auftrags-ID), цвет по заказу, drag штабелей; рефайнмент 2. |
 | **[qrd-30-redesign.md](qrd-30-redesign.md)** | Полный UX/UI редизайн G1–G6 (палитра из data-viz, штриховка, компактный редактор). |
-| **[qrd-30-screenshot-screen.md](qrd-30-screenshot-screen.md)** | **Экран «Ladeplan» под скриншот — эталон + промпт (приоритет сейчас).** |
-| [ladeplan-reference.html](ladeplan-reference.html) | Визуальный **эталон** экрана (открыть в браузере). |
+| **[qrd-30-screenshot-screen.md](qrd-30-screenshot-screen.md)** | **Экран результата «Ladeplan» под скриншот — эталон + промпт.** |
+| **[qrd-30-setup-screen.md](qrd-30-setup-screen.md)** | **Экран настройки (ввод) — эталон + промпт.** |
+| [ladeplan-reference.html](ladeplan-reference.html) | Визуальный **эталон** экрана результата (открыть в браузере). |
+| [setup-reference.html](setup-reference.html) | Визуальный **эталон** экрана настройки (открыть в браузере). |
 
 ## Ключевые правила (жёсткие)
 
