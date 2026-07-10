@@ -93,6 +93,8 @@ export interface Layout {
   unplaced: UnplacedCount[];
   metrics: LayoutMetrics;
   contractVersion: string;
+  /** Non-empty → input failed validation and this layout is empty (api-contract 0.5.0). */
+  errors?: EngineError[];
 }
 
 export interface ReportPerType {
