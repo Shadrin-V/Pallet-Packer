@@ -95,6 +95,11 @@ The two views are the hero output — full width, minimal chrome (tokens only):
   projection; REBUILD it cleanly: viewBox "0 0 {length} {height}", for each placement rect at
   (x, height-(z+dz), dx, dz) filled with the order colour+hatch at ~70% opacity, thin stroke; a thin
   ground line; nothing beside it. (The old side view was broken — replace it.)
+  - Height ratio: use the placement's ACTUAL z (from the engine) and dz = orientedDims(...)[2]; do
+    NOT derive height from a tier COUNT. With engine ≥ 0.0.6 a full pairwise stack's z reaches the
+    hold height, so full stacks correctly touch the top. Same x as the top view → front/back matches.
+- Per-type list at the bottom: put the order's colour+hatch swatch (bg-series-N + pattern) at the
+  START of every row, matching the diagrams and legend, so each article is identifiable at a glance.
 - Front/rear: small "Vorne"/"Hinten" markers at x=0 / x=length. Drop the standalone
   "Beladerichtung" badge; instead draw ONE subtle direction arrow derived from loadingMode
   (rear/combined → x+ toward doors; side → y from the loading side). If it can't be derived, omit it.
