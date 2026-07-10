@@ -1,6 +1,7 @@
 # ADR 010 — Интеграция @shadrin-v/engine в Lovable: приватный npm-пакет
 
 Статус: Принято · Дата: 2026-07-09 · Итог спайка `LKWkalk-qrd.16` · Разрешает [ADR 008](008-lovable-engine-integration.md)
+· **Пересмотрено 2026-07-10:** приватный GitHub Packages отклонён → **публичный npmjs** (см. ниже)
 
 ## Контекст
 
@@ -39,6 +40,20 @@ Lovable) — запасной путь, если приватная автори
 критерий приёмки `LKWkalk-qrd.19`: опубликовать `0.0.1`-заглушку пораньше и вручную проверить
 импорт в Lovable.
 
+## Пересмотр (2026-07-10) — публичный npm
+
+Практическая проверка (`LKWkalk-qrd.19`) выявила блокер: **Build secrets недоступны на тарифе Lovable
+пользователя**, поэтому приватный scoped-пакет через GitHub Packages + `NPM_TOKEN`-secret подключить
+нельзя. Приватность кода здесь **нерелевантна**: движок бандлится клиентом и виден в браузере
+([ADR 001](001-headless-ts-engine-in-browser.md)) — «приватность» давала лишь контроль доступа к
+пакету, не секретность.
+
+**Решение (пересмотр):** публиковать `@shadrin-v/engine` **публично в npmjs.org** (scoped, доступ
+`public` через `publishConfig.access`). Установка в Lovable — **без `.npmrc` и без build secret**:
+`npm install @shadrin-v/engine`. Реестр GitHub Packages — **отклонён** (требует недоступный secret).
+Публикация 0.0.1 в GitHub Packages (сделанная ранее) остаётся бесхозной; актуальный реестр — npmjs.
+Vendoring — по-прежнему крайний fallback, но публичный npm его снимает.
+
 ## Последствия
 
 - [ADR 001](001-headless-ts-engine-in-browser.md) подтверждён; контракт `api-contract.md` 0.2.0
@@ -47,12 +62,13 @@ Lovable) — запасной путь, если приватная автори
 - Конкретная публикация (`.npmrc`, build secret, GitHub Packages) — задача `LKWkalk-qrd.19`,
   блокирует `LKWkalk-qrd.13`; её приёмка включает ручную проверку импорта в Lovable.
 
-## Проверка (на стороне пользователя, в Lovable)
+## Проверка (на стороне пользователя, в Lovable) — публичный npm
 
-1. Добавить в проект `.npmrc` со scoped-строками реестра + auth.
-2. Положить токен в Workspace settings → Build secrets (`NPM_TOKEN`).
-3. Установить пакет, вызвать `calculateLayout` из компонента — убедиться, что бандлится и работает.
-   Если не выходит — fallback на vendoring.
+1. **Ничего** не добавлять: ни `.npmrc`, ни build secret (пакет публичный).
+2. `npm install @shadrin-v/engine` (или добавить в зависимости проекта Lovable).
+3. Импортировать из пакета (`import { ENGINE_CONTRACT_VERSION } from '@shadrin-v/engine'`),
+   позже — `calculateLayout` из компонента; убедиться, что бандлится и работает. Не выходит →
+   fallback на vendoring (копия ESM из `dist/`).
 
 ## Источники
 - Lovable Docs — Design systems (private/scoped npm, `.npmrc`, build secrets).
