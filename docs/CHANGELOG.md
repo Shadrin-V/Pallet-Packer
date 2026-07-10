@@ -6,6 +6,14 @@
 ## [Unreleased]
 
 ### Added
+- `@shadrin-v/engine`: метрики заполнения — `computeFillMetrics` (floor/volume %, column-aware
+  bounding-box объём, уважает инвариант вложения; 0..100); `packLoad` проставляет реальные метрики
+  в `Layout` (`LKWkalk-qrd.8`).
+- Публичный API движка: `calculateLayout(Load) → Layout` (валидация → коды в `Layout.errors` или
+  упаковка+метрики) и `getLayoutReport(Layout) → Report` (per-type requested/placed/unplaced из
+  раскладки); `validateLoad` также экспортирован. Точка входа `@shadrin-v/engine` (`LKWkalk-qrd.10`).
+- Контракт API движка **0.5.0**: опц. `Layout.errors` (`EngineError[]`) — канал кодов валидации в
+  результате `calculateLayout` (аддитивно, поведение успешного расчёта не меняется).
 - Фаза 1 (brainstorming) завершена: зафиксированы объём и архитектура MVP.
 - Документация: `spec.md`, `design.md`, `api-contract.md`, ADR 001–008.
 - Контракт API движка версии `0.1.0` (черновик, до реализации).
