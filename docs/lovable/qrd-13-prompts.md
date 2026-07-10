@@ -1,49 +1,89 @@
-# qrd.13 — серия промптов для Lovable: выбор кузова + редактор заявки
+# qrd.13 — серия промптов для Lovable: «Ladungsplaner» (выбор кузова + редактор заявки)
 
-> Экран(ы) прототипа UI поверх `@shadrin-v/engine@0.0.1` (контракт **0.5.0**). Движок считает
-> в браузере; UI — заменяемый слой (правки логики → в ядро, правки интерфейса → здесь).
-> Визуализация результата (виды сверху/сбоку) — отдельная задача **qrd.14**, здесь только
+> UI-прототип **«Ladungsplaner» by Holz Schäfer** поверх `@shadrin-v/engine@0.0.1`
+> (контракт **0.5.0**). Внутренний инструмент логистики Schäfer GmbH & Co. KG (holz-schaefer.de).
+> Движок считает в браузере; UI — заменяемый слой (правки логики → в ядро, правки интерфейса → здесь).
+> Визуализация результата (виды сверху/сбоку, экспорт PDF/PNG) — задача **qrd.14**; здесь только
 > сбор `Load`, вызов `calculateLayout` и минимальная сводка.
 
 ## Как пользоваться
 
-Вставляй промпты в Lovable **по порядку**, по одному, дожидаясь сборки каждого. Каждый промпт
-самодостаточен и опирается на результат предыдущего. Точные формы контракта и данные пресетов
-уже вписаны в промпты — не давай Lovable их выдумывать.
+К **первому** сообщению в Lovable приложи SVG логотипа Holz Schäfer — из него Lovable извлечёт
+точные цвета бренда. Вставляй промпты **по порядку**, по одному, дожидаясь сборки каждого. Точные
+формы контракта и данные пресетов уже вписаны — не давай Lovable их выдумывать.
 
-## Договорённости (приняты как дефолты; видимое поведение)
+## Договорённости (утверждены брендбуком; видимое поведение)
 
+- **Бренд:** название в UI — «Ladungsplaner», суффикс «by Holz Schäfer». Тон: профессиональный,
+  индустриальный, спокойный; без игривых иллюстраций; много воздуха, чёткие таблицы данных,
+  сильная юзабилити форм — это рабочий инструмент.
+- **DESIGN TOKENS ONLY (жёсткое правило):** все цвета, шрифты, радиусы, отступы — только в теме
+  (CSS-переменные / Tailwind theme). Компоненты ссылаются на семантические токены
+  (`primary`, `accent`, `surface`, `text`, …) — **ни одного hex в компонентах**. Ребрендинг = правка
+  одного файла темы.
+- **Палитра — из логотипа** (SVG приложен). Значения ниже — стартовые, до сэмплинга логотипа:
+  primary — лесной зелёный (~#2E7D32), accent — тёплый древесно-коричневый (~#8D6E63),
+  surface — тёплый off-white (#FAF9F7), text — тёмно-серый (#2B2B2B). **Только светлая тема** (MVP).
+- **Типографика:** чистый современный sans-serif (Inter); без декоративных шрифтов.
+- **Desktop-first:** макет обязан работать на desktop (≥1280px); планшет — nice-to-have, мобильный —
+  вне MVP.
 - **Зависимость:** только `@shadrin-v/engine` (публичный npm, без `.npmrc`/секретов). Пакета
-  `@shadrin-v/i18n` в Lovable нет — UI держит собственные словари `de`/`ru` (зеркалят ключи ядра,
-  плюс ключи редактора). Расширение канонического словаря — бид `LKWkalk-qrd.23`.
-- **i18n:** ни одной пользовательской строки в компонентах — только ключи через `t(key, locale)`.
-  Локали `de` (по умолчанию) и `ru`, переключатель в шапке. Единицы/числа — через `formatLength`.
+  `@shadrin-v/i18n` в Lovable нет — UI держит собственные словари `de`/`ru` (зеркалят ключи ядра +
+  ключи редактора). Канонизация ключей обратно в `@shadrin-v/i18n` — бид `LKWkalk-qrd.23`.
+- **i18n:** ни одной пользовательской строки в компонентах — только `t(key, locale)`. Локали
+  `de` (**по умолчанию**) и `ru`, переключатель в шапке. Числа и единицы — locale-форматирование.
 - **Единицы:** всё внутри — целые миллиметры (ADR 002); ввод и вывод в мм.
 - **loadingMode:** дефолт `combined` (контракт). Селектор опционален (rear/side/combined).
-- **Вес/оси, LIFO, 3D, CSV/Excel** — вне MVP, не добавлять.
+- **Вне MVP:** вес/оси, LIFO, 3D, CSV/Excel, тёмная тема — не добавлять.
 - **Ошибки:** движок возвращает коды `ERR_*` в `layout.errors`; UI переводит их своим словарём.
 
 ---
 
-## Промпт 0 — каркас приложения, i18n, зависимость от движка
+## Промпт 0 — каркас, тема (design-токены), i18n, зависимость от движка
 
 ```
-Build a React + TypeScript single-page app called "Pallet Packer" — a UI client for a headless
-packing engine. Install the npm package @shadrin-v/engine (public, no auth/.npmrc needed).
+Build a desktop-first React + TypeScript single-page internal tool called "Ladungsplaner"
+(subtitle "by Holz Schäfer") — a UI client for a headless truck-loading engine. Install the npm
+package @shadrin-v/engine (public, no auth/.npmrc needed). Use Inter as the UI font.
 
-App shell:
-- Header with the app title and a locale switcher with two options: "de" (default) and "ru".
-- Below it, a vertical flow with three sections we will fill in next prompts: Vehicle, Cargo, Result.
-- Keep all state in React (a single top-level store/context is fine); no backend.
+I have attached the Holz Schäfer logo (SVG). Extract the exact brand colors from it (primary green,
+any secondary wood/brown tone) and use THOSE in the theme tokens below; the hex values I give are
+only fallbacks until you sample the logo.
 
-i18n (do this now, no hardcoded user-facing strings anywhere in components):
-- Create a LocaleContext holding the current locale ('de' | 'ru').
-- Create a dictionary object DICT: Record<'de'|'ru', Record<string,string>> and a helper
-  t(key: string, locale) => DICT[locale][key]. Also formatLength(mm: number, locale) =>
+HARD RULE — DESIGN TOKENS ONLY:
+- All colors, fonts, radii and spacing live in ONE theme file (CSS variables mapped into the
+  Tailwind theme). Components must reference SEMANTIC tokens only — never hardcoded hex values.
+  Rebranding must require editing only that one theme file.
+- Define at least these semantic tokens (light theme only, no dark mode for MVP):
+    --color-primary          (forest green from logo; fallback #2E7D32)
+    --color-primary-foreground (text on primary; #FFFFFF)
+    --color-accent           (warm wood brown from logo; fallback #8D6E63)
+    --color-accent-foreground (#FFFFFF)
+    --color-surface          (app background, warm off-white; #FAF9F7)
+    --color-surface-card     (cards/panels; #FFFFFF)
+    --color-text             (dark gray; #2B2B2B)
+    --color-text-muted       (secondary text; ~#6B6B6B)
+    --color-border           (hairlines/inputs; ~#E3E0DB)
+    --color-danger           (validation errors; a calm muted red, ~#B3261E)
+    --color-danger-foreground (#FFFFFF)
+    --radius-md, --space scale, --font-sans: Inter
+  Expose them in Tailwind as bg-primary, text-text, border-border, etc., and use those classes in
+  components. No component may contain a hex color.
+
+Layout: optimize for desktop (>=1280px) with generous whitespace. Header shows the logo, the title
+"Ladungsplaner" with a small "by Holz Schäfer" subtitle, and a locale switcher: "de" (default) and
+"ru". Below the header, a vertical flow with three sections filled in next prompts: Vehicle, Cargo,
+Result. Keep all state in React (a single top-level store/context); no backend.
+
+i18n (do this now — no hardcoded user-facing strings anywhere in components):
+- LocaleContext holds the current locale ('de' | 'ru'), default 'de'.
+- A dictionary DICT: Record<'de'|'ru', Record<string,string>> and helper
+  t(key: string, locale) => DICT[locale][key]. Also formatLength(mm, locale) =>
   `${new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'ru-RU').format(mm)} ${t('unit.mm', locale)}`.
 - Seed DICT with exactly these keys (fill BOTH de and ru):
 
-  app.title            de: "Pallet Packer"                 ru: "Pallet Packer"
+  app.title            de: "Ladungsplaner"                 ru: "Ladungsplaner"
+  app.subtitle         de: "von Holz Schäfer"              ru: "от Holz Schäfer"
   unit.mm              de: "mm"                             ru: "мм"
   field.name           de: "Name"                          ru: "Название"
   field.length         de: "Länge"                         ru: "Длина"
@@ -96,7 +136,7 @@ i18n (do this now, no hardcoded user-facing strings anywhere in components):
   ERR_EMPTY_LOAD            de: "Die Ladungsliste ist leer." ru: "Список груза пуст."
   ERR_UNKNOWN_VEHICLE       de: "Fahrzeug nicht gefunden."   ru: "Кузов не найден в справочнике."
 
-Do not call the engine yet — just the shell, locale switcher, and i18n plumbing.
+Do not call the engine yet — just the shell, theme tokens, logo/title, locale switcher, i18n.
 ```
 
 ---
@@ -104,7 +144,9 @@ Do not call the engine yet — just the shell, locale switcher, and i18n plumbin
 ## Промпт 1 — экран выбора кузова
 
 ```
-Add the Vehicle section. A Vehicle has this exact shape (integer millimetres):
+Add the Vehicle section (style everything via the theme's semantic tokens — bg-surface-card,
+text-text, border-border, bg-primary for the primary action; NEVER a hex value; desktop-first
+layout with generous whitespace). A Vehicle has this exact shape (integer millimetres):
 
   interface Vehicle { id: string; name: string; length: number; width: number; height: number; }
 
@@ -123,8 +165,9 @@ Add the Vehicle section. A Vehicle has this exact shape (integer millimetres):
 ## Промпт 2 — редактор заявки (типы груза + правила + глобальный переключатель состояния)
 
 ```
-Add the Cargo section: an editable list of cargo types. Each row is a CargoType with this exact
-shape (integer millimetres; all rule fields map 1:1 to the engine):
+Add the Cargo section: an editable list of cargo types (style via semantic tokens only, no hex;
+desktop-first; use clear data-table / form layout with strong usability). Each row is a CargoType
+with this exact shape (integer millimetres; all rule fields map 1:1 to the engine):
 
   type RotationRule = 'none' | 'yawOnly' | 'full';
   type NestingState = 'verschachtelt' | 'entschachtelt';
@@ -179,7 +222,8 @@ Keep everything in state; still no engine call.
 ## Промпт 3 — вызов `calculateLayout`, обработка ошибок, минимальная сводка
 
 ```
-Wire the engine. Import from '@shadrin-v/engine':
+Wire the engine (style via semantic tokens only — errors use the danger token, the summary uses
+surface-card/border/text; no hex). Import from '@shadrin-v/engine':
     import { calculateLayout, getLayoutReport, ENGINE_CONTRACT_VERSION } from '@shadrin-v/engine';
 
 On the "Berechnen" button (action.calculate), build a Load object from current state:
@@ -188,15 +232,17 @@ Call const layout = calculateLayout(load).
 
 Result handling (this is the Result section; full top/side visualization is a later task, keep it
 to a summary here):
-- If layout.errors is a non-empty array: show each error by translating its code with
-  t(err.code, locale) (the seeded ERR_* keys). Do not render metrics.
-- Otherwise show a summary using getLayoutReport(layout):
+- If layout.errors is a non-empty array: render each error in a danger-token alert by translating
+  its code with t(err.code, locale) (the seeded ERR_* keys). Do not render metrics.
+- Otherwise show a summary using getLayoutReport(layout). Format ALL numbers with locale formatting
+  (Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'ru-RU', { maximumFractionDigits: 1 })); append
+  "%" to the fill percentages:
     - results.totalPlaced = layout.metrics.totalPlaced
-    - results.floorFillPercent / results.volumeFillPercent (round to 1 decimal, add "%")
-    - a per-type table from report.perType: columns results.requested / results.placed /
+    - results.floorFillPercent / results.volumeFillPercent
+    - a per-type data table from report.perType: columns results.requested / results.placed /
       results.unplaced, one row per cargoTypeId.
     - results.unplaced total if any.
-- Show ENGINE_CONTRACT_VERSION somewhere small in the footer.
+- Show ENGINE_CONTRACT_VERSION in a small muted footer (text-text-muted).
 
 The engine is pure and synchronous — no async/await needed. Layout coordinates are integer mm.
 ```
@@ -206,7 +252,7 @@ The engine is pure and synchronous — no async/await needed. Layout coordinates
 ## Промпт 4 — (опционально) хранение и экспорт/импорт JSON
 
 ```
-Add browser persistence and JSON I/O (ADR 007), keeping it simple:
+Add browser persistence and JSON I/O (style via semantic tokens only, no hex), keeping it simple:
 - Persist custom vehicles and cargo types to IndexedDB (a small wrapper or idb-keyval is fine);
   built-in presets stay in code.
 - "Als JSON exportieren" (action.exportJson): download the current raw `layout` (from the last
@@ -221,9 +267,12 @@ Do not add CSV/Excel import (out of MVP).
 ## Definition of Done для qrd.13
 
 - Можно собрать `Load` (кузов + типы + правила + состояние + clearance) и получить `Layout`
-  из `calculateLayout`; ошибки показываются переводом кодов `ERR_*`.
+  из `calculateLayout`; ошибки показываются переводом кодов `ERR_*` (danger-токен).
 - Глобальный переключатель Verschachtelt/Entschachtelt работает на все типы.
-- Ни одной хардкод-строки в компонентах — всё через `t()`; локали de/ru.
+- Ни одной хардкод-строки в компонентах — всё через `t()`; локали de/ru, de по умолчанию.
+- **Ни одного hex-цвета в компонентах** — все цвета/шрифты/радиусы/отступы через токены темы
+  (ребренд = правка одного файла); палитра из логотипа Holz Schäfer; только светлая тема; Inter.
+- Макет работает на desktop ≥1280px.
 - Промпт 4 (хранение/экспорт) — по желанию; ядро задачи закрывают промпты 0–3.
 
 > Виды сверху/сбоку и экспорт PDF/PNG — задача **qrd.14** (следующая серия промптов).
