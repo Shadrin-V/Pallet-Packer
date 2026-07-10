@@ -14,6 +14,7 @@
 | `0.0.2`   | `0.6.0`  | Корректные метрики floor/volume; отклонение вложения `Δh ≤ 0`; `computeStack` (предпросмотр штабеля 2.5D). |
 | `0.0.3`   | `0.7.0`  | `StackPreview` операнды формулы (`base`/`hold`/`stepHeight`/`rawCount`/`cappedBy`/`cap`) — вывод формулы штабеля в UI. |
 | `0.0.4`   | `0.8.0`  | `orientedDims(l,w,h,Orientation) → [dx,dy,dz]` — UI рисует виды сверху/сбоку из `Layout`. |
+| `0.0.5`   | `0.9.0`  | `findGeometryViolations(Load,Layout) → GeometryViolation[]` — проверка отредактированной вручную раскладки (drag штабелей). |
 
 > `latest` в npm может отставать от main: публикует пользователь по запросу (см. onboarding.md §6).
 > Строку добавляем при бампе версии в `packages/engine/package.json` во время merge.
@@ -21,6 +22,9 @@
 ## [Unreleased]
 
 ### Added
+- Контракт API движка **0.9.0**: экспонирована `findGeometryViolations(Load, Layout) →
+  GeometryViolation[]` — UI проверяет отредактированную вручную раскладку (перемещение штабелей) на
+  пересечения/выход за габариты/ориентацию без дублирования доменной логики (`LKWkalk-qrd.30`).
 - Контракт API движка **0.8.0**: экспонирована `orientedDims(l, w, h, Orientation) → [dx, dy, dz]`
   — UI рисует виды сверху/сбоку из `Layout` без дублирования маппинга ориентаций (`LKWkalk-qrd.14`).
 - Контракт API движка **0.7.0**: `StackPreview` расширен операндами формулы (`base`, `hold`,
