@@ -19,3 +19,4 @@
 | 012 | [Режимы загрузки (rear/side/combined)](012-loading-modes.md)                              | Принято |
 | 013 | [Вращение в MVP: full ≈ yaw в упаковщике](013-rotation-mvp-yaw.md)                        | Принято |
 | 014 | [Геометрия вложенных/штабельных колонок (column-aware)](014-nested-column-geometry.md)    | Принято |
+| 015 | [Полноценное приложение + интеграция ERPNext (B→A)](015-fullstack-app-erpnext.md)         | Принято |
