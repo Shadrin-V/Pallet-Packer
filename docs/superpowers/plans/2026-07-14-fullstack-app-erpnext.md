@@ -1058,87 +1058,73 @@ git commit -m "feat(73u): Ladeplan result screen (top/side cross-sections, legen
 
 ---
 
-## Task 8: ERPNext adapter + one-click order import + dimension parser
+## Task 8: ERPNext adapter + one-click order import (reads custom dimension fields)
 
 **bd:** LKWkalk-uvf · **Branch:** `feat/uvf-erpnext-adapter`
+**Spec:** [ERPNext dimension fields](../specs/2026-07-14-erpnext-dimension-fields-design.md) — dimensions
+come from explicit custom fields `custom_length_mm/width/height` on `Sales Order Item` (fetch_from Item);
+**no name parser.** Provenance = `{erpnext-field, manual}`.
 
 **Files:**
-- Create: `apps/server/src/erpnext/parseDimensions.ts` + `.test.ts`
+- Modify: `packages/contracts/src/dto.ts` + `dto.test.ts` — `DIMENSION_SOURCES = ['erpnext-field','manual']`
 - Create: `apps/server/src/erpnext/adapter.ts` + `adapter.test.ts`
 - Create: `apps/server/src/routes/orders.ts`; register in `app.ts`
-- Modify: `apps/web/src/App.tsx` — deep-link `?order=SO-####` → `importOrder` on load
-- Reference: **fetch live fields at implementation time via MCP** (`mcp__erpnext__get_doctype_fields` for `Sales Order`, `Sales Order Item`, `Item`). Confirmed: `Item.item_name` carries dims like "…1200x800 mm…" (L×W, **no height**); no `length_mm/width_mm/height_mm` fields yet; `item_group='Ladungsträger Artikel'`; `weight_per_unit` exists.
+- Modify: `apps/web/src/App.tsx` — deep-link `?order=SO-####` → `importOrder` on load (**deferred** until the Setup screen exists — screens block on LKWkalk-563 design system; ship server-side first)
+- Reference (live schema, verified 2026-07-14): Sales Order `data.name` = order id, `data.customer_name`,
+  `data.items[]` each with `item_code`, `item_name`, `qty`. Custom fields `custom_length_mm/width/height`
+  (Int, mm) will be added on Sales Order Item via fetch_from; absent today (local test mode).
 
 **Interfaces:**
-- Consumes: DTOs `OrderZone`, `OrderPosition`, `OrderRef`, `DIMENSION_SOURCES`.
+- Consumes: DTOs `OrderZone`, `OrderPosition`, `OrderRef`, `DimensionSource`.
 - Produces:
-  - `parseDimensions(name: string): { length?: number; width?: number; height?: number; source: DimensionSource }` — regex over item name; 2-number match → `length`+`width`, `source: 'parsed-name'`; 3-number → +height; no match → `{ source: 'unknown' }`.
   - `ErpNextAdapter` with config `{ baseUrl, apiKey, apiSecret, fetchImpl? }`:
-    - `importOrder(orderId: string): Promise<OrderZone>` — GET Sales Order → map each item to `OrderPosition` (`itemCode`, `itemName`, `quantity`, dims via custom field if present else `parseDimensions`).
-    - `searchOrders(query: string): Promise<OrderRef[]>`.
+    - `importOrder(orderId: string): Promise<OrderZone>` — `GET /api/resource/Sales Order/:id`; map each
+      `items[i]` to `OrderPosition`. If all three `custom_*_mm` present & > 0 → set dims,
+      `dimensionsSource: 'erpnext-field'`; else dims `undefined`, `dimensionsSource: 'manual'`. No parsing.
+    - `searchOrders(query: string): Promise<OrderRef[]>` — `GET /api/resource/Sales Order?filters=...` →
+      `{ orderId, customer }`.
 
-- [ ] **Step 1: Failing parser test** — `parseDimensions.test.ts`
-```ts
-import { describe, it, expect } from 'vitest';
-import { parseDimensions } from './parseDimensions';
-describe('parseDimensions', () => {
-  it('parses L×W from an ERPNext item name (no height)', () => {
-    expect(parseDimensions('1.Wahl Europalette 1200x800 mm IPPC Behandelt'))
-      .toEqual({ length: 1200, width: 800, source: 'parsed-name' });
-  });
-  it('parses L×W×H when three numbers present', () => {
-    expect(parseDimensions('Box 600x400x300 mm'))
-      .toEqual({ length: 600, width: 400, height: 300, source: 'parsed-name' });
-  });
-  it('accepts the × unicode separator', () => {
-    expect(parseDimensions('Palette 1200×1000 mm')).toMatchObject({ length: 1200, width: 1000 });
-  });
-  it('returns unknown when no dimensions found', () => {
-    expect(parseDimensions('Sonderpalette')).toEqual({ source: 'unknown' });
-  });
-});
-```
+- [ ] **Step 1: Shrink `DIMENSION_SOURCES` in contracts** — set `['erpnext-field','manual']` in
+  `packages/contracts/src/dto.ts`; update `dto.test.ts` to expect the 2-value array. Run
+  `npm test -- dto.test` → PASS; `npm run build --workspace @shadrin-v/contracts`.
 
-- [ ] **Step 2: Run to verify it fails** — `npm test -- parseDimensions` → FAIL.
+- [ ] **Step 2: Failing adapter test (mocked REST)** — `adapter.test.ts`: inject a `fetchImpl` mock
+  returning a Frappe Sales Order `{ data: { name, customer_name, items: [...] } }`. Cases:
+  (a) item with all three `custom_*_mm` → position dims set + `dimensionsSource:'erpnext-field'`;
+  (b) item without custom fields → dims `undefined` + `dimensionsSource:'manual'`;
+  (c) Authorization header = `token KEY:SECRET`, URL = `…/api/resource/Sales Order/{id}`;
+  (d) non-2xx → throws `{ code: 'ERR_ERPNEXT_HTTP' }`;
+  (e) `searchOrders` maps `data[]` → `OrderRef[]`.
 
-- [ ] **Step 3: Implement `parseDimensions.ts`**
-```ts
-import type { DimensionSource } from '@shadrin-v/contracts';
-const RE = /(\d{2,5})\s*[x×]\s*(\d{2,5})(?:\s*[x×]\s*(\d{2,5}))?/i;
-export function parseDimensions(name: string): {
-  length?: number; width?: number; height?: number; source: DimensionSource;
-} {
-  const m = RE.exec(name);
-  if (!m) return { source: 'unknown' };
-  const out: { length: number; width: number; height?: number; source: DimensionSource } = {
-    length: Number(m[1]), width: Number(m[2]), source: 'parsed-name',
-  };
-  if (m[3]) out.height = Number(m[3]);
-  return out;
-}
-```
+- [ ] **Step 3: Run to verify it fails** — `npm test -- adapter` → FAIL.
 
-- [ ] **Step 4: Run to verify it passes** — `npm test -- parseDimensions` → PASS.
+- [ ] **Step 4: Implement `adapter.ts`** — REST client (`Authorization: token ${apiKey}:${apiSecret}`),
+  `GET /api/resource/Sales Order/:id`; map items reading `custom_length_mm/custom_width_mm/custom_height_mm`
+  from the line (all present & > 0 → `erpnext-field`, else `manual`). `searchOrders` → resource list with
+  `filters=[["name","like",...]]&fields=["name","customer_name"]`. **Secrets from env only** (`ERPNEXT_URL`,
+  `ERPNEXT_API_KEY`, `ERPNEXT_API_SECRET`); never logged.
 
-- [ ] **Step 5: Failing adapter test (mocked REST)** — `adapter.test.ts`: inject a `fetchImpl` mock returning a Frappe-shaped Sales Order (`{ data: { name: 'SO-1', items: [{ item_code, item_name, qty }] } }`); assert `importOrder('SO-1')` returns an `OrderZone` with `orderId: 'SO-1'` and one `OrderPosition` whose dims came from `parseDimensions` and `dimensionsSource: 'parsed-name'`. Assert the Authorization header uses `token key:secret`.
+- [ ] **Step 5: Run to verify it passes** — `npm test -- adapter` → PASS.
 
-- [ ] **Step 6: Run to verify it fails** — FAIL.
+- [ ] **Step 6: Orders routes + failing route test** — `GET /api/orders/:id` → `adapter.importOrder`;
+  `GET /api/orders?q=` → `searchOrders`. `buildApp({ erpnext })` accepts an optional adapter. If no adapter
+  configured (env secrets missing), routes return `503 { code: 'ERR_ERPNEXT_UNCONFIGURED' }` (test this —
+  matches today's local test-mode reality).
 
-- [ ] **Step 7: Implement `adapter.ts`** — REST client (`Authorization: token ${apiKey}:${apiSecret}`), `GET /api/resource/Sales Order/:id`, map items; prefer a custom dims field when present (guarded: `item.custom_length_mm ?? parseDimensions(item.item_name)`), else parsed name, else `unknown`. `searchOrders` → `GET /api/resource/Sales Order?filters=...`. **Secrets from env only** (`ERPNEXT_URL`, `ERPNEXT_API_KEY`, `ERPNEXT_API_SECRET`); never logged.
+- [ ] **Step 7: Run to verify it passes; typecheck server** — PASS.
 
-- [ ] **Step 8: Run to verify it passes** — PASS.
+- [ ] **Step 8: Wire adapter construction in `index.ts`** — build `ErpNextAdapter` from env only when all
+  three secrets present; else pass `undefined` (routes 503). Do not log secrets.
 
-- [ ] **Step 9: Orders routes + failing route test** — `GET /api/orders/:id` → `adapter.importOrder`; `GET /api/orders?q=` → `searchOrders`. Test with a fake adapter injected into `buildApp({ erpnext })`. If env secrets missing, route returns `503 { code: 'ERR_ERPNEXT_UNCONFIGURED' }` (test this).
-
-- [ ] **Step 10: Run to verify it passes; typecheck server** — PASS.
-
-- [ ] **Step 11: Deep-link import in `App.tsx`** — on load, read `?order=SO-####`; if present call `dataProvider.importOrder(id)` and seed the Setup screen with the returned `OrderZone` (positions with `undefined` height flagged for manual entry per design-system). Add a failing jsdom test that mocks `DataProvider.importOrder` and asserts the order card appears.
-
-- [ ] **Step 12: Commit + merge** — gates green → merge `feat/uvf-*` → main, close LKWkalk-uvf.
+- [ ] **Step 9: Commit + merge server-side** — gates green → merge `feat/uvf-*` → main, close LKWkalk-uvf.
 ```bash
-git add apps/server/src/erpnext apps/server/src/routes/orders.ts apps/web/src/App.tsx package-lock.json
-git commit -m "feat(uvf): ERPNext REST adapter + one-click order import + dimension parser + deep-link"
+git add packages/contracts apps/server/src/erpnext apps/server/src/routes/orders.ts apps/server/src/app.ts apps/server/src/index.ts
+git commit -m "feat(uvf): ERPNext REST adapter (reads custom_*_mm) + /api/orders + unconfigured guard"
 ```
+
+- [ ] **Step 10 (DEFERRED, tracked separately): deep-link import in `App.tsx`** — read `?order=SO-####`,
+  call `importOrder`, seed the Setup screen. Depends on the Setup screen (gxp), which blocks on the design
+  system (LKWkalk-563). File a follow-up bd issue at merge time; do not implement here.
 
 ---
 

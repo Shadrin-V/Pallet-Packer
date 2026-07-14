@@ -4,10 +4,14 @@ import type Database from 'better-sqlite3';
 import { ENGINE_CONTRACT_VERSION } from '@shadrin-v/engine';
 import { vehiclesRoutes } from './routes/vehicles';
 import { plansRoutes } from './routes/plans';
+import { ordersRoutes } from './routes/orders';
+import type { OrderSource } from './erpnext/adapter';
 
 export interface BuildAppOptions {
   staticDir?: string;
   db?: Database.Database;
+  /** ERPNext order source; when absent, /api/orders returns 503 ERR_ERPNEXT_UNCONFIGURED. */
+  erpnext?: OrderSource;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -18,6 +22,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     vehiclesRoutes(app, opts.db);
     plansRoutes(app, opts.db);
   }
+  ordersRoutes(app, opts.erpnext);
 
   if (opts.staticDir) {
     app.register(fastifyStatic, { root: opts.staticDir });

@@ -2,8 +2,13 @@
 // Domain types (Vehicle, Load, Layout) come from @shadrin-v/engine and are re-exported for convenience.
 import type { Vehicle, Load, Layout } from '@shadrin-v/engine';
 
-/** Where a cargo position's dimensions came from (provenance for the fallback-parsing flow). */
-export const DIMENSION_SOURCES = ['erpnext-field', 'parsed-name', 'manual', 'unknown'] as const;
+/**
+ * Provenance of a cargo position's dimensions:
+ * - 'erpnext-field' — read from ERPNext custom fields custom_length_mm/width/height (Sales Order Item);
+ * - 'manual' — not provided by ERPNext; the user enters the dimensions in the app.
+ * "Needs input" is derived from empty dimensions, not from this tag (see the fields spec).
+ */
+export const DIMENSION_SOURCES = ['erpnext-field', 'manual'] as const;
 export type DimensionSource = (typeof DIMENSION_SOURCES)[number];
 
 /** One line of an imported order. Dimensions are mm; undefined → needs manual entry. */
