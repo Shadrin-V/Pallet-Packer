@@ -121,7 +121,7 @@ SPA-fallback работают, `/api/nope` → JSON-404.
 | **gxp** | Экран «Настройка» | 🔴 blocked (563) | React по `setup-reference.html`; segmented Ent/Ver, `computeStack`. |
 | **73u** | Экран «Ladeplan» | 🔴 blocked (563) | React по `ladeplan-reference.html`; разрезы SVG, `findGeometryViolations`. |
 | **s17** | Deep-link импорта (UI) | 🔴 blocked (gxp) | `?order=SO-####` → `importOrder` → посев экрана. |
-| **62x** | Деплой Coolify | 🟡 нужна инфра | production, поддомен, TLS, лимиты, том+бэкап, секреты, Basic Auth. Нужен инфра-справочник владельца. |
+| **62x** | Деплой Coolify | ✅ **LIVE** | **https://ladungsplaner.holz-schaefer.de** — Coolify 4.1.2, ветка production, том /app/data, лимиты 512M/0.5CPU, Traefik+TLS. Смоук зелёный. Follow-up: бэкап тома (zbi), Basic Auth (i6b). |
 
 ## 6. Важные внешние факты (для сверки)
 
