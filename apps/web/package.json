@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shadrin-v/contracts": "*",
     "@shadrin-v/engine": "*",
     "@shadrin-v/i18n": "*",
     "react": "^18.3.1",
