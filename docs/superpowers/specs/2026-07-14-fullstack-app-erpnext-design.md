@@ -98,7 +98,7 @@ interface DataProvider {
 - Репо `Shadrin-V/Pallet-Packer` (private). Ветка автодеплоя **`production`** (конвенция Coolify).
 - **Dockerfile** (Node 22, multi-stage): build engine+i18n+web → runtime Fastify. Данные — том
   `/app/data` (SQLite). Лимиты контейнера ~**512 MB / 0.5 CPU** (обязательно на общем сервере).
-- **Coolify Application** из GitHub (deploy key), поддомен **`ladungsplaner.group-schaefer.de`**
+- **Coolify Application** из GitHub (deploy key), поддомен **`ladungsplaner.holz-schaefer.de`**
   (A-запись → 204.168.246.13, DNS-only до сертификата), TLS авто через Traefik. **Портов не
   публиковать** — только через Traefik.
 - **Бэкап:** SQLite `.backup()` + tar тома, ротация 14 дней (свой скрипт по образцу

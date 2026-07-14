@@ -1,7 +1,7 @@
 # Деплой Ladungsplaner — рунбук (Coolify / Hetzner)
 
 App: **Ladungsplaner** (эпик `LKWkalk-66g`, задача `LKWkalk-62x`). Домен-цель:
-**`ladungsplaner.group-schaefer.de`**. Сервер и правила — общий справочник владельца `INFRASTRUKTUR.md`
+**`ladungsplaner.holz-schaefer.de`**. Сервер и правила — общий справочник владельца `INFRASTRUKTUR.md`
 (Hetzner CX23, Coolify 4.1.2, Traefik, паттерн приложения `arminia`). Секретов этот файл НЕ содержит.
 
 ## 0. Что уже готово в репозитории (сделано в 62x)
@@ -51,9 +51,11 @@ ERPNEXT_API_SECRET=   # secret
 
 ## 4. Домен и TLS
 
-1. **Cloudflare (зона `group-schaefer.de`)**: A-запись `ladungsplaner` → **204.168.246.13**,
+1. **Cloudflare (зона `holz-schaefer.de`)**: A-запись `ladungsplaner` → **204.168.246.13**,
    **DNS only (серое облако)** — минимум до выдачи сертификата (правило §5 общего инфра-файла).
-2. В Coolify задать домен приложения: **`https://ladungsplaner.group-schaefer.de`** → Traefik выпустит
+   > Домен приложения в зоне **holz-schaefer.de** (не group-schaefer.de); сервер и панель Coolify —
+   > по-прежнему на инфраструктуре group-schaefer.de.
+2. В Coolify задать домен приложения: **`https://ladungsplaner.holz-schaefer.de`** → Traefik выпустит
    Let's Encrypt автоматически.
 3. После выдачи сертификата оранжевое облако допустимо только с SSL mode **Full (strict)**; проще
    оставить DNS only.
@@ -77,9 +79,9 @@ Application → «Basic Auth» middleware, либо Traefik-лейблы `traefi
 ## 7. Проверка после деплоя (smoke)
 
 ```bash
-curl -s https://ladungsplaner.group-schaefer.de/api/health          # {"status":"ok","contract":"0.9.0"}
-curl -s https://ladungsplaner.group-schaefer.de/                     # отдаёт SPA (title Ladungsplaner)
-curl -s https://ladungsplaner.group-schaefer.de/api/orders/SO-1      # 503 ERR_ERPNEXT_UNCONFIGURED (пока нет ключей)
+curl -s https://ladungsplaner.holz-schaefer.de/api/health          # {"status":"ok","contract":"0.9.0"}
+curl -s https://ladungsplaner.holz-schaefer.de/                     # отдаёт SPA (title Ladungsplaner)
+curl -s https://ladungsplaner.holz-schaefer.de/api/orders/SO-1      # 503 ERR_ERPNEXT_UNCONFIGURED (пока нет ключей)
 ```
 (Если включён Basic Auth — с `-u user:pass`.)
 

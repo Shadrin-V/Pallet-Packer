@@ -1144,9 +1144,9 @@ git commit -m "feat(uvf): ERPNext REST adapter (reads custom_*_mm) + /api/orders
 - [ ] **Step 3: Coolify Application** — new Application from GitHub repo, branch `production`, Dockerfile build; **do not publish ports** (Traefik only); resource limits ~**512 MB / 0.5 CPU**.
 - [ ] **Step 4: Named volume** — mount `/app/data` (SQLite + backups). Set env `DB_PATH=/app/data/app.db`, `STATIC_DIR=/app/web`.
 - [ ] **Step 5: Secrets (Coolify env, secret)** — `ERPNEXT_URL`, `ERPNEXT_API_KEY`, `ERPNEXT_API_SECRET`. Never in git.
-- [ ] **Step 6: Domain + TLS** — A-record `ladungsplaner.group-schaefer.de` → 204.168.246.13 (DNS-only until cert issues), Traefik auto-TLS. Optional Basic Auth via Traefik middleware (MVP auth per ADR 015 §8).
+- [ ] **Step 6: Domain + TLS** — A-record `ladungsplaner.holz-schaefer.de` → 204.168.246.13 (DNS-only until cert issues), Traefik auto-TLS. Optional Basic Auth via Traefik middleware (MVP auth per ADR 015 §8).
 - [ ] **Step 7: Backup cron** — schedule `apps/server/scripts/backup.sh` on the host (model of `/root/backup-arminia.sh`), 14-day rotation.
-- [ ] **Step 8: Smoke test** — `curl https://ladungsplaner.group-schaefer.de/api/health` → `{"status":"ok"}`; open the app; import a real `SO-####` deep-link.
+- [ ] **Step 8: Smoke test** — `curl https://ladungsplaner.holz-schaefer.de/api/health` → `{"status":"ok"}`; open the app; import a real `SO-####` deep-link.
 - [ ] **Step 9: Write `docs/INFRASTRUKTUR-ladungsplaner.md`** — record image, volume, env keys (names only), domain, limits, backup schedule, redeploy steps.
 - [ ] **Step 10: Commit + merge; close LKWkalk-62x and epic LKWkalk-66g.**
 
