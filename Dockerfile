@@ -13,6 +13,7 @@ COPY apps ./apps
 RUN npm ci
 RUN npm run build --workspace @shadrin-v/i18n \
   && npm run build --workspace @shadrin-v/engine \
+  && npm run build --workspace @shadrin-v/contracts \
   && npm run build --workspace @app/web \
   && npm run build --workspace @app/server
 # Drop dev dependencies from node_modules; keep the compiled better-sqlite3 binding.
