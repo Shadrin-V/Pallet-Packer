@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.beads
+.dolt
+*.db
+docs
+.claude
+.codex
+.qodo
+.superpowers
+.agents
