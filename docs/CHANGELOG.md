@@ -22,6 +22,14 @@
 
 ## [Unreleased]
 
+### Added
+- **Пивот на полноценное приложение (ADR 015, эпик `LKWkalk-66g`).** Скаффолд монорепо: `apps/web`
+  (Vite React SPA, движок в браузере, токены `design-system.md`) + `apps/server` (Fastify + SPA-раздача
+  + `/api/health`), workspaces расширены до `packages/*`+`apps/*`, multi-stage Dockerfile (Node 22,
+  нативный better-sqlite3). Гейты зелёные (148 тестов, lint, typecheck, docker build, смоук контейнера).
+  Нарратив вехи: [milestones/2026-07-14-fullstack-scaffold.md](superpowers/milestones/2026-07-14-fullstack-scaffold.md);
+  план: [plans/2026-07-14-fullstack-app-erpnext.md](superpowers/plans/2026-07-14-fullstack-app-erpnext.md).
+
 ### Fixed
 - Колонка «парами» (pairwise): per-tier `z` теперь достигает истинной высоты штабеля
   `H + k·(H + h_д)` вместо сжатого `t·h_д` — корректный вид сбоку и `volumeFillPercent`
