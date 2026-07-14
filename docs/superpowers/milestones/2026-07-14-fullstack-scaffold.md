@@ -77,16 +77,51 @@ SPA-fallback работают, `/api/nope` → JSON-404.
    `formatLength`). `dist/` в `.gitignore`; Docker и CI собирают заново. На чистой машине для локального
    `npm test` нужно сперва `npm run build --workspaces` (engine/i18n dist).
 
-## 5. Что дальше (оставшиеся 6 задач эпика 66g, порядок зафиксирован)
+## 4a. Обновление — фундамент backend/данных достроен (та же сессия)
 
-| bd | Задача | Суть |
-|----|--------|------|
-| **6cy** | DataProvider + contracts | `packages/contracts` (DTO: OrderZone/OrderPosition/LoadingPlan…) + интерфейс `DataProvider` + `HttpDataProvider` + контракт-тесты. |
-| **r13** | Сервер + SQLite | Таблицы `vehicle`, `loading_plan` (снимок), REST `/api/vehicles`,`/api/plans`; расчёт `Layout` на сервере через `calculateLayout`; том `/app/data`; скрипт бэкапа; API-тесты in-memory. |
-| **gxp** | Экран «Настройка» | React по эталону `setup-reference.html`: строка кузова, карточки заказов, компактные строки-позиции, segmented `[Ent|Ver]`, предпросмотр штабеля (`computeStack`). |
-| **73u** | Экран «Ladeplan» | React по эталону `ladeplan-reference.html`: два разреза (SVG в мм, `orientedDims`), легенда, метрики, печать A4, drag + `findGeometryViolations`. |
-| **uvf** | Адаптер ERPNext | Серверный REST-адаптер, `importOrder` (Sales Order → зона), deep-link `?order=SO-####`, **фолбэк-парсинг габаритов из item_name**, guard `ERR_ERPNEXT_UNCONFIGURED`. |
-| **62x** | Деплой Coolify | Ветка `production`, поддомен `ladungsplaner.group-schaefer.de`, Traefik+TLS, лимиты ~512MB/0.5CPU, том+бэкап, секреты ERPNext в env, Basic Auth (MVP). |
+После скаффолда в `main` смёржены ещё три задачи (все гейты зелёные, e2e в контейнере):
+
+- **6cy — DataProvider + `@shadrin-v/contracts`.** Общие DTO (OrderZone/OrderPosition/LoadingPlan*/
+  OrderRef/ApiError) + интерфейс `DataProvider` (шов B→A) + `HttpDataProvider` (инъектируемый fetch,
+  JSON-ошибки, кодирование path, base URL) + React-контекст. 5 контракт-тестов.
+- **r13 — сервер + SQLite.** Схема (`vehicle`, `loading_plan`-снимок, WAL, идемпотентная миграция),
+  репозитории, REST `/api/vehicles` (GET/PUT) + `/api/plans` (GET/POST/:id). POST считает `Layout`
+  движком `calculateLayout` (единый источник истины). `index.ts` открывает БД на `DB_PATH` (том
+  `/app/data`), `scripts/backup.sh` (.backup+tar, ротация 14д). e2e в контейнере: PUT кузова → POST
+  плана (движок разместил 8) → GET из SQLite.
+- **uvf — адаптер ERPNext (серверная часть).** `ErpNextAdapter.importOrder` читает габариты из
+  **кастом-полей** `custom_length_mm/width/height` строки Sales Order (все три >0 → `erpnext-field`,
+  иначе `manual`; **парсер названий отменён** — см. ниже), `searchOrders`, token-auth. REST
+  `/api/orders` + `/api/orders/:id` с guard **`ERR_ERPNEXT_UNCONFIGURED` (503)**, когда секреты не
+  заданы (сейчас ERPNext в локальном тест-режиме). Контейнер подтверждает 503. UI deep-link отложен.
+
+**Итог по гейтам на конец сессии:** 172 теста ✓ · lint ✓ · typecheck (5 воркспейсов) ✓ · docker build ✓.
+
+### Ключевые решения этой сессии (продукт/дизайн)
+
+1. **Дизайн-система вынесена в отдельный трек** (`LKWkalk-563`, по решению владельца): владелец
+   приложит готовые дизайн-документы позже; они станут источником истины для экранов. Экраны
+   **gxp/73u заблокированы** этой задачей (не начинаем без документов).
+2. **Парсер габаритов из названия ОТМЕНЁН.** Габариты приходят из явных кастом-полей ERPNext
+   `custom_length_mm/width/height` (Int, мм) на **Item + Sales Order Item через `fetch_from`**. Адаптер
+   читает из строки заказа (1 запрос). Провенанс сокращён до `{erpnext-field, manual}`. Спека:
+   [specs/2026-07-14-erpnext-dimension-fields-design.md](../specs/2026-07-14-erpnext-dimension-fields-design.md)
+   (там §7 — чек-лист настройки полей на стороне ERPNext для владельца). Брейншторм → спека → план
+   обновлён → реализация.
+3. **Deep-link импорта заказа** (UI) вынесен в follow-up `LKWkalk-s17` (блокируется экраном gxp).
+
+## 5. Что дальше (оставшиеся задачи эпика 66g)
+
+| bd | Задача | Статус | Суть |
+|----|--------|--------|------|
+| **6cy** | DataProvider + contracts | ✅ done | `packages/contracts` + `DataProvider` + `HttpDataProvider`. |
+| **r13** | Сервер + SQLite | ✅ done | vehicle, loading_plan (снимок), REST /api, том /app/data, бэкап. |
+| **uvf** | Адаптер ERPNext (сервер) | ✅ done | `importOrder` из custom-полей, `/api/orders`, guard unconfigured. |
+| **563** | Дизайн-система (трек) | ⏳ ждёт документы | Владелец приложит дизайн-документы; **блокирует gxp/73u**. |
+| **gxp** | Экран «Настройка» | 🔴 blocked (563) | React по `setup-reference.html`; segmented Ent/Ver, `computeStack`. |
+| **73u** | Экран «Ladeplan» | 🔴 blocked (563) | React по `ladeplan-reference.html`; разрезы SVG, `findGeometryViolations`. |
+| **s17** | Deep-link импорта (UI) | 🔴 blocked (gxp) | `?order=SO-####` → `importOrder` → посев экрана. |
+| **62x** | Деплой Coolify | 🟡 нужна инфра | production, поддомен, TLS, лимиты, том+бэкап, секреты, Basic Auth. Нужен инфра-справочник владельца. |
 
 ## 6. Важные внешние факты (для сверки)
 
