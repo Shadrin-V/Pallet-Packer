@@ -5,13 +5,16 @@
   "type": "module",
   "description": "Pallet Packer — headless 2.5D pallet loading engine (@shadrin-v/engine) + i18n",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
+    "dev:server": "npm run dev --workspace apps/server",
+    "dev:web": "npm run dev --workspace apps/web",
     "lint": "eslint ."
   },
   "devDependencies": {

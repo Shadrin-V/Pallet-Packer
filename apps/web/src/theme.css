@@ -1,0 +1,48 @@
+/* Design-system tokens — copied verbatim from docs/lovable/design-system.md §1.
+   Rule: components use ONLY tokens — no hex in JSX. Light theme only (MVP). Font: Inter. */
+:root {
+  /* surfaces */
+  --paper: #faf9f7; /* app / vellum background */
+  --card: #ffffff; /* cards, inputs */
+  --sub: #f4f1eb; /* subtle fill: order header, chips, addbar */
+  /* ink */
+  --ink: #242321; /* primary text */
+  --muted: #6e6a63; /* secondary text */
+  --faint: #9a958c; /* labels, hints, units */
+  /* lines */
+  --line: #e7e3db; /* hairlines */
+  --line-strong: #d3ccc1; /* input borders, outlines */
+  /* brand + semantic */
+  --primary: #2e7d32;
+  --primary-ink: #ffffff; /* forest green (Holz Schäfer) */
+  --accent: #8d6e63; /* warm wood */
+  --danger: #b3261e;
+  --danger-ink: #ffffff;
+  /* categorical ORDER palette — validated (colorblind + contrast); ALWAYS paired with a hatch */
+  --s1: #2e7d32;
+  --s2: #1565c0;
+  --s3: #c62828;
+  --s4: #8e44ad;
+  --s5: #ef6c00;
+  --s6: #0097a7;
+  --s7: #a0522d;
+  --s8: #b08900;
+  /* radii / shadow / font */
+  --r-card: 10px;
+  --r-ctl: 7px;
+  --r-pill: 20px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(30, 26, 20, 0.05);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+}
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
