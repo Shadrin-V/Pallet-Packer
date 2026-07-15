@@ -7,6 +7,7 @@ import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { Measure, TextField, Segmented, Select, Button, Chip } from '../ui/primitives';
 import { LocaleSwitch } from '../ui/LocaleSwitch';
+import { VEHICLE_PRESETS, PALLET_PRESETS } from '../data/presets';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
@@ -36,13 +37,6 @@ export interface SetupScreenProps {
   onCalculate: (load: Load) => void;
 }
 
-// ---- vehicle presets ------------------------------------------------------
-const VEHICLE_PRESETS: { key: string; name: string; length: number; width: number; height: number }[] =
-  [
-    { key: 'sattel', name: 'Sattelauflieger', length: 13620, width: 2480, height: 2700 },
-    { key: 'wechsel', name: 'Wechselbrücke', length: 7150, width: 2480, height: 2700 },
-    { key: 'motor', name: 'Motorwagen', length: 7200, width: 2480, height: 2700 },
-  ];
 
 const uid = () => crypto.randomUUID();
 
@@ -278,6 +272,19 @@ function PositionRow({
       {/* desktop: one line; phone: wraps into a card */}
       <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
         <OrderSwatch index={index} width={12} height={26} />
+        <Select
+          ariaLabel={tt('cargoType.label')}
+          value={PALLET_PRESETS.find((pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height)?.key ?? 'custom'}
+          onChange={(key) => {
+            const preset = PALLET_PRESETS.find((pp) => pp.key === key);
+            if (preset)
+              onChange({ name: p.name || preset.name, length: preset.length, width: preset.width, height: preset.height });
+          }}
+          options={[
+            { value: 'custom', label: tt('setup.vehiclePreset.custom') },
+            ...PALLET_PRESETS.map((pp) => ({ value: pp.key, label: pp.name })),
+          ]}
+        />
         <span className="min-w-[8rem] flex-1">
           <TextField ariaLabel={tt('field.name')} value={p.name} onChange={(name) => onChange({ name })} placeholder={tt('cargoType.label')} />
         </span>

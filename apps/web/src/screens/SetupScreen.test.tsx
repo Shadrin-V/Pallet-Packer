@@ -17,8 +17,8 @@ describe('SetupScreen', () => {
   it('renders the localized title and a default vehicle + order', () => {
     renderSetup(() => {});
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Ladungsplaner');
-    // default preset vehicle dimensions present (vehicle "Länge" is the first labelled field)
-    expect((screen.getAllByLabelText('Länge')[0] as HTMLInputElement).value).toBe('13620');
+    // default preset vehicle dimensions present (LKW Standard; vehicle "Länge" is the first field)
+    expect((screen.getAllByLabelText('Länge')[0] as HTMLInputElement).value).toBe('13600');
     // one order id seeded
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
   });
@@ -30,7 +30,7 @@ describe('SetupScreen', () => {
 
     expect(onCalculate).toHaveBeenCalledTimes(1);
     const load = onCalculate.mock.calls[0][0] as Load;
-    expect(load.vehicle.name).toBe('Sattelauflieger');
+    expect(load.vehicle.name).toBe('LKW Standard');
     expect(load.cargo).toHaveLength(1);
     expect(load.cargo[0].orderId).toBe('SO-1');
     expect(load.cargo[0].state).toBe('entschachtelt');
@@ -45,6 +45,16 @@ describe('SetupScreen', () => {
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0].state).toBe('verschachtelt');
+  });
+
+  it('applies an EPAL pallet preset to the position dimensions', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.selectOptions(screen.getByLabelText('Ladungsart'), 'epal2');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const load = onCalculate.mock.calls[0][0] as Load;
+    expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
   });
 
   it('adds a second order zone', async () => {
