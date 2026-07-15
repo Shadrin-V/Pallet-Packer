@@ -7,6 +7,10 @@ import { orderIndexMap } from './cutaway';
 export interface BreakdownItem {
   cargoTypeId: string;
   name: string;
+  /** Base unit dimensions (mm) — shown in the load-composition reference. */
+  length: number;
+  width: number;
+  height: number;
   placed: number;
   unplaced: number;
 }
@@ -39,7 +43,15 @@ export function orderBreakdown(load: Load, layout: Layout): OrderBreakdown[] {
       orders.set(orderId, entry);
     }
     const placed = placedBy.get(c.id) ?? 0;
-    entry.items.push({ cargoTypeId: c.id, name: c.name || c.id, placed, unplaced: unplacedBy.get(c.id) ?? 0 });
+    entry.items.push({
+      cargoTypeId: c.id,
+      name: c.name || c.id,
+      length: c.length,
+      width: c.width,
+      height: c.height,
+      placed,
+      unplaced: unplacedBy.get(c.id) ?? 0,
+    });
     entry.placedTotal += placed;
   }
 

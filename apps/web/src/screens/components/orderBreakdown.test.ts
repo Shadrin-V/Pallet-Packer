@@ -49,14 +49,15 @@ describe('orderBreakdown', () => {
     expect(bd[1].index).toBe(1);
 
     // SO-1 has two positions: a (3 placed, 0 unplaced), b (1 placed, 2 unplaced)
+    const dims = { length: 1000, width: 1000, height: 1000 };
     expect(bd[0].items).toEqual([
-      { cargoTypeId: 'a', name: 'EPAL 1', placed: 3, unplaced: 0 },
-      { cargoTypeId: 'b', name: 'Gestell', placed: 1, unplaced: 2 },
+      { cargoTypeId: 'a', name: 'EPAL 1', ...dims, placed: 3, unplaced: 0 },
+      { cargoTypeId: 'b', name: 'Gestell', ...dims, placed: 1, unplaced: 2 },
     ]);
     expect(bd[0].placedTotal).toBe(4);
 
     // SO-2: c nothing placed, 5 unplaced
-    expect(bd[1].items).toEqual([{ cargoTypeId: 'c', name: 'Sonder', placed: 0, unplaced: 5 }]);
+    expect(bd[1].items).toEqual([{ cargoTypeId: 'c', name: 'Sonder', ...dims, placed: 0, unplaced: 5 }]);
     expect(bd[1].placedTotal).toBe(0);
   });
 

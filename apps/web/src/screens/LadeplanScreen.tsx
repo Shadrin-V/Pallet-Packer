@@ -4,7 +4,7 @@
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
 import { useEffect, useState } from 'react';
 import { findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
-import { formatLength, type TranslationKey } from '@shadrin-v/i18n';
+import { formatLength } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
 import { BrandMark } from './components/BrandMark';
@@ -53,8 +53,6 @@ export function LadeplanScreen({
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
   const dims = `${grp(v.length)} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
   const orderIds = [...orderIndexMap(load).keys()].filter(Boolean);
-  const mode = load.loadingMode ?? 'combined';
-  const modeLabel = tt(`ladeplan.mode.${mode}` as TranslationKey);
   const m = edited.metrics;
 
   return (
@@ -90,7 +88,6 @@ export function LadeplanScreen({
           {orderIds.length > 0 && (
             <MetaField label={tt('ladeplan.orders')} value={orderIds.join(' · ')} />
           )}
-          <MetaField label={tt('ladeplan.loadingMode')} value={modeLabel} />
           <div className="ml-auto flex items-end gap-6">
             <Figure value={grp(m.totalPlaced)} label={tt('ladeplan.fig.pallets')} />
             <Figure value={String(m.usedFloorPositions)} label={tt('ladeplan.fig.positions')} />
