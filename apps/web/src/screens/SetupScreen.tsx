@@ -6,6 +6,7 @@ import { computeStack } from '@shadrin-v/engine';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { Measure, TextField, Segmented, Select, Button, Chip } from '../ui/primitives';
+import { LocaleSwitch } from '../ui/LocaleSwitch';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
@@ -123,9 +124,12 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate }: Setu
 
   return (
     <main className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6">
-      <header className="mb-6">
-        <h1 className="text-title font-[650] text-balance">{tt('app.title')}</h1>
-        <p className="text-caption text-muted">{tt('app.subtitle')}</p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-title font-[650] text-balance">{tt('app.title')}</h1>
+          <p className="text-caption text-muted">{tt('app.subtitle')}</p>
+        </div>
+        <LocaleSwitch />
       </header>
 
       {/* Vehicle bar */}
