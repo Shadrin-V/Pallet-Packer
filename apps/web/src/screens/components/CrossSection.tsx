@@ -1,7 +1,9 @@
 // Cutaway SVG in mm coordinates (design-system §7). Calque background + 1000mm grid, thick vehicle
-// frame, per-order colour+hatch rects. Heights from the engine (z+dz), never tier counts.
+// frame, per-order colour+hatch rects. Strokes use non-scaling-stroke (px widths) so lines stay
+// crisp regardless of the mm→px scale. Heights from the engine (z+dz), never tier counts.
 import type { Layout, Load } from '@shadrin-v/engine';
 import { HatchDefs } from '../../lib/swatch';
+import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
 
 function gridLines(max: number, step = 1000): number[] {
@@ -21,10 +23,11 @@ export function CrossSection({
   view: 'top' | 'side';
   label: string;
 }) {
+  const tt = useT();
   const { length, width, height } = load.vehicle;
   const spanY = view === 'top' ? width : height;
-  const rects: CutRect[] =
-    view === 'top' ? topRects(load, layout) : sideRects(load, layout, height);
+  const rects: CutRect[] = view === 'top' ? topRects(load, layout) : sideRects(load, layout, height);
+  const labelFont = spanY * 0.07; // mm; proportional so edge labels stay readable at any scale
 
   return (
     <figure className="m-0">
@@ -40,25 +43,44 @@ export function CrossSection({
         <HatchDefs />
         {/* 1000mm grid */}
         {gridLines(length).map((x) => (
-          <line key={`vx${x}`} x1={x} y1={0} x2={x} y2={spanY} stroke="var(--grid)" strokeOpacity={0.5} strokeWidth={2} />
+          <line key={`vx${x}`} x1={x} y1={0} x2={x} y2={spanY} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
         {gridLines(spanY).map((y) => (
-          <line key={`hy${y}`} x1={0} y1={y} x2={length} y2={y} stroke="var(--grid)" strokeOpacity={0.5} strokeWidth={2} />
+          <line key={`hy${y}`} x1={0} y1={y} x2={length} y2={y} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
         {/* cargo rects */}
         {rects.map((r, i) => (
           <g key={i}>
             <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#pat-${r.series})`} />
-            <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={6} />
+            <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
             {view === 'top' && (r.count ?? 1) > 1 && (
-              <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={220} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+              <text
+                x={r.x + r.w / 2}
+                y={r.y + r.h / 2}
+                fill="var(--ink)"
+                fontSize={Math.min(r.w, r.h) * 0.38}
+                fontWeight={700}
+                textAnchor="middle"
+                dominantBaseline="central"
+              >
                 ×{r.count}
               </text>
             )}
           </g>
         ))}
         {/* vehicle frame */}
-        <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={10} />
+        <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        {/* side view: Vorne / Hinten edge labels */}
+        {view === 'side' && (
+          <>
+            <text x={length * 0.01} y={labelFont * 1.1} fill="var(--muted)" fontSize={labelFont} fontWeight={600} textAnchor="start">
+              {tt('ladeplan.front')}
+            </text>
+            <text x={length * 0.99} y={labelFont * 1.1} fill="var(--muted)" fontSize={labelFont} fontWeight={600} textAnchor="end">
+              {tt('ladeplan.back')}
+            </text>
+          </>
+        )}
       </svg>
     </figure>
   );
