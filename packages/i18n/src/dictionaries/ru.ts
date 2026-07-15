@@ -3,7 +3,18 @@
 import type { Dictionary } from '../keys';
 
 export const ru: Dictionary = {
-  'app.title': 'Pallet Packer',
+  'app.title': 'Ladungsplaner',
+  'app.subtitle': 'Планирование загрузки грузовика',
+
+  'setup.orders': 'Заказы',
+  'setup.addOrder': 'Добавить заказ',
+  'setup.addPosition': 'Добавить позицию',
+  'setup.order': 'Заказ',
+  'setup.state.ent': 'Без',
+  'setup.state.ver': 'Влож',
+  'setup.stack': 'Стопка',
+  'setup.vehiclePreset.custom': 'Свои размеры',
+  'setup.emptyOrders': 'Заказов пока нет. Добавьте заказ.',
 
   'field.name': 'Название',
   'field.length': 'Длина',
