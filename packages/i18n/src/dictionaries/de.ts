@@ -16,6 +16,15 @@ export const de: Dictionary = {
   'setup.vehiclePreset.custom': 'Eigene Maße',
   'setup.emptyOrders': 'Noch keine Aufträge. Fügen Sie einen Auftrag hinzu.',
 
+  'ladeplan.title': 'Ladeplan',
+  'ladeplan.top': 'Draufsicht',
+  'ladeplan.side': 'Seitenansicht',
+  'ladeplan.legend': 'Legende',
+  'ladeplan.front': 'Vorne',
+  'ladeplan.back': 'Hinten',
+  'action.print': 'Drucken',
+  'action.back': 'Zurück',
+
   'field.name': 'Name',
   'field.length': 'Länge',
   'field.width': 'Breite',
