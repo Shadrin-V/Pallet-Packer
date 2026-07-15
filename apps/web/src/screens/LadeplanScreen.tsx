@@ -1,12 +1,14 @@
 // Ladeplan / result screen (LKWkalk-73u) — эталон docs/lovable/ladeplan-reference.html, palette per
 // docs/design/design-system.md. Clean card под скриншот: header, top+side cutaways, legend, metrics,
 // A4 print. Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
+import { useEffect, useState } from 'react';
 import { findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
 import { useT } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
 import { Metrics } from './components/Metrics';
+import { moveStack, type StackSel } from './components/dragLayout';
 
 export function LadeplanScreen({
   load,
@@ -18,7 +20,12 @@ export function LadeplanScreen({
   onBack?: () => void;
 }) {
   const tt = useT();
-  const violations = findGeometryViolations(load, layout).length;
+  // Editable copy for manual stack drag; reset whenever a fresh layout is computed.
+  const [edited, setEdited] = useState<Layout>(layout);
+  useEffect(() => setEdited(layout), [layout]);
+  const onMoveStack = (sel: StackSel, toX: number, toY: number) =>
+    setEdited((prev) => moveStack(load, prev, sel, toX, toY));
+  const violations = findGeometryViolations(load, edited).length;
 
   return (
     <main
@@ -49,10 +56,10 @@ export function LadeplanScreen({
         </div>
 
         <div className="cut" style={{ breakInside: 'avoid' }}>
-          <CrossSection load={load} layout={layout} view="top" label={tt('ladeplan.top')} />
+          <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} />
         </div>
         <div className="cut" style={{ breakInside: 'avoid' }}>
-          <CrossSection load={load} layout={layout} view="side" label={tt('ladeplan.side')} />
+          <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} />
         </div>
 
         <div style={{ breakInside: 'avoid' }}>
@@ -60,7 +67,7 @@ export function LadeplanScreen({
         </div>
 
         <div style={{ breakInside: 'avoid' }}>
-          <Metrics layout={layout} />
+          <Metrics layout={edited} />
         </div>
       </div>
     </main>

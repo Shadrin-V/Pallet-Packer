@@ -45,6 +45,12 @@ describe('LadeplanScreen', () => {
     expect(screen.getByText('8')).toBeInTheDocument();
   });
 
+  it('makes top-view stacks draggable (onMoveStack wired)', () => {
+    const { container } = renderLadeplan();
+    // draggable stacks carry cursor:grab (only present when onMoveStack is provided)
+    expect(container.querySelector('g[style*="grab"]')).toBeInTheDocument();
+  });
+
   it('holds the geometry invariant (0 violations) — both directly and via the DOM flag', () => {
     expect(findGeometryViolations(load, layout)).toEqual([]);
     const { container } = renderLadeplan();
