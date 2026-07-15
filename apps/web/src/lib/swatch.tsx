@@ -40,28 +40,31 @@ function motif(series: number, color: string) {
   }
 }
 
-/** One <pattern> definition for a series (userSpaceOnUse, TILE×TILE). */
-export function HatchPattern({ series }: { series: number }) {
+/** One <pattern> definition for a series (userSpaceOnUse). `tile` scales the motif: the small swatch
+ * uses the base 8-unit tile; the mm-scale cutaways use a much larger tile so the hatch is coarse
+ * enough to survive print (incl. B/W) instead of collapsing to a sub-pixel tint. */
+export function HatchPattern({ series, tile = TILE }: { series: number; tile?: number }) {
   const { colorVar } = orderColorToken(series - 1);
   return (
     <pattern
       id={`pat-${series}`}
       patternUnits="userSpaceOnUse"
-      width={TILE}
-      height={TILE}
+      width={tile}
+      height={tile}
       data-testid={`pat-${series}`}
     >
-      {motif(series, colorVar)}
+      <g transform={`scale(${tile / TILE})`}>{motif(series, colorVar)}</g>
     </pattern>
   );
 }
 
-/** All 8 hatch patterns — drop once per SVG document that references url(#pat-N). */
-export function HatchDefs() {
+/** All 8 hatch patterns — drop once per SVG document that references url(#pat-N). Pass `tile` to
+ * coarsen the hatch for large (mm-scale) diagrams. */
+export function HatchDefs({ tile }: { tile?: number } = {}) {
   return (
     <defs>
       {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-        <HatchPattern key={s} series={s} />
+        <HatchPattern key={s} series={s} tile={tile} />
       ))}
     </defs>
   );
@@ -95,9 +98,9 @@ export function OrderSwatch({
       <defs>
         <HatchPattern series={series} />
       </defs>
-      <rect width="24" height="16" fill={colorVar} fillOpacity={0.18} />
+      <rect width="24" height="16" fill={colorVar} fillOpacity={0.22} />
       <rect width="24" height="16" fill={`url(#pat-${series})`} />
-      <rect width="24" height="16" fill="none" stroke={colorVar} strokeOpacity={0.5} />
+      <rect width="24" height="16" fill="none" stroke={colorVar} strokeOpacity={0.75} />
     </svg>
   );
 }

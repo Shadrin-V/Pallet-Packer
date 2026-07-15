@@ -89,7 +89,8 @@ export function CrossSection({
         onPointerMove={draggable ? onMove : undefined}
         onPointerUp={draggable ? onUp : undefined}
       >
-        <HatchDefs />
+        {/* coarse hatch tile (mm scale) so the pattern prints — incl. B/W — instead of a sub-pixel tint */}
+        <HatchDefs tile={120} />
         {gridLines(length).map((x) => (
           <line key={`vx${x}`} x1={x} y1={0} x2={x} y2={spanY} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
@@ -101,10 +102,12 @@ export function CrossSection({
           const tf = isDragging ? `translate(${drag!.dx} ${drag!.dy})` : undefined;
           return (
             <g key={i} transform={tf} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
+              {/* solid tint base (prints reliably, unlike a bare pattern fill) + hatch on top + colour outline */}
+              <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`var(--s${r.series})`} fillOpacity={0.16} />
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#pat-${r.series})`} />
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
               {view === 'top' && (r.count ?? 1) > 1 && (
-                <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={Math.min(r.w, r.h) * 0.38} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+                <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={Math.min(r.w, r.h) * 0.2} fontWeight={700} textAnchor="middle" dominantBaseline="central">
                   ×{r.count}
                 </text>
               )}
