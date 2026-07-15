@@ -5,6 +5,18 @@
 export const TRANSLATION_KEYS = [
   // App
   'app.title',
+  'app.subtitle',
+
+  // Setup screen (order/position editor)
+  'setup.orders',
+  'setup.addOrder',
+  'setup.addPosition',
+  'setup.order',
+  'setup.state.ent',
+  'setup.state.ver',
+  'setup.stack',
+  'setup.vehiclePreset.custom',
+  'setup.emptyOrders',
 
   // Shared field labels (vehicle + cargo-type forms)
   'field.name',

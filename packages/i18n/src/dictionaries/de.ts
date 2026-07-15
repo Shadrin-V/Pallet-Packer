@@ -3,7 +3,18 @@
 import type { Dictionary } from '../keys';
 
 export const de: Dictionary = {
-  'app.title': 'Pallet Packer',
+  'app.title': 'Ladungsplaner',
+  'app.subtitle': 'LKW-Beladung planen',
+
+  'setup.orders': 'Aufträge',
+  'setup.addOrder': 'Auftrag hinzufügen',
+  'setup.addPosition': 'Position hinzufügen',
+  'setup.order': 'Auftrag',
+  'setup.state.ent': 'Ent',
+  'setup.state.ver': 'Ver',
+  'setup.stack': 'Stapel',
+  'setup.vehiclePreset.custom': 'Eigene Maße',
+  'setup.emptyOrders': 'Noch keine Aufträge. Fügen Sie einen Auftrag hinzu.',
 
   'field.name': 'Name',
   'field.length': 'Länge',
