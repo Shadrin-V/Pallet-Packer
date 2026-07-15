@@ -1,8 +1,17 @@
 // Setup screen (LKWkalk-gxp) — эталон docs/lovable/setup-reference.html, палитра/компоненты по
 // docs/design/design-system.md (Direction D). Token-only, i18n de/ru, движок для предпросмотра штабеля.
 import { useState } from 'react';
-import type { Load, Vehicle, CargoType, RotationRule, NestingState } from '@shadrin-v/engine';
+import type {
+  Load,
+  Vehicle,
+  CargoType,
+  RotationRule,
+  NestingState,
+  NestingMode,
+  StackPreview,
+} from '@shadrin-v/engine';
 import { computeStack } from '@shadrin-v/engine';
+import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { Measure, TextField, Segmented, Select, Button, Chip } from '../ui/primitives';
@@ -21,7 +30,10 @@ interface PositionState {
   quantity: Num;
   state: NestingState;
   rotation: RotationRule;
-  stepHeight: Num; // nesting step (verschachtelt)
+  stepHeight: Num; // nesting step: Δh (sequential) or h_д (pairwise)
+  nestingMode: NestingMode;
+  maxNested: Num; // nesting cap
+  allowUnpairedTop: boolean; // pairwise only
   maxTiers: Num; // stacking cap
 }
 
@@ -50,6 +62,9 @@ const emptyPosition = (): PositionState => ({
   state: 'entschachtelt',
   rotation: 'yawOnly',
   stepHeight: '',
+  nestingMode: 'sequential',
+  maxNested: '',
+  allowUnpairedTop: false,
   maxTiers: '',
 });
 
@@ -73,7 +88,15 @@ function toCargo(p: PositionState, orderId: string): CargoType {
     quantity: numOr0(p.quantity),
     rotation: p.rotation,
     stacking: { stackable: true, ...(numOr0(p.maxTiers) > 0 ? { maxTiers: numOr0(p.maxTiers) } : {}) },
-    nesting: nestable ? { nestable: true, stepHeight: numOr0(p.stepHeight) } : { nestable: false },
+    nesting: nestable
+      ? {
+          nestable: true,
+          stepHeight: numOr0(p.stepHeight),
+          nestingMode: p.nestingMode,
+          ...(numOr0(p.maxNested) > 0 ? { maxNested: numOr0(p.maxNested) } : {}),
+          ...(p.nestingMode === 'pairwise' ? { allowUnpairedTop: p.allowUnpairedTop } : {}),
+        }
+      : { nestable: false },
     state: p.state,
     orderId,
   };
@@ -105,7 +128,13 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate }: Setu
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
     });
 
+  // A nestable position with an invalid Δh/h_д blocks calculation (ERR_INVALID_NESTING otherwise).
+  const anyInvalid = orders.some((o) =>
+    o.positions.some((p) => stepInvalid(p.state, p.stepHeight, p.height)),
+  );
+
   const handleCalculate = () => {
+    if (anyInvalid) return;
     const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
     onCalculate({ vehicle, cargo });
   };
@@ -174,7 +203,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate }: Setu
       </div>
 
       <div className="mt-6 flex justify-end">
-        <Button variant="primary" onClick={handleCalculate}>{tt('action.calculate')}</Button>
+        <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
       </div>
     </main>
   );
@@ -258,12 +287,13 @@ function PositionRow({
 }) {
   const [open, setOpen] = useState(false);
   const dimsPresent = numOr0(p.length) > 0 && numOr0(p.width) > 0 && numOr0(p.height) > 0;
-  let stackCount = 0;
-  if (dimsPresent) {
+  const invalid = stepInvalid(p.state, p.stepHeight, p.height);
+  let preview: StackPreview | null = null;
+  if (dimsPresent && !invalid) {
     try {
-      stackCount = computeStack(toCargo(p, 'preview'), vehicle).count;
+      preview = computeStack(toCargo(p, 'preview'), vehicle);
     } catch {
-      stackCount = 0;
+      preview = null;
     }
   }
 
@@ -302,9 +332,9 @@ function PositionRow({
           ]}
         />
         <Select ariaLabel={tt('cargoType.rotation.label')} value={p.rotation} onChange={(rotation) => onChange({ rotation })} options={rotationOptions} />
-        {stackCount > 0 && (
+        {preview && preview.count > 0 && (
           <Chip tone={p.state === 'verschachtelt' ? 'mint' : 'default'}>
-            {tt('setup.stack')} {stackCount}
+            {tt('setup.stack')} {preview.count}
           </Chip>
         )}
         <button type="button" aria-label="details" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto text-muted hover:text-brand">
@@ -313,16 +343,76 @@ function PositionRow({
       </div>
 
       {open && (
-        <div className="mt-2 flex flex-wrap items-end gap-4 border-t border-dashed border-line bg-sub px-2 py-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.stacking.label')}</span>
-            <span className="w-24"><Measure ariaLabel={tt('cargoType.stacking.label')} unit="×" value={p.maxTiers} onChange={(maxTiers) => onChange({ maxTiers })} /></span>
-          </label>
-          {p.state === 'verschachtelt' && (
+        <div className="mt-2 flex flex-col gap-3 border-t border-dashed border-line bg-sub px-2 py-2">
+          <div className="flex flex-wrap items-end gap-4">
             <label className="flex flex-col gap-1">
-              <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.label')}</span>
-              <span className="w-24"><Measure ariaLabel={tt('cargoType.nesting.label')} value={p.stepHeight} onChange={(stepHeight) => onChange({ stepHeight })} /></span>
+              <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.stacking.label')}</span>
+              <span className="w-24"><Measure ariaLabel={tt('cargoType.stacking.label')} unit="×" value={p.maxTiers} onChange={(maxTiers) => onChange({ maxTiers })} /></span>
             </label>
+
+            {p.state === 'verschachtelt' && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.mode')}</span>
+                  <Select
+                    ariaLabel={tt('cargoType.nesting.mode')}
+                    value={p.nestingMode}
+                    onChange={(nestingMode) => onChange({ nestingMode })}
+                    options={[
+                      { value: 'sequential' as NestingMode, label: tt('cargoType.nesting.modeSequential') },
+                      { value: 'pairwise' as NestingMode, label: tt('cargoType.nesting.modePairwise') },
+                    ]}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-label uppercase font-semibold text-faint">
+                    {tt(p.nestingMode === 'pairwise' ? 'cargoType.nesting.stepHeightPair' : 'cargoType.nesting.stepHeightSeq')}
+                  </span>
+                  <span className="w-24">
+                    <Measure
+                      ariaLabel={tt('cargoType.nesting.stepHeightSeq')}
+                      value={p.stepHeight}
+                      onChange={(stepHeight) => onChange({ stepHeight })}
+                      invalid={invalid}
+                    />
+                  </span>
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.maxNested')}</span>
+                  <span className="w-24"><Measure ariaLabel={tt('cargoType.nesting.maxNested')} unit="×" value={p.maxNested} onChange={(maxNested) => onChange({ maxNested })} /></span>
+                </label>
+
+                {p.nestingMode === 'pairwise' && (
+                  <label className="flex items-center gap-2 pb-1.5 text-body">
+                    <input type="checkbox" checked={p.allowUnpairedTop} onChange={(e) => onChange({ allowUnpairedTop: e.target.checked })} />
+                    {tt('cargoType.nesting.allowUnpairedTop')}
+                  </label>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* validation hint + live formula */}
+          {p.state === 'verschachtelt' && (
+            <p className={`text-caption ${invalid ? 'text-danger' : 'text-muted'}`}>
+              {fillTemplate(tt('cargoType.nesting.stepHeightHint'), { H: numOr0(p.height) })}
+            </p>
+          )}
+          {preview && (
+            <div className="rounded-ctl bg-card px-3 py-2">
+              <div className="text-caption text-muted">
+                {fillTemplate(tt('stack.result'), { count: preview.count, height: `${preview.height} mm` })}
+              </div>
+              <div className="mt-1 font-mono text-formula text-ink">
+                <span className="text-faint">{tt('stack.formula.label')}: </span>
+                {fillTemplate(tt(formulaKey(preview)), formulaVars(preview))}
+                {preview.cappedBy && preview.cappedBy !== 'notStackable' && (
+                  <> {fillTemplate(tt('stack.formula.cap'), formulaVars(preview))}</>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}

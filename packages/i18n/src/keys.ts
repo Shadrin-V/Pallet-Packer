@@ -48,6 +48,24 @@ export const TRANSLATION_KEYS = [
   'cargoType.rotation.full',
   'cargoType.stacking.label',
   'cargoType.nesting.label',
+  'cargoType.nesting.mode',
+  'cargoType.nesting.modeSequential',
+  'cargoType.nesting.modePairwise',
+  'cargoType.nesting.stepHeightSeq',
+  'cargoType.nesting.stepHeightPair',
+  'cargoType.nesting.stepHeightHint',
+  'cargoType.nesting.maxNested',
+  'cargoType.nesting.allowUnpairedTop',
+
+  // Stack preview + formula (qrd-13 / qrd-26)
+  'stack.preview',
+  'stack.result',
+  'stack.formula.label',
+  'stack.formula.entschachtelt',
+  'stack.formula.sequential',
+  'stack.formula.pairwise',
+  'stack.formula.cap',
+  'stack.formula.notStackable',
 
   // Actions
   'action.calculate',
