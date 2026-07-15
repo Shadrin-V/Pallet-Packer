@@ -117,10 +117,13 @@ SPA-fallback работают, `/api/nope` → JSON-404.
 | **6cy** | DataProvider + contracts | ✅ done | `packages/contracts` + `DataProvider` + `HttpDataProvider`. |
 | **r13** | Сервер + SQLite | ✅ done | vehicle, loading_plan (снимок), REST /api, том /app/data, бэкап. |
 | **uvf** | Адаптер ERPNext (сервер) | ✅ done | `importOrder` из custom-полей, `/api/orders`, guard unconfigured. |
-| **563** | Дизайн-система (трек) | ⏳ ждёт документы | Владелец приложит дизайн-документы; **блокирует gxp/73u**. |
-| **gxp** | Экран «Настройка» | 🔴 blocked (563) | React по `setup-reference.html`; segmented Ent/Ver, `computeStack`. |
-| **73u** | Экран «Ladeplan» | 🔴 blocked (563) | React по `ladeplan-reference.html`; разрезы SVG, `findGeometryViolations`. |
-| **s17** | Deep-link импорта (UI) | 🔴 blocked (gxp) | `?order=SO-####` → `importOrder` → посев экрана. |
+| **563** | Дизайн-система (трек) | ✅ done | Direction D · бренд Holz Schäfer. docs/design/design-system.md + theme.css + спека. |
+| **gxp** | Экран «Настройка» | ✅ done | React, токены Direction D; строка кузова/пресеты, карточки заказов, строки-позиции (Ent/Ver, `computeStack`). |
+| **73u** | Экран «Ladeplan» | ✅ done | Разрезы SVG в мм (цвет+штрих, `orientedDims`), легенда, метрики, печать A4, guard `findGeometryViolations`. |
+| **s17** | Deep-link импорта (UI) | 🟡 ready | Разблокирован (gxp готов); owner-side follow-up. |
+
+> **Полное приложение LIVE:** https://ladungsplaner.holz-schaefer.de — флоу Настройка → Berechnen →
+> Ladeplan → Zurück, живой бандл (73u) проверен байт-в-байт. Эпик LKWkalk-66g завершён.
 | **62x** | Деплой Coolify | ✅ **LIVE** | **https://ladungsplaner.holz-schaefer.de** — Coolify 4.1.2, ветка production, том /app/data, лимиты 512M/0.5CPU, Traefik+TLS. Смоук зелёный. Follow-up: бэкап тома (zbi), Basic Auth (i6b). |
 
 ## 6. Важные внешние факты (для сверки)
