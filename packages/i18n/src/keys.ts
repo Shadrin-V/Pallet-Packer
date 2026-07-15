@@ -86,6 +86,8 @@ export const TRANSLATION_KEYS = [
   // Actions
   'action.calculate',
   'action.exportJson',
+  'action.reset',
+  'setup.resetConfirm',
 
   // Results / report metrics
   'results.totalPlaced',

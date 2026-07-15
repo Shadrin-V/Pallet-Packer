@@ -1,6 +1,6 @@
 // Setup screen (LKWkalk-gxp) — эталон docs/lovable/setup-reference.html, палитра/компоненты по
 // docs/design/design-system.md (Direction D). Token-only, i18n de/ru, движок для предпросмотра штабеля.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   Load,
   Vehicle,
@@ -49,6 +49,35 @@ export interface SetupScreenProps {
   initialVehicle?: Vehicle;
   initialOrders?: OrderState[];
   onCalculate: (load: Load) => void;
+  /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
+  onReset?: () => void;
+}
+
+// ---- persistence (survives page refresh; cleared by the reset button) ---------------------------
+// The persisted form is a client-side working draft. ERPNext import (future) sets the same state and
+// then persists here; the source of truth for imported data stays the Sales Order. Reset clears it.
+const SETUP_STORAGE_KEY = 'ladungsplaner.setup';
+interface PersistedSetup {
+  vehicle: Vehicle;
+  orders: OrderState[];
+}
+function loadSetup(): PersistedSetup | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(SETUP_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedSetup;
+    if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) return parsed;
+  } catch {
+    /* corrupt / unavailable — ignore */
+  }
+  return null;
+}
+function saveSetup(s: PersistedSetup): void {
+  try {
+    globalThis.localStorage?.setItem(SETUP_STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore */
+  }
 }
 
 
@@ -105,13 +134,29 @@ function toCargo(p: PositionState, orderId: string): CargoType {
 }
 
 // ---- component ------------------------------------------------------------
-export function SetupScreen({ initialVehicle, initialOrders, onCalculate }: SetupScreenProps) {
+export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onReset }: SetupScreenProps) {
   const tt = useT();
   const preset0 = VEHICLE_PRESETS[0];
-  const [vehicle, setVehicle] = useState<Vehicle>(
-    initialVehicle ?? { id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height },
-  );
-  const [orders, setOrders] = useState<OrderState[]>(initialOrders ?? [emptyOrder(1)]);
+  const defaultVehicle = (): Vehicle => ({ id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height });
+  const [vehicle, setVehicle] = useState<Vehicle>(() => initialVehicle ?? loadSetup()?.vehicle ?? defaultVehicle());
+  const [orders, setOrders] = useState<OrderState[]>(() => initialOrders ?? loadSetup()?.orders ?? [emptyOrder(1)]);
+
+  // Persist the working draft on every change so a page refresh does not lose input.
+  useEffect(() => {
+    saveSetup({ vehicle, orders });
+  }, [vehicle, orders]);
+
+  const handleReset = () => {
+    if (typeof window !== 'undefined' && !window.confirm(tt('setup.resetConfirm'))) return;
+    setVehicle(defaultVehicle());
+    setOrders([emptyOrder(1)]);
+    try {
+      globalThis.localStorage?.removeItem(SETUP_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    onReset?.();
+  };
 
   const patchOrder = (key: string, patch: Partial<OrderState>) =>
     setOrders((os) => os.map((o) => (o.key === key ? { ...o, ...patch } : o)));
@@ -209,7 +254,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate }: Setu
         <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="secondary" onClick={handleReset}>{tt('action.reset')}</Button>
         <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
       </div>
     </main>
@@ -322,8 +368,19 @@ function PositionRow({
     }
   }
 
+  // Any click outside this row (add order/position, another row, elsewhere) collapses the panel.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onSetOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open, onSetOpen]);
+
   return (
-    <div className="px-4 py-2.5">
+    <div ref={rootRef} className="px-4 py-2.5">
       {/* desktop: one line; phone: wraps into a card */}
       <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
         <OrderSwatch index={index} width={12} height={26} />

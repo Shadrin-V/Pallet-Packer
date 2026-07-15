@@ -13,6 +13,8 @@ export interface CutRect {
   cargoTypeId: string;
   /** units in this stack (top view label ×N) */
   count?: number;
+  /** side view only: depth rank of the stack at this x (0 = front row, larger = further back). */
+  depth?: number;
 }
 
 /** Map each orderId to its palette index (order of first appearance). */
@@ -63,27 +65,39 @@ export function topRects(load: Load, layout: Layout): CutRect[] {
 }
 
 /**
- * Side view (Seitenansicht): one silhouette bar per floor column (grouped by x), its height = the
- * tallest stack top (max z+dz) at that x. A single clean bar per column makes stack-height
- * differences legible (vs. dozens of overlapping unit rects) and keeps the print crisp.
+ * Side view (Seitenansicht): one silhouette bar per floor stack (grouped by x,y), its height = that
+ * stack's top (max z+dz). Stacks that share an x (rows across the width) overlap in the projection;
+ * `depth` ranks them front→back so the renderer can dim the rear rows (depth > 0) and draw them
+ * behind the front row — showing back-row loads instead of hiding them.
  */
 export function sideRects(load: Load, layout: Layout, vehicleHeight: number): CutRect[] {
   const info = cargoInfoMap(load);
-  const byX = new Map<number, { top: number; w: number; series: number; cargoTypeId: string }>();
+  const byPos = new Map<string, { x: number; y: number; top: number; w: number; series: number; cargoTypeId: string }>();
   for (const p of layout.placements) {
     const c = info.get(p.cargoTypeId);
     if (!c) continue;
     const [dx, , dz] = orientedDims(c.l, c.w, c.h, p.orientation);
     const top = p.z + dz;
-    const cur = byX.get(p.x);
-    if (!cur || top > cur.top) byX.set(p.x, { top, w: dx, series: c.series, cargoTypeId: p.cargoTypeId });
+    const key = `${p.x}:${p.y}`;
+    const cur = byPos.get(key);
+    if (!cur || top > cur.top) byPos.set(key, { x: p.x, y: p.y, top, w: dx, series: c.series, cargoTypeId: p.cargoTypeId });
   }
-  return [...byX.entries()].map(([x, s]) => ({
-    x,
+  const stacks = [...byPos.values()];
+  // depth = rank of this stack's y among the stacks sharing its x (front row y-min = depth 0)
+  const ysByX = new Map<number, number[]>();
+  for (const s of stacks) {
+    const arr = ysByX.get(s.x) ?? [];
+    arr.push(s.y);
+    ysByX.set(s.x, arr);
+  }
+  for (const arr of ysByX.values()) arr.sort((a, b) => a - b);
+  return stacks.map((s) => ({
+    x: s.x,
     y: vehicleHeight - s.top,
     w: s.w,
     h: s.top,
     series: s.series,
     cargoTypeId: s.cargoTypeId,
+    depth: ysByX.get(s.x)!.indexOf(s.y),
   }));
 }

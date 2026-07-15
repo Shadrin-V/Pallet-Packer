@@ -79,6 +79,8 @@ export const ru: Dictionary = {
 
   'action.calculate': 'Рассчитать',
   'action.exportJson': 'Экспорт в JSON',
+  'action.reset': 'Сбросить',
+  'setup.resetConfirm': 'Сбросить все данные и план загрузки?',
 
   'results.totalPlaced': 'Всего размещено',
   'results.unplaced': 'Не размещено',
