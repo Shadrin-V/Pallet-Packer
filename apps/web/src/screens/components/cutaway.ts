@@ -9,6 +9,8 @@ export interface CutRect {
   w: number;
   h: number;
   series: number;
+  /** cargo type of this stack (for drag selection) */
+  cargoTypeId: string;
   /** units in this stack (top view label ×N) */
   count?: number;
 }
@@ -55,7 +57,7 @@ export function topRects(load: Load, layout: Layout): CutRect[] {
     const key = `${p.cargoTypeId}:${p.x}:${p.y}`;
     const existing = byPos.get(key);
     if (existing) existing.count = (existing.count ?? 1) + 1;
-    else byPos.set(key, { x: p.x, y: p.y, w: dx, h: dy, series: c.series, count: 1 });
+    else byPos.set(key, { x: p.x, y: p.y, w: dx, h: dy, series: c.series, cargoTypeId: p.cargoTypeId, count: 1 });
   }
   return [...byPos.values()];
 }
@@ -68,7 +70,7 @@ export function sideRects(load: Load, layout: Layout, vehicleHeight: number): Cu
     const c = info.get(p.cargoTypeId);
     if (!c) continue;
     const [dx, , dz] = orientedDims(c.l, c.w, c.h, p.orientation);
-    rects.push({ x: p.x, y: vehicleHeight - (p.z + dz), w: dx, h: dz, series: c.series });
+    rects.push({ x: p.x, y: vehicleHeight - (p.z + dz), w: dx, h: dz, series: c.series, cargoTypeId: p.cargoTypeId });
   }
   return rects;
 }
