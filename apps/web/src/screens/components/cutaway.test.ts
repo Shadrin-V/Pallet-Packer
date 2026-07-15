@@ -39,12 +39,15 @@ describe('crossSection geometry', () => {
     }
   });
 
-  it('side view uses y = height − (z + dz), not tier index', () => {
+  it('side view collapses each column to one silhouette bar (y = height − stackTop)', () => {
     const rects = sideRects(load, layout, V.height);
-    // bottom tier (z=0, dz=1000) → y = 2000 − 1000 = 1000
-    expect(rects.some((r) => r.y === 1000 && r.h === 1000)).toBe(true);
-    // top tier (z=1000, dz=1000) → y = 2000 − 2000 = 0
-    expect(rects.some((r) => r.y === 0 && r.h === 1000)).toBe(true);
+    // 2 columns in x (length), each stack 2 tiers of 1000 → top = 2000
+    expect(rects).toHaveLength(2);
+    for (const r of rects) {
+      expect(r.y).toBe(0); // stack top at 2000 → y = 2000 − 2000 = 0
+      expect(r.h).toBe(2000); // full stack silhouette height
+      expect(r.w).toBe(1000);
+    }
   });
 
   it('orderIndexMap assigns palette indices by first appearance', () => {

@@ -62,15 +62,28 @@ export function topRects(load: Load, layout: Layout): CutRect[] {
   return [...byPos.values()];
 }
 
-/** Side view (Seitenansicht): one rect per unit, y = vehicleHeight − (z + dz). */
+/**
+ * Side view (Seitenansicht): one silhouette bar per floor column (grouped by x), its height = the
+ * tallest stack top (max z+dz) at that x. A single clean bar per column makes stack-height
+ * differences legible (vs. dozens of overlapping unit rects) and keeps the print crisp.
+ */
 export function sideRects(load: Load, layout: Layout, vehicleHeight: number): CutRect[] {
   const info = cargoInfoMap(load);
-  const rects: CutRect[] = [];
+  const byX = new Map<number, { top: number; w: number; series: number; cargoTypeId: string }>();
   for (const p of layout.placements) {
     const c = info.get(p.cargoTypeId);
     if (!c) continue;
     const [dx, , dz] = orientedDims(c.l, c.w, c.h, p.orientation);
-    rects.push({ x: p.x, y: vehicleHeight - (p.z + dz), w: dx, h: dz, series: c.series, cargoTypeId: p.cargoTypeId });
+    const top = p.z + dz;
+    const cur = byX.get(p.x);
+    if (!cur || top > cur.top) byX.set(p.x, { top, w: dx, series: c.series, cargoTypeId: p.cargoTypeId });
   }
-  return rects;
+  return [...byX.entries()].map(([x, s]) => ({
+    x,
+    y: vehicleHeight - s.top,
+    w: s.w,
+    h: s.top,
+    series: s.series,
+    cargoTypeId: s.cargoTypeId,
+  }));
 }

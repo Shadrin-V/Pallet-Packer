@@ -41,7 +41,8 @@ export function CrossSection({
   const { length, width, height } = load.vehicle;
   const spanY = view === 'top' ? width : height;
   const rects: CutRect[] = view === 'top' ? topRects(load, layout) : sideRects(load, layout, height);
-  const labelFont = spanY * 0.07;
+  // Uniform ×N label size across all stacks (independent of footprint), in top-view mm units.
+  const countFont = width * 0.05;
   const draggable = view === 'top' && !!onMoveStack;
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -78,6 +79,13 @@ export function CrossSection({
   return (
     <figure className="m-0">
       <figcaption className="mb-1 text-label uppercase font-semibold text-faint">{label}</figcaption>
+      {/* Vorne / Hinten sit above the diagram (out of the way of the stacks), small and muted. */}
+      {view === 'side' && (
+        <div className="mb-0.5 flex justify-between px-0.5 text-[10px] uppercase tracking-wide text-faint">
+          <span>{tt('ladeplan.front')}</span>
+          <span>{tt('ladeplan.back')}</span>
+        </div>
+      )}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${length} ${spanY}`}
@@ -107,7 +115,7 @@ export function CrossSection({
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#pat-${r.series})`} />
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
               {view === 'top' && (r.count ?? 1) > 1 && (
-                <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={Math.min(r.w, r.h) * 0.2} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+                <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
                   ×{r.count}
                 </text>
               )}
@@ -115,16 +123,6 @@ export function CrossSection({
           );
         })}
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-        {view === 'side' && (
-          <>
-            <text x={length * 0.01} y={labelFont * 1.1} fill="var(--muted)" fontSize={labelFont} fontWeight={600} textAnchor="start">
-              {tt('ladeplan.front')}
-            </text>
-            <text x={length * 0.99} y={labelFont * 1.1} fill="var(--muted)" fontSize={labelFont} fontWeight={600} textAnchor="end">
-              {tt('ladeplan.back')}
-            </text>
-          </>
-        )}
       </svg>
     </figure>
   );
