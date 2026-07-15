@@ -44,7 +44,9 @@ function motif(series: number, color: string) {
  * uses the base 8-unit tile; the mm-scale cutaways use a much larger tile so the hatch is coarse
  * enough to survive print (incl. B/W) instead of collapsing to a sub-pixel tint. */
 export function HatchPattern({ series, tile = TILE }: { series: number; tile?: number }) {
-  const { colorVar } = orderColorToken(series - 1);
+  // Concrete hex, not var(--sN): var() paints inside <pattern> do not resolve when Chrome prints,
+  // so the hatch would vanish on paper. Direct elements (outline, tint) keep the token.
+  const { hex } = orderColorToken(series - 1);
   return (
     <pattern
       id={`pat-${series}`}
@@ -53,7 +55,7 @@ export function HatchPattern({ series, tile = TILE }: { series: number; tile?: n
       height={tile}
       data-testid={`pat-${series}`}
     >
-      <g transform={`scale(${tile / TILE})`}>{motif(series, colorVar)}</g>
+      <g transform={`scale(${tile / TILE})`}>{motif(series, hex)}</g>
     </pattern>
   );
 }

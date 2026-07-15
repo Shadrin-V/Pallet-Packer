@@ -77,6 +77,17 @@ body {
 @tailwind components;
 @tailwind utilities;
 
+/* Hide the native number-input spinner (up/down steppers) — not useful for dimensions/quantity. */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* ---- Print: A4 landscape, Ladeplan document only (E3/E7) ---- */
 @page {
   size: A4 landscape;

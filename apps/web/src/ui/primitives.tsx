@@ -35,13 +35,17 @@ export function Measure({
   unit = 'mm',
   ariaLabel,
   invalid = false,
+  align = 'right',
 }: {
   value: number | '';
   onChange: (v: number | '') => void;
   unit?: string;
   ariaLabel: string;
   invalid?: boolean;
+  /** Text alignment of the number; quantity reads better left-aligned (no cramped right edge). */
+  align?: 'left' | 'center' | 'right';
 }) {
+  const alignCls = align === 'left' ? 'text-left' : align === 'center' ? 'text-center' : 'text-right';
   return (
     <span
       className={`inline-flex items-center rounded-ctl border bg-card ${
@@ -53,7 +57,7 @@ export function Measure({
         inputMode="numeric"
         aria-label={ariaLabel}
         aria-invalid={invalid || undefined}
-        className="w-full min-w-0 bg-transparent px-1 py-1.5 text-right text-value tabular-nums outline-none"
+        className={`no-spin w-full min-w-0 bg-transparent px-1.5 py-1.5 text-value tabular-nums outline-none ${alignCls}`}
         value={value}
         onChange={(e) => {
           const raw = e.target.value;

@@ -15,6 +15,7 @@ import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components
 import { StackDiagram } from './components/StackDiagram';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
+import { orderColorToken } from '../lib/orderColor';
 import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
 import { LocaleSwitch } from '../ui/LocaleSwitch';
 import { VEHICLE_PRESETS, PALLET_PRESETS } from '../data/presets';
@@ -312,6 +313,8 @@ function PositionRow({
           ariaLabel={tt('cargoType.label')}
           value={PALLET_PRESETS.find((pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height)?.key ?? 'custom'}
           onChange={(key) => {
+            // Picking another article collapses the nesting-rules panel (E16).
+            setOpen(false);
             const preset = PALLET_PRESETS.find((pp) => pp.key === key);
             if (preset)
               onChange({ name: p.name || preset.name, length: preset.length, width: preset.width, height: preset.height });
@@ -327,7 +330,7 @@ function PositionRow({
         <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
         <span className="w-24"><Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} /></span>
         <span className="w-24"><Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} /></span>
-        <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} /></span>
+        <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
         <Segmented
           ariaLabel={tt('cargoType.nesting.label')}
           value={p.state}
@@ -430,7 +433,7 @@ function PositionRow({
               {preview.count > 0 && (
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-label uppercase font-semibold text-faint">{tt('stack.diagram')}</span>
-                  <StackDiagram preview={preview} length={numOr0(p.length)} label={tt('stack.diagram')} />
+                  <StackDiagram preview={preview} length={numOr0(p.length)} label={tt('stack.diagram')} series={orderColorToken(index).series} />
                 </div>
               )}
             </div>

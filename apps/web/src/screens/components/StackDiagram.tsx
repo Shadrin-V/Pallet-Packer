@@ -8,14 +8,18 @@ export function StackDiagram({
   preview,
   length,
   label,
+  series = 1,
 }: {
   preview: StackPreview;
   length: number;
   label: string;
+  /** Order palette series (1..8) so the stack colour matches its order. */
+  series?: number;
 }) {
   const { count, height, base, hold } = preview;
   const inc = count > 1 ? (height - base) / (count - 1) : 0;
   const decks = Array.from({ length: Math.max(count, 0) }, (_, i) => i);
+  const color = `var(--s${series})`;
   return (
     <svg
       viewBox={`0 0 ${length} ${hold}`}
@@ -46,8 +50,9 @@ export function StackDiagram({
             y={y}
             width={length}
             height={base}
-            fill="var(--mint-tint)"
-            stroke="var(--brand)"
+            fill={color}
+            fillOpacity={0.18}
+            stroke={color}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
