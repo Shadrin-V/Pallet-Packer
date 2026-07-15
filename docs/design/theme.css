@@ -1,0 +1,71 @@
+/* Ladungsplaner — canonical design tokens (Direction D · Clean Tech + Holz-Schäfer brand).
+   Source of truth. Rule: components use ONLY tokens — no hex in JSX. Light theme only (MVP).
+   Rebrand = edit this one file. See docs/design/design-system.md for usage. */
+:root {
+  /* ---- surfaces (cool near-white, faint sage bias) ---- */
+  --paper: #f5f8f6;        /* app background / calque */
+  --card: #ffffff;         /* cards, inputs */
+  --sub: #ebf0ec;          /* subtle fill: order header, chips, add-bar */
+
+  /* ---- ink ---- */
+  --ink: #14201b;          /* primary text */
+  --muted: #55605b;        /* secondary text */
+  --faint: #93a099;        /* labels, hints, units */
+
+  /* ---- lines ---- */
+  --line: #e5ebe7;         /* hairlines, inner dividers */
+  --line-strong: #d5ddd8;  /* input borders, cutaway frame */
+
+  /* ---- brand (holz-schaefer.de) ---- */
+  --brand: #104f25;        /* deep forest — primary button, active, order edge, links */
+  --brand-strong: #0c3d1d; /* hover / pressed */
+  --brand-ink: #ffffff;
+  --mint: #71bf87;         /* secondary — focus ring, active/success tint, hover */
+  --mint-tint: rgba(113, 191, 135, 0.16);
+  --mint-ring: rgba(113, 191, 135, 0.35);
+  --sage: #c3d1c7;         /* pale sage — neutral bias, accent dividers */
+
+  /* ---- semantic (separate from brand accent) ---- */
+  --success: #1f7a4c;  --success-ink: #ffffff;
+  --warning: #b8860b;  --warning-ink: #ffffff;
+  --danger: #b3261e;   --danger-ink: #ffffff;
+  --info: #1565c0;     --info-ink: #ffffff;
+
+  /* ---- categorical ORDER palette — validated (colorblind + print); ALWAYS paired with a hatch ---- */
+  --s1: #2e7d32;  --s2: #1565c0;  --s3: #c62828;  --s4: #8e44ad;
+  --s5: #ef6c00;  --s6: #0097a7;  --s7: #a0522d;  --s8: #b08900;
+
+  /* ---- data-viz ---- */
+  --grid: #d0dad4;         /* cutaway 1000mm grid */
+
+  /* ---- radii ---- */
+  --r-card: 12px;  --r-ctl: 8px;  --r-pill: 18px;
+
+  /* ---- elevation (soft, cool, faint green) ---- */
+  --shadow-card: 0 1px 2px rgba(16, 79, 37, 0.05), 0 12px 34px rgba(16, 79, 37, 0.07);
+  --shadow-pop: 0 8px 24px rgba(16, 79, 37, 0.12);
+
+  /* ---- typography ---- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+
+  /* ---- motion ---- */
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur: 150ms;
+
+  /* ---- density presets (Setup = compact, Ladeplan = roomy) ---- */
+  --pad-compact: 13px 14px;
+  --pad-roomy: 18px 20px;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}

@@ -1,3 +1,7 @@
+> ⚠️ **УСТАРЕЛО (2026-07-15).** Канонический источник токенов и компонентов теперь —
+> [`docs/design/design-system.md`](../design/design-system.md) + [`docs/design/theme.css`](../design/theme.css)
+> (направление D · Clean Tech, фирменная палитра Holz Schäfer). Этот файл сохранён как история.
+
 # Ladungsplaner — дизайн-система для Lovable
 
 > Канонический источник токенов и компонентов. Вставляй это в Lovable вместе с промптом — оно
