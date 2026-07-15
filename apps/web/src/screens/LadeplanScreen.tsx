@@ -1,14 +1,36 @@
-// Ladeplan / result screen (LKWkalk-73u) — эталон docs/lovable/ladeplan-reference.html, palette per
-// docs/design/design-system.md. Clean card под скриншот: header, top+side cutaways, legend, metrics,
-// A4 print. Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
+// Ladeplan / result screen (LKWkalk-73u, batch-2 LKWkalk-2ll) — эталон docs/lovable/ladeplan-reference.html,
+// palette per docs/design/design-system.md. Brand head + meta band + figures + top/side cutaways +
+// per-order legend + compact metrics. Full-width sheet; A4 landscape print (theme.css).
+// Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
 import { useEffect, useState } from 'react';
 import { findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
-import { useT } from '../i18n/LocaleContext';
+import { formatLength, type TranslationKey } from '@shadrin-v/i18n';
+import { useLocale } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
+import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
 import { Metrics } from './components/Metrics';
+import { orderIndexMap } from './components/cutaway';
 import { moveStack, type StackSel } from './components/dragLayout';
+
+function Figure({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="text-right">
+      <div className="text-title font-[700] leading-none tabular-nums text-brand">{value}</div>
+      <div className="mt-1 text-label uppercase tracking-wide text-muted">{label}</div>
+    </div>
+  );
+}
+
+function MetaField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-label uppercase tracking-wide text-faint">{label}</span>
+      <span className="text-body font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
 
 export function LadeplanScreen({
   load,
@@ -19,7 +41,7 @@ export function LadeplanScreen({
   layout: Layout;
   onBack?: () => void;
 }) {
-  const tt = useT();
+  const { locale, tt } = useLocale();
   // Editable copy for manual stack drag; reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
   useEffect(() => setEdited(layout), [layout]);
@@ -27,46 +49,68 @@ export function LadeplanScreen({
     setEdited((prev) => moveStack(load, prev, sel, toX, toY));
   const violations = findGeometryViolations(load, edited).length;
 
+  const v = load.vehicle;
+  const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
+  const dims = `${grp(v.length)} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
+  const orderIds = [...orderIndexMap(load).keys()].filter(Boolean);
+  const mode = load.loadingMode ?? 'combined';
+  const modeLabel = tt(`ladeplan.mode.${mode}` as TranslationKey);
+  const m = edited.metrics;
+
   return (
     <main
       data-violations={violations}
-      className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6 print:max-w-none print:p-0"
+      className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 print:max-w-none print:p-0"
     >
-      <header className="app-chrome mb-5 flex items-center justify-between print:hidden">
-        <div>
-          <h1 className="text-title font-[650]">{tt('ladeplan.title')}</h1>
-          <p className="text-caption text-muted">{load.vehicle.name}</p>
-        </div>
-        <div className="flex gap-2">
-          {onBack && (
-            <Button variant="secondary" onClick={onBack}>
-              {tt('action.back')}
-            </Button>
-          )}
-          <Button variant="primary" onClick={() => window.print()}>
-            {tt('action.print')}
+      {/* on-screen action bar (not printed) */}
+      <div className="mb-5 flex items-center justify-end gap-2 print:hidden">
+        {onBack && (
+          <Button variant="secondary" onClick={onBack}>
+            {tt('action.back')}
           </Button>
-        </div>
-      </header>
+        )}
+        <Button variant="primary" onClick={() => window.print()}>
+          {tt('action.print')}
+        </Button>
+      </div>
 
-      <div className="flex flex-col gap-5 rounded-card bg-card p-5 shadow-card print:shadow-none print:rounded-none">
-        {/* print-only title */}
-        <div className="hidden print:block">
-          <h1 className="text-title font-[650]">{tt('ladeplan.title')} — {load.vehicle.name}</h1>
-        </div>
-
-        <div className="cut" style={{ breakInside: 'avoid' }}>
-          <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} />
-        </div>
-        <div className="cut" style={{ breakInside: 'avoid' }}>
-          <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} />
-        </div>
-
-        <div style={{ breakInside: 'avoid' }}>
-          <Legend load={load} label={tt('ladeplan.legend')} />
+      <div className="overflow-hidden rounded-card bg-card shadow-card print:rounded-none print:shadow-none">
+        {/* brand head */}
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-5">
+          <BrandMark />
+          <div className="text-right">
+            <div className="text-label uppercase tracking-wider text-faint">{tt('ladeplan.kicker')}</div>
+            <h1 className="mt-0.5 text-title font-[650]">{v.name}</h1>
+          </div>
         </div>
 
-        <div style={{ breakInside: 'avoid' }}>
+        {/* meta band + figures */}
+        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-b border-line bg-sub px-6 py-3">
+          <MetaField label={tt('ladeplan.vehicleInner')} value={dims} />
+          {orderIds.length > 0 && (
+            <MetaField label={tt('ladeplan.orders')} value={orderIds.join(' · ')} />
+          )}
+          <MetaField label={tt('ladeplan.loadingMode')} value={modeLabel} />
+          <div className="ml-auto flex items-end gap-6">
+            <Figure value={grp(m.totalPlaced)} label={tt('ladeplan.fig.pallets')} />
+            <Figure value={String(m.usedFloorPositions)} label={tt('ladeplan.fig.positions')} />
+            <Figure value={`${m.floorFillPercent} %`} label={tt('ladeplan.fig.load')} />
+          </div>
+        </div>
+
+        {/* diagrams */}
+        <div className="flex flex-col gap-5 px-6 py-5">
+          <div className="cut" style={{ breakInside: 'avoid' }}>
+            <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} />
+          </div>
+          <div className="cut" style={{ breakInside: 'avoid' }}>
+            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} />
+          </div>
+        </div>
+
+        {/* foot: legend (prominent) + compact metrics */}
+        <div className="flex flex-col gap-4 border-t border-line px-6 py-4" style={{ breakInside: 'avoid' }}>
+          <Legend load={load} layout={edited} label={tt('ladeplan.legend')} />
           <Metrics layout={edited} />
         </div>
       </div>

@@ -18,7 +18,10 @@ export function App() {
 
   return (
     <LocaleProvider initial="de">
-      <SetupScreen onCalculate={onCalculate} />
+      {/* Setup is screen-only; printing yields just the Ladeplan document. */}
+      <div className="print:hidden">
+        <SetupScreen onCalculate={onCalculate} />
+      </div>
       {result && (
         <LadeplanScreen load={result.load} layout={result.layout} onBack={() => setResult(null)} />
       )}

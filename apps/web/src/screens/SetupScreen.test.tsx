@@ -54,7 +54,26 @@ describe('SetupScreen', () => {
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0].state).toBe('verschachtelt');
-    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'sequential' });
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
+  });
+
+  it('defaults the nesting mode to pairwise (E5)', async () => {
+    renderSetup(() => {});
+    await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect((screen.getByLabelText('Verschachtelungsmodus') as HTMLSelectElement).value).toBe('pairwise');
+    // pairwise step-height label is shown (Höhe der oberen Bretter), and the allow-unpaired toggle appears
+    expect(screen.getByText('Höhe der oberen Bretter (h_d)')).toBeInTheDocument();
+    expect(screen.getByText('Einzelne Palette oben zulassen')).toBeInTheDocument();
+  });
+
+  it('reveals the Stapelbar hint tooltip on demand (E1)', async () => {
+    renderSetup(() => {});
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    // the info button carries the Stapelbar label; there are two such elements (field + info) → pick the button
+    await userEvent.click(screen.getByRole('button', { name: 'Stapelbar' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/Ebenen/);
   });
 
   it('applies an EPAL pallet preset to the position dimensions', async () => {
