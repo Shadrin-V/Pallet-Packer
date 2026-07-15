@@ -12,6 +12,7 @@ import type {
 } from '@shadrin-v/engine';
 import { computeStack } from '@shadrin-v/engine';
 import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components/stackFormula';
+import { StackDiagram } from './components/StackDiagram';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
@@ -202,6 +203,11 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate }: Setu
         ))}
       </div>
 
+      {/* Duplicate add-order action below the last order (E10). */}
+      <div className="mt-3 flex justify-center">
+        <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
+      </div>
+
       <div className="mt-6 flex justify-end">
         <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
       </div>
@@ -325,7 +331,11 @@ function PositionRow({
         <Segmented
           ariaLabel={tt('cargoType.nesting.label')}
           value={p.state}
-          onChange={(state) => onChange({ state })}
+          onChange={(state) => {
+            onChange({ state });
+            // Verschachtelt exposes nesting rules → auto-open the details panel (E9).
+            if (state === 'verschachtelt') setOpen(true);
+          }}
           options={[
             { value: 'entschachtelt', label: tt('setup.state.ent') },
             { value: 'verschachtelt', label: tt('setup.state.ver') },
@@ -404,17 +414,25 @@ function PositionRow({
             </p>
           )}
           {preview && (
-            <div className="rounded-ctl bg-card px-3 py-2">
-              <div className="text-caption text-muted">
-                {fillTemplate(tt('stack.result'), { count: preview.count, height: `${preview.height} mm` })}
+            <div className="flex flex-wrap items-stretch gap-3 rounded-ctl bg-card px-3 py-2">
+              <div className="min-w-[12rem] flex-1">
+                <div className="text-caption text-muted">
+                  {fillTemplate(tt('stack.result'), { count: preview.count, height: `${preview.height} mm` })}
+                </div>
+                <div className="mt-1 font-mono text-formula text-ink">
+                  <span className="text-faint">{tt('stack.formula.label')}: </span>
+                  {fillTemplate(tt(formulaKey(preview)), formulaVars(preview))}
+                  {preview.cappedBy && preview.cappedBy !== 'notStackable' && (
+                    <> {fillTemplate(tt('stack.formula.cap'), formulaVars(preview))}</>
+                  )}
+                </div>
               </div>
-              <div className="mt-1 font-mono text-formula text-ink">
-                <span className="text-faint">{tt('stack.formula.label')}: </span>
-                {fillTemplate(tt(formulaKey(preview)), formulaVars(preview))}
-                {preview.cappedBy && preview.cappedBy !== 'notStackable' && (
-                  <> {fillTemplate(tt('stack.formula.cap'), formulaVars(preview))}</>
-                )}
-              </div>
+              {preview.count > 0 && (
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-label uppercase font-semibold text-faint">{tt('stack.diagram')}</span>
+                  <StackDiagram preview={preview} length={numOr0(p.length)} label={tt('stack.diagram')} />
+                </div>
+              )}
             </div>
           )}
         </div>

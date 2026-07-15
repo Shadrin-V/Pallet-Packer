@@ -68,6 +68,7 @@ export const de: Dictionary = {
   'cargoType.nesting.allowUnpairedTop': 'Einzelne Palette oben zulassen',
 
   'stack.preview': 'Stapel',
+  'stack.diagram': 'Stapel (Schema)',
   'stack.result': 'Im Stapel: {count} Paletten · {height}',
   'stack.formula.label': 'Formel',
   'stack.formula.entschachtelt': '⌊Hк / H⌋ = ⌊{hold} / {base}⌋ = {rawCount}',
