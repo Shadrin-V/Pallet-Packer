@@ -17,7 +17,7 @@ import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { orderColorToken } from '../lib/orderColor';
 import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
-import { LocaleSwitch } from '../ui/LocaleSwitch';
+import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS, PALLET_PRESETS } from '../data/presets';
 
 // ---- state model ----------------------------------------------------------
@@ -193,15 +193,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   ];
 
   return (
-    <main className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6">
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-title font-[650] text-balance">{tt('app.title')}</h1>
-          <p className="text-caption text-muted">{tt('app.subtitle')}</p>
-        </div>
-        <LocaleSwitch />
-      </header>
-
+    <>
+      <HeroHeader />
+      <main className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6">
       {/* Vehicle bar */}
       <section className="mb-6 rounded-card bg-card shadow-card">
         <div className="flex flex-wrap items-end gap-4 p-4">
@@ -258,7 +252,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         <Button variant="secondary" onClick={handleReset}>{tt('action.reset')}</Button>
         <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
