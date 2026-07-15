@@ -67,6 +67,14 @@ describe('SetupScreen', () => {
     expect(screen.getByText('Einzelne Palette oben zulassen')).toBeInTheDocument();
   });
 
+  it('adding a position collapses the open nesting panel (accordion, #1)', async () => {
+    renderSetup(() => {});
+    await userEvent.click(screen.getByRole('button', { name: 'Ver' })); // auto-opens details
+    expect(screen.getByLabelText('Verschachtelungsmodus')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
+    expect(screen.queryByLabelText('Verschachtelungsmodus')).not.toBeInTheDocument();
+  });
+
   it('reveals the Stapelbar hint tooltip on demand (E1)', async () => {
     renderSetup(() => {});
     await userEvent.click(screen.getByRole('button', { name: 'details' }));

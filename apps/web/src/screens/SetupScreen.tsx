@@ -248,6 +248,8 @@ function OrderCard({
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
 }) {
+  // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
+  const [openId, setOpenId] = useState<string | null>(null);
   const colorVar = `var(--s${((index % 8) + 1)})`;
   return (
     <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
@@ -261,13 +263,26 @@ function OrderCard({
 
       <div className="divide-y divide-line">
         {order.positions.map((p) => (
-          <PositionRow key={p.id} position={p} index={index} vehicle={vehicle} rotationOptions={rotationOptions} tt={tt} onChange={(patch) => onPositionChange(p.id, patch)} />
+          <PositionRow
+            key={p.id}
+            position={p}
+            index={index}
+            vehicle={vehicle}
+            rotationOptions={rotationOptions}
+            tt={tt}
+            open={openId === p.id}
+            onSetOpen={(o) => setOpenId(o ? p.id : null)}
+            onChange={(patch) => onPositionChange(p.id, patch)}
+          />
         ))}
       </div>
 
       <button
         type="button"
-        onClick={onAddPosition}
+        onClick={() => {
+          setOpenId(null); // adding an article collapses the open nesting panel (E16/#1)
+          onAddPosition();
+        }}
         className="w-full border-t border-dashed border-line-strong bg-sub py-2 text-caption font-semibold text-muted hover:text-brand"
       >
         + {tt('setup.addPosition')}
@@ -283,6 +298,8 @@ function PositionRow({
   vehicle,
   rotationOptions,
   tt,
+  open,
+  onSetOpen,
   onChange,
 }: {
   position: PositionState;
@@ -290,9 +307,10 @@ function PositionRow({
   vehicle: Vehicle;
   rotationOptions: { value: RotationRule; label: string }[];
   tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
+  open: boolean;
+  onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const dimsPresent = numOr0(p.length) > 0 && numOr0(p.width) > 0 && numOr0(p.height) > 0;
   const invalid = stepInvalid(p.state, p.stepHeight, p.height);
   let preview: StackPreview | null = null;
@@ -314,7 +332,7 @@ function PositionRow({
           value={PALLET_PRESETS.find((pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height)?.key ?? 'custom'}
           onChange={(key) => {
             // Picking another article collapses the nesting-rules panel (E16).
-            setOpen(false);
+            onSetOpen(false);
             const preset = PALLET_PRESETS.find((pp) => pp.key === key);
             if (preset)
               onChange({ name: p.name || preset.name, length: preset.length, width: preset.width, height: preset.height });
@@ -337,7 +355,7 @@ function PositionRow({
           onChange={(state) => {
             onChange({ state });
             // Verschachtelt exposes nesting rules → auto-open the details panel (E9).
-            if (state === 'verschachtelt') setOpen(true);
+            if (state === 'verschachtelt') onSetOpen(true);
           }}
           options={[
             { value: 'entschachtelt', label: tt('setup.state.ent') },
@@ -350,7 +368,7 @@ function PositionRow({
             {tt('setup.stack')} {preview.count}
           </Chip>
         )}
-        <button type="button" aria-label="details" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto text-muted hover:text-brand">
+        <button type="button" aria-label="details" aria-expanded={open} onClick={() => onSetOpen(!open)} className="ml-auto text-muted hover:text-brand">
           {open ? '⌃' : '⌄'}
         </button>
       </div>
