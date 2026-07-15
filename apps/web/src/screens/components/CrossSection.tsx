@@ -4,7 +4,7 @@
 // Top view supports manual stack drag (snap + revalidate) when onMoveStack is provided.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Layout, Load } from '@shadrin-v/engine';
-import { HatchDefs } from '../../lib/swatch';
+import { HatchMarks } from '../../lib/swatch';
 import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
 import type { StackSel } from './dragLayout';
@@ -97,8 +97,6 @@ export function CrossSection({
         onPointerMove={draggable ? onMove : undefined}
         onPointerUp={draggable ? onUp : undefined}
       >
-        {/* coarse hatch tile (mm scale) so the pattern prints — incl. B/W — instead of a sub-pixel tint */}
-        <HatchDefs tile={120} />
         {gridLines(length).map((x) => (
           <line key={`vx${x}`} x1={x} y1={0} x2={x} y2={spanY} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
@@ -110,9 +108,9 @@ export function CrossSection({
           const tf = isDragging ? `translate(${drag!.dx} ${drag!.dy})` : undefined;
           return (
             <g key={i} transform={tf} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
-              {/* solid tint base (prints reliably, unlike a bare pattern fill) + hatch on top + colour outline */}
+              {/* solid tint base + direct-line hatch (prints, unlike a <pattern>) + colour outline */}
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`var(--s${r.series})`} fillOpacity={0.16} />
-              <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#pat-${r.series})`} />
+              <HatchMarks x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} spacing={180} strokeWidth={1.3} opacity={0.8} />
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
               {view === 'top' && (r.count ?? 1) > 1 && (
                 <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">

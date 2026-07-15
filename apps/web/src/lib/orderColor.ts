@@ -9,9 +9,8 @@ export interface OrderColorToken {
   hatchId: string;
   /** CSS custom property for the series colour, e.g. "var(--s1)". */
   colorVar: string;
-  /** Concrete hex for the series colour. Mirrors theme.css --s1..--s8. Used ONLY inside SVG
-   *  `<pattern>` motifs, whose `var()` paints do not resolve when printing (Chrome) — concrete
-   *  colours print reliably. Elsewhere use `colorVar`. Keep in sync with theme.css. */
+  /** Concrete hex mirror of the series colour (theme.css --s1..--s8), for the rare context where a
+   *  CSS var() paint does not resolve. Prefer `colorVar` everywhere else. Keep in sync with theme.css. */
   hex: string;
 }
 
