@@ -11,11 +11,11 @@ export function Metrics({ layout }: { layout: Layout }) {
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted">
       <span>
         {tt('results.floorFillPercent')}{' '}
-        <b className="font-semibold tabular-nums text-ink">{m.floorFillPercent}%</b>
+        <b className="font-semibold tabular-nums text-ink">{Math.round(m.floorFillPercent)}%</b>
       </span>
       <span>
         {tt('results.volumeFillPercent')}{' '}
-        <b className="font-semibold tabular-nums text-ink">{m.volumeFillPercent}%</b>
+        <b className="font-semibold tabular-nums text-ink">{Math.round(m.volumeFillPercent)}%</b>
       </span>
       <span>
         <b className="font-semibold tabular-nums text-ink">{m.totalPlaced}</b> {tt('ladeplan.fig.pallets')}

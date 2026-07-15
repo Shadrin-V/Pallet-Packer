@@ -74,6 +74,7 @@ export const TRANSLATION_KEYS = [
 
   // Stack preview + formula (qrd-13 / qrd-26)
   'stack.preview',
+  'stack.diagram',
   'stack.result',
   'stack.formula.label',
   'stack.formula.entschachtelt',

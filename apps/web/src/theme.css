@@ -77,13 +77,28 @@ body {
 @tailwind components;
 @tailwind utilities;
 
-/* ---- Print: A4 landscape, Ladeplan document only (E3) ---- */
+/* ---- Print: A4 landscape, Ladeplan document only (E3/E7) ---- */
 @page {
   size: A4 landscape;
-  margin: 10mm;
+  margin: 8mm;
 }
 @media print {
+  /* Force order tints + hatch patterns + brand colours to actually print (E7). */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   body {
     background: #fff;
+  }
+  /* Fit both cutaways + header + legend onto a single A4 landscape page (E7). */
+  .cut svg {
+    width: auto !important;
+    height: 58mm !important;
+    max-width: 100%;
+    display: block;
+    margin: 0 auto;
   }
 }

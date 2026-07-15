@@ -76,7 +76,7 @@ export function LadeplanScreen({
 
       <div className="overflow-hidden rounded-card bg-card shadow-card print:rounded-none print:shadow-none">
         {/* brand head */}
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-5">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-5 print:py-2">
           <BrandMark />
           <div className="text-right">
             <div className="text-label uppercase tracking-wider text-faint">{tt('ladeplan.kicker')}</div>
@@ -94,12 +94,12 @@ export function LadeplanScreen({
           <div className="ml-auto flex items-end gap-6">
             <Figure value={grp(m.totalPlaced)} label={tt('ladeplan.fig.pallets')} />
             <Figure value={String(m.usedFloorPositions)} label={tt('ladeplan.fig.positions')} />
-            <Figure value={`${m.floorFillPercent} %`} label={tt('ladeplan.fig.load')} />
+            <Figure value={`${Math.round(m.floorFillPercent)} %`} label={tt('ladeplan.fig.load')} />
           </div>
         </div>
 
         {/* diagrams */}
-        <div className="flex flex-col gap-5 px-6 py-5">
+        <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} />
           </div>
@@ -109,7 +109,7 @@ export function LadeplanScreen({
         </div>
 
         {/* foot: legend (prominent) + compact metrics */}
-        <div className="flex flex-col gap-4 border-t border-line px-6 py-4" style={{ breakInside: 'avoid' }}>
+        <div className="flex flex-col gap-4 border-t border-line px-6 py-4 print:gap-2 print:py-2" style={{ breakInside: 'avoid' }}>
           <Legend load={load} layout={edited} label={tt('ladeplan.legend')} />
           <Metrics layout={edited} />
         </div>

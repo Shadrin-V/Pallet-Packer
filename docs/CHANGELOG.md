@@ -23,6 +23,13 @@
 ## [Unreleased]
 
 ### Added
+- **Web UX Batch 3 (эпик `LKWkalk-2ll`).** Реальный логотип Holz Schäfer (`apps/web/public/logo.svg`,
+  favicon + шапка Ladeplan). Печать: `print-color-adjust: exact` (штриховка/тинты заказов теперь
+  печатаются) + свёртка в 1 страницу A4 landscape (фикс. высота разрезов 58 мм, компактные отступы,
+  в печати легенда сворачивается до итога по заказу). Проценты заполнения округляются (был сырой float
+  `71.895…%`). Промежуточный шаг — **схема штабеля** (`StackDiagram`, боковая проекция decks в рамке
+  высоты кузова) в раскрывающемся окне позиции рядом с формулой. Переключение в «Ver» авто-раскрывает
+  настройки позиции; кнопка «+ Auftrag» продублирована внизу списка заказов. 223 теста.
 - **Web UX Batch 2 (эпик `LKWkalk-2ll`).** Ladeplan приведён к эталону
   [ladeplan-reference.html](lovable/ladeplan-reference.html): шапка-бренд (логотип + «Schäfer / Holz
   bewegt.»), мета-полоса (Fahrzeug innen / Aufträge / Belademodus) + крупные фигуры

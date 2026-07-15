@@ -11,7 +11,7 @@ export function BrandMark() {
     <img
       src="/logo.svg"
       alt={tt('ladeplan.brandName')}
-      className="h-10 w-auto max-w-[240px] object-contain"
+      className="h-14 w-auto max-w-[220px] object-contain"
     />
   );
 }

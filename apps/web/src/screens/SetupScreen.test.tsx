@@ -45,8 +45,8 @@ describe('SetupScreen', () => {
   it('Verschachtelt with a valid Δh emits nesting and enables Berechnen', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
+    // switching to Ver auto-expands the details panel (E9) — no separate details click needed
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
     await userEvent.type(screen.getByLabelText('Höhenzuwachs je Palette (Δh)'), '22');
     const berechnen = screen.getByRole('button', { name: 'Berechnen' });
     expect(berechnen).toBeEnabled();
@@ -57,10 +57,10 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
 
-  it('defaults the nesting mode to pairwise (E5)', async () => {
+  it('auto-expands details on Ver and defaults the nesting mode to pairwise (E5/E9)', async () => {
     renderSetup(() => {});
+    // no details click: switching to Ver opens the panel by itself (E9)
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
     expect((screen.getByLabelText('Verschachtelungsmodus') as HTMLSelectElement).value).toBe('pairwise');
     // pairwise step-height label is shown (Höhe der oberen Bretter), and the allow-unpaired toggle appears
     expect(screen.getByText('Höhe der oberen Bretter (h_d)')).toBeInTheDocument();
@@ -86,10 +86,12 @@ describe('SetupScreen', () => {
     expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
   });
 
-  it('adds a second order zone', async () => {
+  it('adds a second order zone (add-order action is duplicated top + bottom, E10)', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
-    await userEvent.click(screen.getByRole('button', { name: /Auftrag hinzufügen/ }));
+    const addButtons = screen.getAllByRole('button', { name: /Auftrag hinzufügen/ });
+    expect(addButtons.length).toBe(2); // top bar + below the last order
+    await userEvent.click(addButtons[1]); // the bottom duplicate
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const load = onCalculate.mock.calls[0][0] as Load;

@@ -68,6 +68,7 @@ export const ru: Dictionary = {
   'cargoType.nesting.allowUnpairedTop': 'Разрешить одиночную сверху',
 
   'stack.preview': 'Штабель',
+  'stack.diagram': 'Штабель (схема)',
   'stack.result': 'В штабеле: {count} поддонов · {height}',
   'stack.formula.label': 'Формула',
   'stack.formula.entschachtelt': '⌊Hк / H⌋ = ⌊{hold} / {base}⌋ = {rawCount}',
