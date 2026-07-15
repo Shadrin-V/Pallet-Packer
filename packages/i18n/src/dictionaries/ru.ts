@@ -16,6 +16,15 @@ export const ru: Dictionary = {
   'setup.vehiclePreset.custom': 'Свои размеры',
   'setup.emptyOrders': 'Заказов пока нет. Добавьте заказ.',
 
+  'ladeplan.title': 'План загрузки',
+  'ladeplan.top': 'Вид сверху',
+  'ladeplan.side': 'Вид сбоку',
+  'ladeplan.legend': 'Легенда',
+  'ladeplan.front': 'Перёд',
+  'ladeplan.back': 'Зад',
+  'action.print': 'Печать',
+  'action.back': 'Назад',
+
   'field.name': 'Название',
   'field.length': 'Длина',
   'field.width': 'Ширина',

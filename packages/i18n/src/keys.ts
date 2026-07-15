@@ -18,6 +18,16 @@ export const TRANSLATION_KEYS = [
   'setup.vehiclePreset.custom',
   'setup.emptyOrders',
 
+  // Ladeplan / result screen
+  'ladeplan.title',
+  'ladeplan.top',
+  'ladeplan.side',
+  'ladeplan.legend',
+  'ladeplan.front',
+  'ladeplan.back',
+  'action.print',
+  'action.back',
+
   // Shared field labels (vehicle + cargo-type forms)
   'field.name',
   'field.length',
