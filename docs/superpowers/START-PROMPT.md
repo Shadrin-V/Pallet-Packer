@@ -23,13 +23,12 @@ https://ladungsplaner.holz-schaefer.de (Coolify/Hetzner, TLS). Все гейты
 - Баг → `superpowers:systematic-debugging` (гипотеза + воспроизведение, потом правка).
 - Перед merge: `npm test` · `npm run lint` · `npm run typecheck` · `npm run build --workspace apps/web`
   (+ `docker build` при изменении web/server). Правил `packages/engine`/`i18n` → пересобрать их dist.
-- После merge: push `main` + `production`; задеплоить (если webhook `LKWkalk-la7` настроен — авто; иначе
-  попросить владельца нажать **Redeploy** в Coolify). Проверить прод: скачать `/assets/index-*.js` в файл
-  и `grep` маркеры (не в shell-переменную).
+- После merge: push `main` + `production` → **Coolify авто-деплоит** (webhook настроен). Проверить прод
+  через ~2–4 мин: скачать `/assets/index-*.js` в файл и `grep` маркеры (не в shell-переменную).
 
 **Текущее состояние:** MVP-приложение развёрнуто и работает (Настройка → Berechnen → Ladeplan, одна
 страница, языки de/ru, пресеты EPAL/LKW, формула вложения, drag штабелей, печать A4). Открыты только
-owner-side follow-up: `la7` webhook, `s17` deep-link, `k06` поля ERPNext, `zbi` бэкап, `i6b` Basic Auth.
+owner-side follow-up: `s17` deep-link, `k06` поля ERPNext, `zbi` бэкап, `i6b` Basic Auth.
 
 **Что делаем сейчас:** у меня есть правки — опишу их следующим сообщением. Для каждой: если это фича —
 брейншторм→спека→план→TDD; если баг — systematic-debugging. Ветка-на-задачу → зелёные гейты → merge →
