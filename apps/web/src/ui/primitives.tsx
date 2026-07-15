@@ -134,22 +134,25 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Native select with token styling (design-system §5). */
+/** Native select with token styling (design-system §5). `min-w-0` + `truncate` keep long option
+ *  text (e.g. long RU labels) from ballooning the control and breaking the row layout. */
 export function Select<T extends string>({
   value,
   onChange,
   options,
   ariaLabel,
+  className = '',
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
   ariaLabel: string;
+  className?: string;
 }) {
   return (
     <select
       aria-label={ariaLabel}
-      className="appearance-none rounded-ctl border border-line bg-card px-2 py-1.5 text-body outline-none focus:border-brand"
+      className={`min-w-0 max-w-full truncate appearance-none rounded-ctl border border-line bg-card px-2 py-1.5 text-body outline-none focus:border-brand ${className}`}
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
     >
