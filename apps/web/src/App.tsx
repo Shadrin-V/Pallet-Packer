@@ -5,6 +5,8 @@ import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 
 export function App() {
+  // Single page: SetupScreen stays mounted (its state never resets); the Ladeplan result renders
+  // below it when a layout has been computed.
   const [result, setResult] = useState<{ load: Load; layout: Layout } | null>(null);
 
   const onCalculate = (load: Load) => {
@@ -16,10 +18,9 @@ export function App() {
 
   return (
     <LocaleProvider initial="de">
-      {result ? (
+      <SetupScreen onCalculate={onCalculate} />
+      {result && (
         <LadeplanScreen load={result.load} layout={result.layout} onBack={() => setResult(null)} />
-      ) : (
-        <SetupScreen onCalculate={onCalculate} />
       )}
     </LocaleProvider>
   );
