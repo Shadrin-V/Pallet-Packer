@@ -79,6 +79,8 @@ export const de: Dictionary = {
 
   'action.calculate': 'Berechnen',
   'action.exportJson': 'Als JSON exportieren',
+  'action.reset': 'Zurücksetzen',
+  'setup.resetConfirm': 'Alle Eingaben und den Ladeplan zurücksetzen?',
 
   'results.totalPlaced': 'Platziert gesamt',
   'results.unplaced': 'Nicht platziert',

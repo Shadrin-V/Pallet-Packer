@@ -98,8 +98,8 @@ export function LadeplanScreen({
           </div>
         </div>
 
-        {/* diagrams */}
-        <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:py-2">
+        {/* diagrams — near-full-bleed on print for maximum width */}
+        <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} />
           </div>

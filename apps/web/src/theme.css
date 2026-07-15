@@ -104,12 +104,10 @@ body {
   body {
     background: #fff;
   }
-  /* Fit both cutaways + header + legend onto a single A4 landscape page (E7). */
+  /* Cutaways span the full printable width; height follows the aspect ratio (E7 + max-width). */
   .cut svg {
-    width: auto !important;
-    height: 58mm !important;
-    max-width: 100%;
+    width: 100% !important;
+    height: auto !important;
     display: block;
-    margin: 0 auto;
   }
 }

@@ -39,15 +39,17 @@ describe('crossSection geometry', () => {
     }
   });
 
-  it('side view collapses each column to one silhouette bar (y = height − stackTop)', () => {
+  it('side view yields one silhouette per floor stack with a front/back depth rank', () => {
     const rects = sideRects(load, layout, V.height);
-    // 2 columns in x (length), each stack 2 tiers of 1000 → top = 2000
-    expect(rects).toHaveLength(2);
+    // 2×2 floor stacks → 4 silhouettes, each 2 tiers of 1000 → top = 2000
+    expect(rects).toHaveLength(4);
     for (const r of rects) {
       expect(r.y).toBe(0); // stack top at 2000 → y = 2000 − 2000 = 0
-      expect(r.h).toBe(2000); // full stack silhouette height
+      expect(r.h).toBe(2000);
       expect(r.w).toBe(1000);
     }
+    // two rows across width → depths 0 (front) and 1 (back) present
+    expect(new Set(rects.map((r) => r.depth))).toEqual(new Set([0, 1]));
   });
 
   it('orderIndexMap assigns palette indices by first appearance', () => {

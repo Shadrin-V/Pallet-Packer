@@ -41,6 +41,9 @@ export function CrossSection({
   const { length, width, height } = load.vehicle;
   const spanY = view === 'top' ? width : height;
   const rects: CutRect[] = view === 'top' ? topRects(load, layout) : sideRects(load, layout, height);
+  // Side view: draw rear rows (higher depth) first so the front row overlays them.
+  const sortedRects =
+    view === 'side' ? [...rects].sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0)) : rects;
   // Uniform ×N label size across all stacks (independent of footprint), in top-view mm units.
   const countFont = width * 0.05;
   const draggable = view === 'top' && !!onMoveStack;
@@ -103,11 +106,13 @@ export function CrossSection({
         {gridLines(spanY).map((y) => (
           <line key={`hy${y}`} x1={0} y1={y} x2={length} y2={y} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
-        {rects.map((r, i) => {
+        {sortedRects.map((r, i) => {
           const isDragging = drag && drag.sel.x === r.x && drag.sel.y === r.y;
           const tf = isDragging ? `translate(${drag!.dx} ${drag!.dy})` : undefined;
+          // Side view: dim rear rows (depth > 0) so back-row loads read as "behind" the front row.
+          const dim = view === 'side' && (r.depth ?? 0) > 0;
           return (
-            <g key={i} transform={tf} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
+            <g key={i} transform={tf} opacity={dim ? 0.4 : undefined} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
               {/* solid tint base + direct-line hatch (prints, unlike a <pattern>) + colour outline */}
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`var(--s${r.series})`} fillOpacity={0.16} />
               <HatchMarks x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} spacing={180} strokeWidth={1.3} opacity={0.8} />

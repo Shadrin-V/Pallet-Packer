@@ -5,10 +5,10 @@ import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { SetupScreen } from './SetupScreen';
 
-function renderSetup(onCalculate: (l: Load) => void) {
+function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
   return render(
     <LocaleProvider initial="de">
-      <SetupScreen onCalculate={onCalculate} />
+      <SetupScreen onCalculate={onCalculate} onReset={onReset} />
     </LocaleProvider>,
   );
 }
@@ -92,6 +92,28 @@ describe('SetupScreen', () => {
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
+  });
+
+  it('persists the setup across a remount (no reset on refresh, #4)', async () => {
+    const { unmount } = renderSetup(() => {});
+    const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
+    await userEvent.clear(orderId);
+    await userEvent.type(orderId, 'SO-99');
+    unmount();
+    renderSetup(() => {});
+    expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-99');
+  });
+
+  it('reset clears the setup back to defaults (#4)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onReset = vi.fn();
+    renderSetup(() => {}, onReset);
+    const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
+    await userEvent.clear(orderId);
+    await userEvent.type(orderId, 'SO-77');
+    await userEvent.click(screen.getByRole('button', { name: 'Zurücksetzen' }));
+    expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
+    expect(onReset).toHaveBeenCalled();
   });
 
   it('adds a second order zone (add-order action is duplicated top + bottom, E10)', async () => {
