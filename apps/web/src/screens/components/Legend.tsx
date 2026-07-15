@@ -21,15 +21,12 @@ export function Legend({ load, layout, label }: { load: Load; layout: Layout; la
             </span>
             <div className="text-caption leading-snug">
               <span className="font-semibold tabular-nums">{o.orderId}</span>
-              {/* print falls back to a one-line total to keep the sheet on one A4 page (E7) */}
-              <span className="hidden tabular-nums text-muted print:inline">
-                {' '}
-                · <b className="font-semibold text-ink">{o.placedTotal}</b> {tt('ladeplan.pltAbbr')}
-              </span>
-              <ul className="mt-0.5 text-muted print:hidden">
+              {/* Load-composition reference: article · dimensions · placed count (compact for A4). */}
+              <ul className="mt-0.5 text-muted">
                 {o.items.map((it) => (
                   <li key={it.cargoTypeId} className="tabular-nums">
-                    {it.name} <b className="font-semibold text-ink">×{it.placed}</b>
+                    {it.name} <span className="text-faint">{it.length}×{it.width}×{it.height}</span>{' '}
+                    <b className="font-semibold text-ink">×{it.placed}</b>
                     {it.unplaced > 0 && (
                       <span className="text-danger">
                         {' '}

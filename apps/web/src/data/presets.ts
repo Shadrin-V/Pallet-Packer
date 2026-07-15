@@ -9,9 +9,15 @@ export interface DimPreset {
   height: number;
 }
 
-/** Cargo-hold presets (internal mm). Only LKW Standard is confirmed (qrd-17). */
+/** Cargo-hold presets (internal mm). LKW Standard is qrd-17-confirmed; the others are common EU
+ *  reference sizes (Mega/Frigo/Wechselbrücke) — users can always pick "Eigene Maße" for a custom
+ *  hold. Keep LKW Standard first (default). */
 export const VEHICLE_PRESETS: DimPreset[] = [
   { key: 'lkw-standard', name: 'LKW Standard', length: 13600, width: 2430, height: 2650 },
+  { key: 'lkw-extrahoch', name: 'LKW Extra-hoch', length: 13600, width: 2480, height: 2800 },
+  { key: 'lkw-mega', name: 'LKW Mega (Hochvolumen)', length: 13600, width: 2480, height: 3000 },
+  { key: 'wechselbruecke', name: 'Wechselbrücke', length: 7150, width: 2450, height: 2700 },
+  { key: 'frigo', name: 'Kühlkoffer (Frigo)', length: 13300, width: 2440, height: 2500 },
 ];
 
 /** Euro-pallet presets (mm), placed entschachtelt by default. */

@@ -6,6 +6,11 @@ describe('presets (qrd-17 confirmed data)', () => {
     expect(VEHICLE_PRESETS[0]).toMatchObject({ name: 'LKW Standard', length: 13600, width: 2430, height: 2650 });
   });
 
+  it('offers extra vehicle presets incl. an extra-high (2800) hold', () => {
+    expect(VEHICLE_PRESETS.length).toBeGreaterThanOrEqual(4);
+    expect(VEHICLE_PRESETS.some((p) => p.height === 2800)).toBe(true);
+  });
+
   it('EPAL 2 is 1200×1000×162', () => {
     expect(palletByKey('epal2')).toMatchObject({ length: 1200, width: 1000, height: 162 });
   });
