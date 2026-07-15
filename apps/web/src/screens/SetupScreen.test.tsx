@@ -36,15 +36,25 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].state).toBe('entschachtelt');
   });
 
-  it('segmented Ent/Ver toggles the emitted cargo state', async () => {
+  it('Verschachtelt without a valid Δh disables Berechnen', async () => {
+    renderSetup(() => {});
+    await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    expect(screen.getByRole('button', { name: 'Berechnen' })).toBeDisabled();
+  });
+
+  it('Verschachtelt with a valid Δh emits nesting and enables Berechnen', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
-    // switch the single position to Verschachtelt
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(screen.getByLabelText('Höhenzuwachs je Palette (Δh)'), '22');
+    const berechnen = screen.getByRole('button', { name: 'Berechnen' });
+    expect(berechnen).toBeEnabled();
+    await userEvent.click(berechnen);
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0].state).toBe('verschachtelt');
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'sequential' });
   });
 
   it('applies an EPAL pallet preset to the position dimensions', async () => {
