@@ -23,6 +23,16 @@
 ## [Unreleased]
 
 ### Added
+- **Web UX Batch 2 (эпик `LKWkalk-2ll`).** Ladeplan приведён к эталону
+  [ladeplan-reference.html](lovable/ladeplan-reference.html): шапка-бренд (логотип + «Schäfer / Holz
+  bewegt.»), мета-полоса (Fahrzeug innen / Aufträge / Belademodus) + крупные фигуры
+  Paletten·Stellplätze·Auslastung; экран на всю ширину (`max-w-1600`). Логотип на сайте и в печати
+  (`/logo.svg` — плейсхолдер до реального ассета, favicon оттуда же); печать A4 **landscape**, экран
+  «Настройка» скрыт при печати. Легенда развёрнута в **разбивку по заказам** (swatch + orderId +
+  позиции «имя × размещено», «(N nicht platziert)»); плитки статистики свёрнуты в компактную строку.
+  Tooltip-(i) у поля «Stapelbar»; дефолт `Verschachtelungsmodus = pairwise`; расширены узкие числовые
+  поля ввода. 221 тест. Спека:
+  [specs/2026-07-15-web-ux-batch-2-design.md](superpowers/specs/2026-07-15-web-ux-batch-2-design.md).
 - **Web UX-доработки (эпик `LKWkalk-fvx`, live на ladungsplaner.holz-schaefer.de).** Одна страница
   (нет сброса состояния при результате); переключатель языка DE|RU + localStorage; пресеты кузова
   (LKW Standard) и палет (EPAL 1/2/3/6 + Viertelpalette, данные qrd-17); редактор формулы вложения по

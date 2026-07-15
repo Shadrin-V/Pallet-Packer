@@ -14,7 +14,7 @@ import { computeStack } from '@shadrin-v/engine';
 import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
-import { Measure, TextField, Segmented, Select, Button, Chip } from '../ui/primitives';
+import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
 import { LocaleSwitch } from '../ui/LocaleSwitch';
 import { VEHICLE_PRESETS, PALLET_PRESETS } from '../data/presets';
 
@@ -62,7 +62,7 @@ const emptyPosition = (): PositionState => ({
   state: 'entschachtelt',
   rotation: 'yawOnly',
   stepHeight: '',
-  nestingMode: 'sequential',
+  nestingMode: 'pairwise',
   maxNested: '',
   allowUnpairedTop: false,
   maxTiers: '',
@@ -318,10 +318,10 @@ function PositionRow({
         <span className="min-w-[8rem] flex-1">
           <TextField ariaLabel={tt('field.name')} value={p.name} onChange={(name) => onChange({ name })} placeholder={tt('cargoType.label')} />
         </span>
-        <span className="w-20"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
-        <span className="w-20"><Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} /></span>
-        <span className="w-20"><Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} /></span>
-        <span className="w-16"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} /></span>
+        <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
+        <span className="w-24"><Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} /></span>
+        <span className="w-24"><Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} /></span>
+        <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} /></span>
         <Segmented
           ariaLabel={tt('cargoType.nesting.label')}
           value={p.state}
@@ -346,7 +346,10 @@ function PositionRow({
         <div className="mt-2 flex flex-col gap-3 border-t border-dashed border-line bg-sub px-2 py-2">
           <div className="flex flex-wrap items-end gap-4">
             <label className="flex flex-col gap-1">
-              <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.stacking.label')}</span>
+              <span className="text-label uppercase font-semibold text-faint inline-flex items-center gap-1.5">
+                {tt('cargoType.stacking.label')}
+                <InfoHint ariaLabel={tt('cargoType.stacking.label')} text={tt('cargoType.stacking.hint')} />
+              </span>
               <span className="w-24"><Measure ariaLabel={tt('cargoType.stacking.label')} unit="×" value={p.maxTiers} onChange={(maxTiers) => onChange({ maxTiers })} /></span>
             </label>
 

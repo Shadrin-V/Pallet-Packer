@@ -1,5 +1,32 @@
 // Token-only UI primitives (design-system §5). No hex in JSX — Tailwind classes map to CSS vars.
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+
+/** Small "i" info button that reveals a hint popover on click (keyboard-accessible). */
+export function InfoHint({ text, ariaLabel }: { text: string; ariaLabel: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setOpen(false)}
+        className="grid h-4 w-4 place-items-center rounded-full border border-line-strong text-[10px] font-semibold leading-none text-muted hover:border-brand hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint"
+      >
+        i
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute left-0 top-6 z-20 w-64 rounded-ctl border border-line bg-card p-2.5 text-caption font-normal normal-case tracking-normal text-muted shadow-pop"
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** Measure input: number + non-overlapping unit (design-system §5 "Feld mit Einheit"). */
 export function Measure({

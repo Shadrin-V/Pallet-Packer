@@ -34,20 +34,36 @@ function renderLadeplan() {
 }
 
 describe('LadeplanScreen', () => {
-  it('renders the title, both cutaways, legend and metrics', () => {
+  it('renders the brand kicker, vehicle-name heading and both cutaways', () => {
     renderLadeplan();
-    expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent('Ladeplan');
+    expect(screen.getByText('Ladeplan · Ladungsplaner')).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent('LKW');
     expect(screen.getByRole('img', { name: 'Draufsicht' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Seitenansicht' })).toBeInTheDocument();
-    // legend lists the one order id
-    expect(screen.getByText('SO-1')).toBeInTheDocument();
-    // metric: 8 placed
-    expect(screen.getByText('8')).toBeInTheDocument();
+  });
+
+  it('shows the meta band with inner vehicle dimensions and figure labels', () => {
+    renderLadeplan();
+    expect(screen.getByText('Fahrzeug (innen)')).toBeInTheDocument();
+    // de grouping: 2000 → "2.000"; unit once at the end
+    expect(screen.getByText('2.000 × 2.000 × 2.000 mm')).toBeInTheDocument();
+    // figure labels (also echoed in the compact metrics row → use getAllByText)
+    expect(screen.getAllByText('Paletten').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Stellplätze').length).toBeGreaterThan(0);
+    expect(screen.getByText('Auslastung')).toBeInTheDocument();
+  });
+
+  it('legend breaks the order down by position (name × placed)', () => {
+    renderLadeplan();
+    // order id appears (legend + meta band)
+    expect(screen.getAllByText('SO-1').length).toBeGreaterThan(0);
+    // the single position "Box" placed ×8 (8 cubes fill the 2×2×2 hold exactly)
+    expect(screen.getByText(/Box/)).toBeInTheDocument();
+    expect(screen.getByText('×8')).toBeInTheDocument();
   });
 
   it('makes top-view stacks draggable (onMoveStack wired)', () => {
     const { container } = renderLadeplan();
-    // draggable stacks carry cursor:grab (only present when onMoveStack is provided)
     expect(container.querySelector('g[style*="grab"]')).toBeInTheDocument();
   });
 
