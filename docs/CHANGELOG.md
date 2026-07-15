@@ -23,6 +23,15 @@
 ## [Unreleased]
 
 ### Added
+- **Web UX-доработки (эпик `LKWkalk-fvx`, live на ladungsplaner.holz-schaefer.de).** Одна страница
+  (нет сброса состояния при результате); переключатель языка DE|RU + localStorage; пресеты кузова
+  (LKW Standard) и палет (EPAL 1/2/3/6 + Viertelpalette, данные qrd-17); редактор формулы вложения по
+  qrd-13 (режим sequential/pairwise, Δh/h_д, maxNested, живая формула из `StackPreview`, блок Berechnen
+  при некорректном Δh); полировка разрезов (`non-scaling-stroke`, читаемые ×N, метки Vorne/Hinten);
+  ручной drag штабелей в виде сверху (snap 100 мм + `findGeometryViolations`/футпринт-проверка, откат).
+  214 тестов. Спека: [specs/2026-07-15-web-ux-improvements-design.md](superpowers/specs/2026-07-15-web-ux-improvements-design.md).
+- **Дизайн-система (эпик `LKWkalk-563`) + экраны gxp/73u** — Direction D (бренд Holz Schäfer),
+  два экрана (Настройка, Ladeplan) на React в `apps/web`; docs/design/design-system.md + theme.css.
 - **Пивот на полноценное приложение (ADR 015, эпик `LKWkalk-66g`).** Скаффолд монорепо: `apps/web`
   (Vite React SPA, движок в браузере, токены `design-system.md`) + `apps/server` (Fastify + SPA-раздача
   + `/api/health`), workspaces расширены до `packages/*`+`apps/*`, multi-stage Dockerfile (Node 22,
