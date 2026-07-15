@@ -381,8 +381,8 @@ function PositionRow({
 
   return (
     <div ref={rootRef} className="px-4 py-2.5">
-      {/* desktop: one line; phone: wraps into a card */}
-      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
+      {/* desktop (≥xl, wider than the 1120px content): one line; below: wraps into a card */}
+      <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
         <OrderSwatch index={index} width={12} height={26} />
         <Select
           ariaLabel={tt('cargoType.label')}
@@ -419,7 +419,10 @@ function PositionRow({
             { value: 'verschachtelt', label: tt('setup.state.ver') },
           ]}
         />
-        <Select ariaLabel={tt('cargoType.rotation.label')} value={p.rotation} onChange={(rotation) => onChange({ rotation })} options={rotationOptions} />
+        {/* fixed width + truncate so a long RU rotation label can't blow out the row width */}
+        <span className="w-[10.5rem] shrink-0">
+          <Select ariaLabel={tt('cargoType.rotation.label')} value={p.rotation} onChange={(rotation) => onChange({ rotation })} options={rotationOptions} className="w-full" />
+        </span>
         {preview && preview.count > 0 && (
           <Chip tone={p.state === 'verschachtelt' ? 'mint' : 'default'}>
             {tt('setup.stack')} {preview.count}
