@@ -31,3 +31,8 @@ export type ForkAccess = (typeof FORK_ACCESS)[number];
 /** For a two-sided stack, the pallet axis the forks run along (accessible faces are normal to it). */
 export const FORK_AXES = ['length', 'width'] as const;
 export type ForkAxis = (typeof FORK_AXES)[number];
+
+/** Order-zone policy (ADR 016, api-contract 0.10.0). `strict` = adjacent zones per orderId (ADR 011);
+ *  `densityFirst` = no zoning, one region, orderId no longer constrains layout. */
+export const ORDER_GROUPINGS = ['strict', 'densityFirst'] as const;
+export type OrderGrouping = (typeof ORDER_GROUPINGS)[number];

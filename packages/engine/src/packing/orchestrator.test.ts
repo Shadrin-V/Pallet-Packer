@@ -191,6 +191,26 @@ describe('packLoad (qrd.7)', () => {
     expect(layout.metrics.totalPlaced).toBe(0);
   });
 
+  it('orderGrouping densityFirst drops zone boundaries and packs more than strict (ADR 016)', () => {
+    // rear: grow=x (length 1000), fill=y (width 2000). Order A (1000×600) fills the whole length →
+    // its zone leaves zero length for B under strict, so B is unplaced. densityFirst uses one region,
+    // so B backfills the width A left free above it.
+    const vehicle = { id: 'v', name: 'V', length: 1000, width: 2000, height: 1000 };
+    const cargoTypes = [
+      cargo({ id: 'a', orderId: 'A', length: 1000, width: 600, height: 1000, quantity: 1 }),
+      cargo({ id: 'b', orderId: 'B', length: 800, width: 1000, height: 1000, quantity: 1 }),
+    ];
+
+    const strict = packLoad({ vehicle, cargo: cargoTypes, loadingMode: 'rear' });
+    expect(strict.metrics.totalPlaced).toBe(1); // A placed, B has no zone left
+    expect(strict.unplaced).toEqual([{ cargoTypeId: 'b', count: 1 }]);
+
+    const dense = packLoad({ vehicle, cargo: cargoTypes, loadingMode: 'rear', orderGrouping: 'densityFirst' });
+    expect(dense.metrics.totalPlaced).toBe(2); // both fit in one region
+    expect(dense.unplaced).toEqual([]);
+    expect(findGeometryViolations({ vehicle, cargo: cargoTypes, loadingMode: 'rear' }, dense)).toEqual([]);
+  });
+
   it('fork access: a two-sided pallet is pinned lengthwise under rear and stays geometry-clean (ADR 018)', () => {
     const l = load({
       vehicle: { id: 'v', name: 'V', length: 2400, width: 1200, height: 1000 },

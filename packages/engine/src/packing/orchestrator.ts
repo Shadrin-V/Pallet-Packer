@@ -1,4 +1,4 @@
-import type { CargoType, Layout, Load, Placement, UnplacedCount } from '../model/index';
+import type { CargoType, Layout, Load, OrderGrouping, Placement, UnplacedCount } from '../model/index';
 import { ENGINE_CONTRACT_VERSION } from '../index';
 import { computeFillMetrics } from '../metrics/metrics';
 import { packFloor, type FloorRequest } from './floor';
@@ -56,8 +56,13 @@ export function columnPlacements(
   return out;
 }
 
-/** Group cargo into order zones, preserving order-of-first-appearance; no orderId = one implicit group. */
-function zonesOf(cargo: CargoType[]): CargoType[][] {
+/**
+ * Group cargo into order zones (ADR 011/016). `strict` (default): one zone per orderId, preserving
+ * order-of-first-appearance (no orderId = one implicit group). `densityFirst`: no zoning — a single
+ * region over all cargo, so orderId no longer constrains the layout.
+ */
+function zonesOf(cargo: CargoType[], grouping: OrderGrouping): CargoType[][] {
+  if (grouping === 'densityFirst') return cargo.length > 0 ? [cargo] : [];
   const order: (string | undefined)[] = [];
   const map = new Map<string | undefined, CargoType[]>();
   for (const c of cargo) {
@@ -80,12 +85,13 @@ export function packLoad(load: Load): Layout {
   const { vehicle } = load;
   const clearance = load.clearance ?? 0;
   const loadingMode = load.loadingMode ?? 'combined'; // contract/ADR-012 default
+  const grouping: OrderGrouping = load.orderGrouping ?? 'strict'; // contract/ADR-016 default
   const placements: Placement[] = [];
   const placedByType = new Map<string, number>();
   let usedFloorPositions = 0;
   let xOffset = 0;
 
-  for (const zone of zonesOf(load.cargo)) {
+  for (const zone of zonesOf(load.cargo, grouping)) {
     const region = { length: vehicle.length - xOffset, width: vehicle.width };
     if (region.length <= 0) break;
     // vertical capacity per type

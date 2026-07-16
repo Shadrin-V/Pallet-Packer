@@ -11,6 +11,10 @@ describe('@shadrin-v/engine bootstrap', () => {
     expect(engine.FORK_AXES).toEqual(['length', 'width']);
   });
 
+  it('exposes the order-grouping constants (ADR 016)', () => {
+    expect(engine.ORDER_GROUPINGS).toEqual(['strict', 'densityFirst']);
+  });
+
   it('exposes the public API surface', () => {
     expect(typeof engine.calculateLayout).toBe('function');
     expect(typeof engine.getLayoutReport).toBe('function');
