@@ -42,10 +42,18 @@ export function App() {
   }, [result]);
 
   const onCalculate = (load: Load) => {
-    const layout = calculateLayout(load);
+    // Preserve the strategy chosen on the Ladeplan across a Setup recompute (4bj.12): "Berechnen"
+    // builds a Load without loadingMode/orderGrouping, so fall back to the current plan's choice.
+    // The strategy selectors and Demo pass these fields explicitly, so they win over the fallback.
+    const next: Load = {
+      ...load,
+      loadingMode: load.loadingMode ?? result?.load.loadingMode,
+      orderGrouping: load.orderGrouping ?? result?.load.orderGrouping,
+    };
+    const layout = calculateLayout(next);
     // Domain invariant: never surface a layout with geometry violations.
-    if (findGeometryViolations(load, layout).length > 0) return;
-    setResult({ load, layout });
+    if (findGeometryViolations(next, layout).length > 0) return;
+    setResult({ load: next, layout });
   };
 
   // Recompute the current plan under a new loading strategy (ADR 012). Manual edits are intentionally

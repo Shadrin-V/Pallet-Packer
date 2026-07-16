@@ -10,6 +10,8 @@ export const de: Dictionary = {
   'setup.addOrder': 'Auftrag hinzufügen',
   'setup.addPosition': 'Position hinzufügen',
   'setup.order': 'Auftrag',
+  'setup.moveOrderUp': 'Auftrag nach oben',
+  'setup.moveOrderDown': 'Auftrag nach unten',
   'setup.state.ent': 'Ent',
   'setup.state.ver': 'Ver',
   'setup.stack': 'Stapel',
@@ -66,6 +68,8 @@ export const de: Dictionary = {
   'cargoType.orientation.fixed': 'Fixiert',
   'cargoType.orientation.free': 'Frei drehbar',
   'cargoType.orientation.twoSided': 'Nur 2 Seiten',
+  'cargoType.orientation.twoSidedHint':
+    'Wirkt beim Beladen von hinten oder von der Seite. Bei „Automatisch“ sind beide Türen offen – keine Einschränkung.',
   'cargoType.forkAxis.label': 'Gabelzufahrt',
   'cargoType.forkAxis.length': 'Längsachse',
   'cargoType.forkAxis.width': 'Querachse',

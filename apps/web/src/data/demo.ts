@@ -51,8 +51,13 @@ export function demoSetup(): { vehicle: Vehicle; orders: OrderState[] } {
     {
       key: uid(),
       orderId: 'SO-1003',
-      // custom (non-preset) size · all orientations allowed
-      positions: [pos({ name: 'Sonderpalette', length: 1340, width: 890, height: 178, quantity: 42, rotation: 'full' })],
+      positions: [
+        // two-sided forklift access — placed first so it lands before the zone fills, making the
+        // constraint visible under the demo's rear loading mode (4bj.13)
+        pos({ name: 'EPAL 2 (2-seitig)', length: 1200, width: 1000, height: 162, quantity: 12, forkAccess: 'twoSides', forkAxis: 'length' }),
+        // custom (non-preset) size · freely rotatable
+        pos({ name: 'Sonderpalette', length: 1340, width: 890, height: 178, quantity: 42 }),
+      ],
     },
     {
       key: uid(),
