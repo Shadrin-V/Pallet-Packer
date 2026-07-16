@@ -87,6 +87,7 @@ export const TRANSLATION_KEYS = [
   'action.calculate',
   'action.exportJson',
   'action.reset',
+  'action.demo',
   'setup.resetConfirm',
 
   // Results / report metrics
