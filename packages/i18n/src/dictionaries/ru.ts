@@ -38,6 +38,7 @@ export const ru: Dictionary = {
   'ladeplan.fig.load': 'Заполнение',
   'ladeplan.pltAbbr': 'подд.',
   'ladeplan.notPlaced': '{n} не размещено',
+  'ladeplan.rotateStack': 'Повернуть стопку',
   'action.print': 'Печать',
   'action.back': 'Назад',
 
