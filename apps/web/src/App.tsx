@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { calculateLayout, findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, type Layout, type Load, type LoadingMode } from '@shadrin-v/engine';
 import { LocaleProvider } from './i18n/LocaleContext';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
@@ -41,6 +41,13 @@ export function App() {
     setResult({ load, layout });
   };
 
+  // Recompute the current plan under a new loading strategy (ADR 012). Manual edits are intentionally
+  // discarded — the fresh layout resets LadeplanScreen's editable copy.
+  const onLoadingModeChange = (mode: LoadingMode) => {
+    if (!result) return;
+    onCalculate({ ...result.load, loadingMode: mode });
+  };
+
   return (
     <LocaleProvider initial="de">
       {/* Setup is screen-only; printing yields just the Ladeplan document. */}
@@ -48,7 +55,12 @@ export function App() {
         <SetupScreen onCalculate={onCalculate} onReset={() => setResult(null)} />
       </div>
       {result && (
-        <LadeplanScreen load={result.load} layout={result.layout} onBack={() => setResult(null)} />
+        <LadeplanScreen
+          load={result.load}
+          layout={result.layout}
+          onBack={() => setResult(null)}
+          onLoadingModeChange={onLoadingModeChange}
+        />
       )}
     </LocaleProvider>
   );

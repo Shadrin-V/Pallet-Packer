@@ -21,4 +21,19 @@ describe('App shell (single page)', () => {
     // …and the Setup input is still there with its value (SetupScreen was not remounted).
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-42');
   });
+
+  it('defaults the loading-mode switch to combined and recomputes+persists on change', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    // Default strategy is combined → "Automatisch" is the pressed option.
+    expect(screen.getByRole('button', { name: 'Automatisch' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
+
+    // The recomputed plan is persisted with the chosen loadingMode (layout is derived, not stored).
+    const persisted = JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}');
+    expect(persisted.loadingMode).toBe('rear');
+    expect(screen.getByRole('button', { name: 'Von hinten' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });
