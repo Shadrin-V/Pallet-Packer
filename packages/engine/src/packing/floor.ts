@@ -1,5 +1,5 @@
-import type { RotationRule } from '../model/index';
-import { floorOrientations } from '../model/orientation';
+import type { RotationRule, ForkAccess, ForkAxis } from '../model/index';
+import { floorOrientations, forkPinnedOrientation } from '../model/orientation';
 
 export type LoadingMode = 'rear' | 'side' | 'combined';
 export type FloorOrientation = 'lwh' | 'wlh';
@@ -10,6 +10,8 @@ export interface FloorRequest {
   width: number; //  родная ширина футпринта, мм > 0
   rotation: RotationRule;
   count: number; // сколько пытаться разместить (fill → большое число)
+  forkAccess?: ForkAccess; // доступ погрузчика (ADR 018); default 'all4' — без ограничения
+  forkAxis?: ForkAxis; // ось захода вил для 'twoSides'; default 'length'
 }
 
 export interface FloorPlacement {
@@ -46,12 +48,26 @@ function gridCapacity(region: Region, fp: Footprint, clearance: number): number 
   return fitCount(region.length, fp.dx, clearance) * fitCount(region.width, fp.dy, clearance);
 }
 
-/** Выбор yaw-ориентации по макс-влезанию (ADR 011); yaw-набор — из floorOrientations (ADR 013). Тай-брейк → 'lwh'. */
-export function chooseOrientation(req: FloorRequest, region: Region, clearance: number): Footprint {
+/**
+ * Выбор yaw-ориентации: сперва жёсткий фильтр доступа погрузчика (ADR 018) — двусторонняя стопка
+ * пиннится под одну ориентацию при односторонней двери; затем макс-влезание (ADR 011) среди
+ * оставшихся. yaw-набор — из floorOrientations (ADR 013). Тай-брейк → 'lwh'.
+ */
+export function chooseOrientation(
+  req: FloorRequest,
+  region: Region,
+  clearance: number,
+  loadingMode: LoadingMode = 'combined',
+): Footprint {
   const lwh: Footprint = { dx: req.length, dy: req.width, orientation: 'lwh' };
   const canYaw = floorOrientations(req.rotation).includes('wlh');
-  if (!canYaw) return lwh;
+  if (!canYaw) return lwh; // rotation none: ориентация фиксирована, констрейнту нечего пиннить
   const wlh: Footprint = { dx: req.width, dy: req.length, orientation: 'wlh' };
+  const pinned =
+    req.forkAccess === 'twoSides'
+      ? forkPinnedOrientation(loadingMode, req.forkAxis ?? 'length')
+      : null;
+  if (pinned) return pinned === 'lwh' ? lwh : wlh;
   return gridCapacity(region, wlh, clearance) > gridCapacity(region, lwh, clearance) ? wlh : lwh;
 }
 
@@ -74,6 +90,7 @@ function packShelf(
   requests: FloorRequest[],
   clearance: number,
   mode: 'rear' | 'side',
+  loadingMode: LoadingMode,
 ): FloorPlacement[] {
   const out: FloorPlacement[] = [];
   const fillSpan = mode === 'side' ? region.length : region.width;
@@ -85,7 +102,7 @@ function packShelf(
 
   for (const req of requests) {
     if (req.count <= 0) continue;
-    const fp = chooseOrientation(req, region, clearance);
+    const fp = chooseOrientation(req, region, clearance, loadingMode);
     if (fp.dx <= 0 || fp.dy <= 0) continue;
     const fillExtent = mode === 'side' ? fp.dx : fp.dy;
     const growExtent = mode === 'side' ? fp.dy : fp.dx;
@@ -128,10 +145,12 @@ export function packFloor(
 ): FloorPlacement[] {
   const clearance = opts.clearance ?? 0;
   const mode = opts.loadingMode ?? 'combined';
-  if (mode === 'rear') return packShelf(region, requests, clearance, 'rear');
-  if (mode === 'side') return packShelf(region, requests, clearance, 'side');
+  // The pass axis (rear/side) maps coordinates; `mode` also carries fork-access door availability
+  // (ADR 018), so both combined passes see 'combined' and never pin.
+  if (mode === 'rear') return packShelf(region, requests, clearance, 'rear', 'rear');
+  if (mode === 'side') return packShelf(region, requests, clearance, 'side', 'side');
   // combined: плотнейшая из двух; при равенстве — rear (детерминированный тай-брейк).
-  const rear = packShelf(region, requests, clearance, 'rear');
-  const side = packShelf(region, requests, clearance, 'side');
+  const rear = packShelf(region, requests, clearance, 'rear', 'combined');
+  const side = packShelf(region, requests, clearance, 'side', 'combined');
   return side.length > rear.length ? side : rear;
 }

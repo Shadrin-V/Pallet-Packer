@@ -91,6 +91,18 @@ describe('rotateStack (T5)', () => {
     expect(findGeometryViolations(load, rotated)).toEqual([]);
   });
 
+  it('rejects a rotation that breaks two-sided forklift access under a single-door mode (ADR 018)', () => {
+    // 1200×800 two-sided pallet, forks along length, rear loading → pinned lwh. Rotating to wlh would
+    // turn its accessible pair away from the rear door → findGeometryViolations flags fork-access.
+    const load: Load = {
+      vehicle: { id: 'v', name: 'LKW', length: 3000, width: 2000, height: 2000 },
+      cargo: [{ ...oblong('c1', 1), forkAccess: 'twoSides' as const, forkAxis: 'length' as const }],
+      loadingMode: 'rear',
+    };
+    const layout = withPlacements(load, [tier('c1', 0, 0, 0, 1, 'lwh')]);
+    expect(rotateStack(load, layout, { cargoTypeId: 'c1', x: 0, y: 0 })).toBe(layout); // rejected
+  });
+
   it('rejects a rotation whose footprint would overlap the neighbouring stack', () => {
     // Two stacks side by side across the width: rotating the first (1200×800 → 800×1200) grows it
     // into y ∈ [0,1200), which overlaps the neighbour at y = 800.

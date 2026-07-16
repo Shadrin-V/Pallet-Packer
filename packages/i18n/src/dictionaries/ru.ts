@@ -59,6 +59,13 @@ export const ru: Dictionary = {
   'cargoType.rotation.none': 'Без вращения',
   'cargoType.rotation.yawOnly': 'Только вокруг вертикальной оси',
   'cargoType.rotation.full': 'Все ориентации',
+  'cargoType.orientation.label': 'Ориентация',
+  'cargoType.orientation.fixed': 'Фиксирована',
+  'cargoType.orientation.free': 'Свободно',
+  'cargoType.orientation.twoSided': 'Только 2 стороны',
+  'cargoType.forkAxis.label': 'Заход вил',
+  'cargoType.forkAxis.length': 'Вдоль длины',
+  'cargoType.forkAxis.width': 'Вдоль ширины',
   'cargoType.stacking.label': 'Штабелирование',
   'cargoType.stacking.hint':
     'Максимум ярусов в штабеле. Пусто = без лимита — штабелируется до высоты кузова.',

@@ -59,6 +59,13 @@ export const de: Dictionary = {
   'cargoType.rotation.none': 'Keine Drehung',
   'cargoType.rotation.yawOnly': 'Nur um die Hochachse',
   'cargoType.rotation.full': 'Alle Ausrichtungen',
+  'cargoType.orientation.label': 'Ausrichtung',
+  'cargoType.orientation.fixed': 'Fixiert',
+  'cargoType.orientation.free': 'Frei drehbar',
+  'cargoType.orientation.twoSided': 'Nur 2 Seiten',
+  'cargoType.forkAxis.label': 'Gabelzufahrt',
+  'cargoType.forkAxis.length': 'Längsachse',
+  'cargoType.forkAxis.width': 'Querachse',
   'cargoType.stacking.label': 'Stapelbar',
   'cargoType.stacking.hint':
     'Maximale Anzahl Ebenen im Stapel (Tiers). Leer lassen = unbegrenzt — es wird bis zur Fahrzeughöhe gestapelt.',
