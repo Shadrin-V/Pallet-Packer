@@ -5,31 +5,81 @@
 ---
 
 Продолжаем **Ladungsplaner** — приложение расчёта загрузки грузовика паллетами. Оно **живое**:
-https://ladungsplaner.holz-schaefer.de (Coolify/Hetzner, TLS). Все гейты зелёные (214 тестов).
+https://ladungsplaner.holz-schaefer.de (Coolify/Hetzner, TLS). Все гейты зелёные (**230 тестов**).
 
 **Восстановление контекста (сделай первым):**
 1. `bd prime` — загрузи память. ДЕЙСТВУЕТ директива автономии (память `autonomy-directive-2026-07-10`):
    beads team-maintainer (авто commit/push/`bd dolt push`/close после зелёных гейтов), **ветка-на-задачу
-   → merge в main сам**, docs-first, TDD, геометро-валидатор на каждом результате.
+   → merge в main сам**, docs-first, TDD, геометро-валидатор на каждом результате. Брейншторм-диалог
+   отменён: короткий дизайн-раздел в спеке + сам принимаю дефолты; спрашивать ТОЛЬКО про ломающий
+   контракт или продуктовое решение без очевидного дефолта (сразу с предложенным дефолтом).
 2. Прочитай **`docs/superpowers/HANDOVER-2026-07-15.md`** — полный снимок: архитектура (монорепо
    packages/engine+i18n+contracts, apps/web+server, шов DataProvider, движок в браузере), экраны,
    ERPNext, деплой, процесс, открытые задачи, подводные камни.
-3. Проектный `CLAUDE.md` и `~/.claude/CLAUDE.md` — правила и связка скиллов (Superpowers × gstack ×
-   официальные). `bd ready` — доступные задачи.
+3. Проектный `CLAUDE.md` и `~/.claude/CLAUDE.md` — правила и связка скиллов. `bd ready` — задачи.
 
 **Процесс (не перескакивай):**
-- Новая фича / меняем поведение → `superpowers:brainstorming` → спека в `docs/superpowers/specs/` →
-  `writing-plans` → TDD (сначала падающий тест).
+- Новая фича → спека в `docs/superpowers/specs/` → `writing-plans` → TDD (сначала падающий тест).
 - Баг → `superpowers:systematic-debugging` (гипотеза + воспроизведение, потом правка).
 - Перед merge: `npm test` · `npm run lint` · `npm run typecheck` · `npm run build --workspace apps/web`
   (+ `docker build` при изменении web/server). Правил `packages/engine`/`i18n` → пересобрать их dist.
 - После merge: push `main` + `production` → **Coolify авто-деплоит** (webhook настроен). Проверить прод
-  через ~2–4 мин: скачать `/assets/index-*.js` в файл и `grep` маркеры (не в shell-переменную).
+  через ~1–2 мин: скачать `/assets/index-*.js` в **файл** и `grep` маркеры (не в shell-переменную).
+  Vite хэширует по содержимому → совпадение имени = байт-в-байт та же сборка.
 
-**Текущее состояние:** MVP-приложение развёрнуто и работает (Настройка → Berechnen → Ladeplan, одна
-страница, языки de/ru, пресеты EPAL/LKW, формула вложения, drag штабелей, печать A4). Открыты только
-owner-side follow-up: `s17` deep-link, `k06` поля ERPNext, `zbi` бэкап, `i6b` Basic Auth.
+**Текущее состояние:** MVP развёрнут и работает. Эпик `LKWkalk-2ll` (Web UX Batch 2–6) закрыт: hero-шапка
+с логотипом, печать A4 landscape на 1 лист со штриховкой, справка по составу с габаритами, вид сбоку
+силуэтами с задними рядами, persistence (localStorage) + Reset, пресеты фур, демо-кнопка.
 
-**Что делаем сейчас:** у меня есть правки — опишу их следующим сообщением. Для каждой: если это фича —
-брейншторм→спека→план→TDD; если баг — systematic-debugging. Ветка-на-задачу → зелёные гейты → merge →
-деплой → проверка на проде.
+## Текущий эпик: `LKWkalk-4bj` (Ladeplan v2) — работаем по одной задаче
+
+Закрыто: `4bj.1` (click-outside съедал клик), `4bj.2` (инверсия глубины вида сбоку), `4bj.3` (кнопка «Демо»).
+
+**Осталось (в этом порядке):**
+
+- **`4bj.4` — пользовательские пресеты паллет.** ЗАДЕЛ УЖЕ В MAIN: `apps/web/src/data/userPresets.ts`
+  (`loadUserPallets/addUserPallet/removeUserPallet/isUserPreset`, localStorage
+  `ladungsplaner.palletPresets`, ключи `user-<uuid>`) + i18n `setup.savePreset`/`setup.deletePreset`.
+  ОСТАЛОСЬ — UI-проводка в `SetupScreen`: state `userPallets` → прокинуть в `OrderCard` → `PositionRow`;
+  в дропдауне Ladungsart `options = [custom, ...PALLET_PRESETS, ...userPallets]` **и поиск value (find по
+  ДxШxВ) тоже по объединённому списку**; кнопка «Als Preset speichern» в панели details (когда габариты
+  заданы и не совпадают с пресетом; имя из `p.name`, фолбэк `LxWxH`); «Preset löschen» когда текущий
+  пресет `user-*`; тесты. Подробности — в `bd show LKWkalk-4bj.4` (поле notes).
+
+- **`4bj.5` — ручной поворот стопки в виде сверху.** При выделении прямоугольника — иконка поворота;
+  доступные повороты по правилу позиции (`none`/`yawOnly`/`full`). Поворот → пересчёт футпринта +
+  `findGeometryViolations`, откат при конфликте. Зеркалить подход `components/dragLayout.ts`.
+
+- **`4bj.6` — умная раскладка (БОЛЬШАЯ, нужен брейншторм + спека + ADR).** Проблема со скрина: shelf режет
+  полки под первый тип → карманы (`×16`/`×4`/`×7`), ~84% пола, часть в unplaced. ВАЖНО: движок УЖЕ умеет
+  `loadingMode` **rear/side/combined** (ADR 012 — это «ряды по ширине / по длине») и зоны по заказам
+  (ADR 011) — просто не выведено в UI. Т.е. часть задачи = «включить и дать выбор», часть = новая
+  эвристика (max-компакт). Вынести варианты стратегий с плюсами/минусами владельцу на решение.
+  Инварианты: геометрия валидна (`findGeometryViolations = []`), вид сбоку не рушится.
+
+**Открыто ещё (owner-side):** `s17` deep-link ERPNext, `k06` поля ERPNext, `zbi` бэкап тома, `i6b` Basic Auth.
+Бэклог движка: `qrd.15` (экспорт PDF/PNG), `qrd.29` (дефолт nestingMode в ядре), `qrd.31` (clearance на позицию).
+
+## Подводные камни, добытые кровью (не наступай)
+
+- **Chrome НЕ печатает SVG `<pattern>`** — заливка/штриховка исчезают на бумаге. Штриховка заказов
+  рисуется прямыми `<line>`/`<circle>` (`HatchMarks` в `lib/swatch.tsx`, аналитический клиппинг
+  Лианга-Барски). `var()` резолвится только на direct-элементах. Не возвращать `<pattern>` в печать.
+- **click-outside слушать `click`, НЕ `mousedown`** — иначе закрытие панели сдвигает DOM до `mouseup`,
+  браузер шлёт click на предка, и кнопка («+ Position») не срабатывает.
+- **Конвенция вида сбоку:** наблюдатель у нижнего края вида сверху (`y = width`) → **больший `y` = ближний
+  ряд** (`depth 0`, полная непрозрачность), меньший `y` — дальше (тусклее). Поле `CutRect.rowY`.
+- **Длинные RU-лейблы ломают вёрстку** — контролы с текстом ограничивать по ширине + `truncate`
+  (`Select` уже `min-w-0/truncate`); строка позиции `xl:flex-nowrap`, ниже — перенос.
+- **`localStorage`-ключи:** `ladungsplaner.setup` (форма), `ladungsplaner.load` (план),
+  `ladungsplaner.locale`, `ladungsplaner.palletPresets`. Это кэш черновика, НЕ источник истины;
+  импорт ERPNext перезапишет, Reset очистит. `test-setup.ts` чистит localStorage в `afterEach`.
+- **dist в .gitignore** — на чистой машине `npm ci` + сборка пакетов, иначе web/server-тесты не видят
+  `@shadrin-v/engine`/`i18n`.
+- **Docker-демон может быть выключен** — тогда локальный `docker build`-гейт не отработает; фактическую
+  сборку образа проверит успешный деплой Coolify.
+- **jsdom без layout** — баги, зависящие от вёрстки (сдвиг DOM, overflow), тестами не воспроизводятся;
+  тест сторожит намерение, а не сам симптом.
+
+**Что делаем сейчас:** продолжаем эпик `LKWkalk-4bj` с задачи **`4bj.4`** (задел описан выше и в бид-notes).
+Работаем по одной задаче: ветка-на-задачу → зелёные гейты → merge → деплой → проверка на проде → отчёт.

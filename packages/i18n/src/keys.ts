@@ -17,6 +17,8 @@ export const TRANSLATION_KEYS = [
   'setup.stack',
   'setup.vehiclePreset.custom',
   'setup.emptyOrders',
+  'setup.savePreset',
+  'setup.deletePreset',
 
   // Ladeplan / result screen
   'ladeplan.title',

@@ -15,6 +15,8 @@ export const ru: Dictionary = {
   'setup.stack': 'Стопка',
   'setup.vehiclePreset.custom': 'Свои размеры',
   'setup.emptyOrders': 'Заказов пока нет. Добавьте заказ.',
+  'setup.savePreset': 'Сохранить как пресет',
+  'setup.deletePreset': 'Удалить пресет',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',

@@ -15,6 +15,8 @@ export const de: Dictionary = {
   'setup.stack': 'Stapel',
   'setup.vehiclePreset.custom': 'Eigene Maße',
   'setup.emptyOrders': 'Noch keine Aufträge. Fügen Sie einen Auftrag hinzu.',
+  'setup.savePreset': 'Als Preset speichern',
+  'setup.deletePreset': 'Preset löschen',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
