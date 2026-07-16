@@ -56,6 +56,16 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].rotation).toBe('yawOnly');
   });
 
+  it('shows a hint on the two-sided orientation about rear/side loading (4bj.13)', async () => {
+    renderSetup(() => {});
+    // no hint while the orientation is the default "free"
+    expect(screen.queryByRole('button', { name: 'Nur 2 Seiten' })).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Ausrichtung'), 'twoSided');
+    // the info button appears next to the two-sided controls; its tooltip explains the constraint
+    await userEvent.click(screen.getByRole('button', { name: 'Nur 2 Seiten' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/hinten/i);
+  });
+
   it('Verschachtelt without a valid Δh disables Berechnen', async () => {
     renderSetup(() => {});
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
@@ -205,7 +215,10 @@ describe('SetupScreen', () => {
     expect(load.cargo.some((c) => c.state === 'entschachtelt')).toBe(true);
     expect(load.cargo.some((c) => c.nesting.nestingMode === 'sequential')).toBe(true);
     expect(load.cargo.some((c) => c.nesting.nestingMode === 'pairwise')).toBe(true);
-    expect(new Set(load.cargo.map((c) => c.rotation))).toEqual(new Set(['yawOnly', 'full', 'none']));
+    // 'full' is gone from the UI (Sonderpalette is now plain yawOnly); demo shows the two-sided
+    // fork-access case instead (4bj.13).
+    expect(new Set(load.cargo.map((c) => c.rotation))).toEqual(new Set(['yawOnly', 'none']));
+    expect(load.cargo.some((c) => c.forkAccess === 'twoSides')).toBe(true);
     expect(load.cargo.some((c) => c.stacking.maxTiers === 6)).toBe(true);
   });
 
@@ -219,6 +232,53 @@ describe('SetupScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zurücksetzen' }));
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
     expect(onReset).toHaveBeenCalled();
+  });
+
+  describe('reordering the order queue (4bj.11)', () => {
+    /** Add a second order so there are two cards (SO-1, SO-2) to reorder. */
+    async function twoOrders() {
+      const onCalculate = vi.fn();
+      renderSetup(onCalculate);
+      await userEvent.click(screen.getAllByRole('button', { name: /Auftrag hinzufügen/ })[0]);
+      return onCalculate;
+    }
+
+    it('a single order shows no move controls (nothing to reorder)', () => {
+      renderSetup(() => {});
+      expect(screen.queryAllByRole('button', { name: 'Auftrag nach oben' })).toHaveLength(0);
+      expect(screen.queryAllByRole('button', { name: 'Auftrag nach unten' })).toHaveLength(0);
+    });
+
+    it('moving the first order down swaps it with the second (list order = cargo priority)', async () => {
+      const onCalculate = await twoOrders();
+      // move SO-1 down
+      await userEvent.click(screen.getAllByRole('button', { name: 'Auftrag nach unten' })[0]);
+
+      expect((screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value)).toEqual(
+        ['SO-2', 'SO-1'],
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      const load = onCalculate.mock.calls.at(-1)![0] as Load;
+      expect([...new Set(load.cargo.map((c) => c.orderId))]).toEqual(['SO-2', 'SO-1']);
+    });
+
+    it('moving the second order up swaps it with the first', async () => {
+      await twoOrders();
+      await userEvent.click(screen.getAllByRole('button', { name: 'Auftrag nach oben' })[1]);
+      expect((screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value)).toEqual(
+        ['SO-2', 'SO-1'],
+      );
+    });
+
+    it('disables up on the first order and down on the last', async () => {
+      await twoOrders();
+      const up = screen.getAllByRole('button', { name: 'Auftrag nach oben' });
+      const down = screen.getAllByRole('button', { name: 'Auftrag nach unten' });
+      expect(up[0]).toBeDisabled();
+      expect(up[1]).toBeEnabled();
+      expect(down[0]).toBeEnabled();
+      expect(down[1]).toBeDisabled();
+    });
   });
 
   it('adds a second order zone (add-order action is duplicated top + bottom, E10)', async () => {

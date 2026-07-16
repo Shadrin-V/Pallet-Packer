@@ -171,9 +171,14 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     const d = demoSetup();
     setVehicle(d.vehicle);
     setOrders(d.orders);
+    // Demo is a self-contained showcase: pin the strategy so it stays deterministic and does not
+    // inherit a strategy chosen on a previous plan (4bj.12). Rear loading makes the two-sided
+    // fork-access position an effective constraint, so the feature is actually visible (4bj.13).
     onCalculate({
       vehicle: d.vehicle,
       cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+      loadingMode: 'rear',
+      orderGrouping: 'strict',
     });
   };
 
@@ -201,6 +206,17 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     );
 
   const addOrder = () => setOrders((os) => [...os, emptyOrder(os.length + 1)]);
+  // Reorder an order in the list. List order = order priority → zones (strict) and packing queue
+  // (densityFirst) follow it; the engine/contract are untouched (ADR 017). 4bj.11.
+  const moveOrder = (key: string, dir: -1 | 1) =>
+    setOrders((os) => {
+      const i = os.findIndex((o) => o.key === key);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= os.length) return os;
+      const next = [...os];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   const addPosition = (okey: string) =>
     patchOrder(okey, {
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
@@ -263,6 +279,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             onSavePreset={(p) => setUserPallets(addUserPallet(p))}
             onDeletePreset={(key) => setUserPallets(removeUserPallet(key))}
             tt={tt}
+            reorderable={orders.length > 1}
+            canMoveUp={oi > 0}
+            canMoveDown={oi < orders.length - 1}
+            onMove={(dir) => moveOrder(o.key, dir)}
             onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
             onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
             onAddPosition={() => addPosition(o.key)}
@@ -306,6 +326,10 @@ function OrderCard({
   onSavePreset,
   onDeletePreset,
   tt,
+  reorderable,
+  canMoveUp,
+  canMoveDown,
+  onMove,
   onOrderIdChange,
   onPositionChange,
   onAddPosition,
@@ -317,6 +341,10 @@ function OrderCard({
   onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
   onDeletePreset: (key: string) => void;
   tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
+  reorderable: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMove: (dir: -1 | 1) => void;
   onOrderIdChange: (v: string) => void;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
@@ -332,6 +360,30 @@ function OrderCard({
         <span className="ml-auto text-caption text-muted">
           {order.positions.length} × {tt('cargoType.label')}
         </span>
+        {/* Reorder the order queue — list order = priority (4bj.11). Hidden when there is nothing
+            to reorder; ends are disabled. Only UI: moving a card reorders the semantic cargo list. */}
+        {reorderable && (
+          <div className="flex items-center">
+            <button
+              type="button"
+              aria-label={tt('setup.moveOrderUp')}
+              disabled={!canMoveUp}
+              onClick={() => onMove(-1)}
+              className="px-1 text-muted hover:text-brand disabled:opacity-30 disabled:hover:text-muted"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              aria-label={tt('setup.moveOrderDown')}
+              disabled={!canMoveDown}
+              onClick={() => onMove(1)}
+              className="px-1 text-muted hover:text-brand disabled:opacity-30 disabled:hover:text-muted"
+            >
+              ↓
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="divide-y divide-line">
@@ -474,15 +526,23 @@ function PositionRow({
           />
         </span>
         {orientationChoiceOf(p.rotation, p.forkAccess) === 'twoSided' && (
-          <span className="w-[8.5rem] shrink-0">
-            <Select
-              ariaLabel={tt('cargoType.forkAxis.label')}
-              value={p.forkAxis ?? 'length'}
-              onChange={(forkAxis) => onChange({ forkAxis: forkAxis as ForkAxis })}
-              options={FORK_AXES.map((a) => ({ value: a, label: tt(`cargoType.forkAxis.${a}`) }))}
-              className="w-full"
+          <>
+            <span className="w-[8.5rem] shrink-0">
+              <Select
+                ariaLabel={tt('cargoType.forkAxis.label')}
+                value={p.forkAxis ?? 'length'}
+                onChange={(forkAxis) => onChange({ forkAxis: forkAxis as ForkAxis })}
+                options={FORK_AXES.map((a) => ({ value: a, label: tt(`cargoType.forkAxis.${a}`) }))}
+                className="w-full"
+              />
+            </span>
+            {/* Two-sided access only constrains packing under rear/side loading; under the default
+                combined mode both doors are open, so it is a no-op. Explain that (4bj.13). */}
+            <InfoHint
+              ariaLabel={tt('cargoType.orientation.twoSided')}
+              text={tt('cargoType.orientation.twoSidedHint')}
             />
-          </span>
+          </>
         )}
         {preview && preview.count > 0 && (
           <Chip tone={p.state === 'verschachtelt' ? 'mint' : 'default'}>

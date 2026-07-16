@@ -10,6 +10,8 @@ export const ru: Dictionary = {
   'setup.addOrder': 'Добавить заказ',
   'setup.addPosition': 'Добавить позицию',
   'setup.order': 'Заказ',
+  'setup.moveOrderUp': 'Заказ вверх',
+  'setup.moveOrderDown': 'Заказ вниз',
   'setup.state.ent': 'Без',
   'setup.state.ver': 'Влож',
   'setup.stack': 'Стопка',
@@ -66,6 +68,8 @@ export const ru: Dictionary = {
   'cargoType.orientation.fixed': 'Фиксирована',
   'cargoType.orientation.free': 'Свободно',
   'cargoType.orientation.twoSided': 'Только 2 стороны',
+  'cargoType.orientation.twoSidedHint':
+    'Действует при загрузке с торца или сбоку. При «Автоматически» обе двери открыты — без ограничения.',
   'cargoType.forkAxis.label': 'Заход вил',
   'cargoType.forkAxis.length': 'Вдоль длины',
   'cargoType.forkAxis.width': 'Вдоль ширины',
