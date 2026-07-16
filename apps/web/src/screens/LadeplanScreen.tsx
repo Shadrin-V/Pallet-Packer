@@ -3,10 +3,11 @@
 // per-order legend + compact metrics. Full-width sheet; A4 landscape print (theme.css).
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
 import { useEffect, useState } from 'react';
-import { findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
+import { findGeometryViolations, type Layout, type Load, type LoadingMode } from '@shadrin-v/engine';
 import { formatLength } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
+import { LoadingModeSwitch } from '../ui/LoadingModeSwitch';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
@@ -36,10 +37,12 @@ export function LadeplanScreen({
   load,
   layout,
   onBack,
+  onLoadingModeChange,
 }: {
   load: Load;
   layout: Layout;
   onBack?: () => void;
+  onLoadingModeChange?: (mode: LoadingMode) => void;
 }) {
   const { locale, tt } = useLocale();
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
@@ -49,6 +52,13 @@ export function LadeplanScreen({
     setEdited((prev) => moveStack(load, prev, sel, toX, toY));
   const onRotateStack = (sel: StackSel) => setEdited((prev) => rotateStack(load, prev, sel));
   const violations = findGeometryViolations(load, edited).length;
+
+  // A strategy change recomputes from scratch, discarding manual edits. `edited !== layout` holds only
+  // after a manual edit (both reset to the same reference on recompute), so warn only when there's loss.
+  const handleLoadingModeChange = (mode: LoadingMode) => {
+    if (edited !== layout && !globalThis.confirm(tt('ladeplan.discardEditsConfirm'))) return;
+    onLoadingModeChange?.(mode);
+  };
 
   const v = load.vehicle;
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
@@ -62,7 +72,10 @@ export function LadeplanScreen({
       className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 print:max-w-none print:p-0"
     >
       {/* on-screen action bar (not printed) */}
-      <div className="mb-5 flex items-center justify-end gap-2 print:hidden">
+      <div className="mb-5 flex flex-wrap items-center justify-end gap-2 print:hidden">
+        {onLoadingModeChange && (
+          <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
+        )}
         {onBack && (
           <Button variant="secondary" onClick={onBack}>
             {tt('action.back')}

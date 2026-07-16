@@ -42,6 +42,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.pltAbbr',
   'ladeplan.notPlaced',
   'ladeplan.rotateStack',
+  'ladeplan.discardEditsConfirm',
   'action.print',
   'action.back',
 
