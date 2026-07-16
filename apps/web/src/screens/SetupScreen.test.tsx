@@ -100,6 +100,62 @@ describe('SetupScreen', () => {
     expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
   });
 
+  describe('user pallet presets (T4)', () => {
+    /** Type custom dimensions into the first position row and open its details panel. */
+    async function fillCustomDims(l = '1150', w = '750', h = '200') {
+      await userEvent.type(screen.getAllByLabelText('Länge')[1], l);
+      await userEvent.type(screen.getAllByLabelText('Breite')[1], w);
+      await userEvent.type(screen.getAllByLabelText('Höhe')[1], h);
+      await userEvent.click(screen.getAllByRole('button', { name: 'details' })[0]);
+    }
+
+    it('saves custom dimensions as a preset and offers it in every Ladungsart dropdown', async () => {
+      renderSetup(() => {});
+      await fillCustomDims();
+      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
+
+      // named after the position name fallback L×W×H, and visible in a *second* row's dropdown too
+      await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
+      const options = (screen.getAllByLabelText('Ladungsart')[1] as HTMLSelectElement).options;
+      expect([...options].map((o) => o.text)).toContain('1150×750×200');
+    });
+
+    it('applies a saved preset to another position and persists it across a remount', async () => {
+      const onCalculate = vi.fn();
+      const { unmount } = renderSetup(onCalculate);
+      await fillCustomDims();
+      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
+      unmount();
+
+      renderSetup(onCalculate);
+      const select = screen.getAllByLabelText('Ladungsart')[0] as HTMLSelectElement;
+      const userOption = [...select.options].find((o) => o.text === '1150×750×200');
+      expect(userOption).toBeDefined();
+      await userEvent.selectOptions(select, userOption!.value);
+      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      expect(onCalculate.mock.calls[0][0].cargo[0]).toMatchObject({ length: 1150, width: 750, height: 200 });
+    });
+
+    it('deletes the selected user preset', async () => {
+      renderSetup(() => {});
+      await fillCustomDims();
+      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
+      // saved → the row now matches a user preset: delete is offered, save is not
+      expect(screen.queryByRole('button', { name: 'Als Preset speichern' })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Preset löschen' }));
+
+      const options = (screen.getAllByLabelText('Ladungsart')[0] as HTMLSelectElement).options;
+      expect([...options].map((o) => o.text)).not.toContain('1150×750×200');
+    });
+
+    it('does not offer saving dimensions that already match a built-in preset', async () => {
+      renderSetup(() => {});
+      await userEvent.selectOptions(screen.getByLabelText('Ladungsart'), 'epal2');
+      await userEvent.click(screen.getByRole('button', { name: 'details' }));
+      expect(screen.queryByRole('button', { name: 'Als Preset speichern' })).not.toBeInTheDocument();
+    });
+  });
+
   it('persists the setup across a remount (no reset on refresh, #4)', async () => {
     const { unmount } = renderSetup(() => {});
     const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
