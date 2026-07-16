@@ -110,6 +110,29 @@ describe('SetupScreen', () => {
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-99');
   });
 
+  it('Demo fills a multi-order plan and computes it immediately (T3)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
+
+    // form filled: 4 demo orders, several positions
+    const orderIds = (screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value);
+    expect(orderIds).toEqual(['SO-1001', 'SO-1002', 'SO-1003', 'SO-1004']);
+    expect(screen.getAllByLabelText('Ladungsart').length).toBeGreaterThan(4);
+
+    // and computed straight away, exercising the whole feature set
+    expect(onCalculate).toHaveBeenCalledTimes(1);
+    const load = onCalculate.mock.calls[0][0] as Load;
+    expect(load.vehicle.name).toBe('LKW Standard');
+    expect(new Set(load.cargo.map((c) => c.orderId)).size).toBe(4);
+    expect(load.cargo.some((c) => c.state === 'verschachtelt')).toBe(true);
+    expect(load.cargo.some((c) => c.state === 'entschachtelt')).toBe(true);
+    expect(load.cargo.some((c) => c.nesting.nestingMode === 'sequential')).toBe(true);
+    expect(load.cargo.some((c) => c.nesting.nestingMode === 'pairwise')).toBe(true);
+    expect(new Set(load.cargo.map((c) => c.rotation))).toEqual(new Set(['yawOnly', 'full', 'none']));
+    expect(load.cargo.some((c) => c.stacking.maxTiers === 6)).toBe(true);
+  });
+
   it('reset clears the setup back to defaults (#4)', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const onReset = vi.fn();

@@ -19,11 +19,12 @@ import { orderColorToken } from '../lib/orderColor';
 import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS, PALLET_PRESETS } from '../data/presets';
+import { demoSetup } from '../data/demo';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
 
-interface PositionState {
+export interface PositionState {
   id: string;
   name: string;
   length: Num;
@@ -39,7 +40,7 @@ interface PositionState {
   maxTiers: Num; // stacking cap
 }
 
-interface OrderState {
+export interface OrderState {
   key: string;
   orderId: string;
   positions: PositionState[];
@@ -146,6 +147,18 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     saveSetup({ vehicle, orders });
   }, [vehicle, orders]);
 
+  /** Fill a rich demo plan and compute it right away (build the Load from the demo data directly —
+   *  setState is async, so we must not read it back in this tick). */
+  const handleDemo = () => {
+    const d = demoSetup();
+    setVehicle(d.vehicle);
+    setOrders(d.orders);
+    onCalculate({
+      vehicle: d.vehicle,
+      cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+    });
+  };
+
   const handleReset = () => {
     if (typeof window !== 'undefined' && !window.confirm(tt('setup.resetConfirm'))) return;
     setVehicle(defaultVehicle());
@@ -249,6 +262,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       </div>
 
       <div className="mt-6 flex justify-end gap-2">
+        <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
         <Button variant="secondary" onClick={handleReset}>{tt('action.reset')}</Button>
         <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
       </div>
