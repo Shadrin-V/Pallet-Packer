@@ -68,7 +68,7 @@
 - Язык/стек: **TypeScript**, изоморфный npm-пакет `@shadrin-v/engine` (без DOM/Node); UI — Lovable/React.
 - Единицы измерения: внутренне — **целые миллиметры**; конвертация только на границе UI ([ADR 002](docs/adr/002-integer-millimeters.md)).
 - Учёт веса: **вне MVP** (опц. поля в контракте есть, логика не реализуется).
-- Алгоритм упаковки: **2.5D** — 2D shelf-упаковка по полу + вертикальный расчёт вложения; за интерфейсом `Packer` ([ADR 003](docs/adr/003-2p5d-computation-model.md), [ADR 004](docs/adr/004-packer-interface-shelf-heuristic.md)).
+- Алгоритм упаковки: **2.5D** — 2D shelf-упаковка по полу + вертикальный расчёт вложения; шов — чистая функция `packFloor` ([ADR 003](docs/adr/003-2p5d-computation-model.md), [ADR 004](docs/adr/004-packer-interface-shelf-heuristic.md), [ADR 017](docs/adr/017-dense-floor-heuristic.md)). Порядок списка `cargo` = приоритет заявки, упаковщик его не переупорядочивает.
 - Основной режим: **«Размести заявку»** (список типов + количества), `fill` покрывает «сколько влезет» ([ADR 005](docs/adr/005-order-fulfillment-mode.md)).
 - Состояние: **Verschachtelt/Entschachtelt** на уровне типа поддона.
 - Хранение справочников: **пресеты + IndexedDB браузера** + JSON импорт/экспорт ([ADR 007](docs/adr/007-browser-local-storage.md)).
