@@ -85,6 +85,13 @@ function pushPlacement(
   out.push({ cargoTypeId, x, y, dx: fp.dx, dy: fp.dy, orientation: fp.orientation });
 }
 
+/** Открытая полка: полоса на оси роста, единицы кладутся слева-направо по оси укладки. */
+interface Shelf {
+  growStart: number; // позиция полки по оси роста
+  depth: number; // текущая глубина (max growExtent уложенных единиц)
+  fillUsed: number; // следующая свободная позиция по оси укладки
+}
+
 function packShelf(
   region: Region,
   requests: FloorRequest[],
@@ -96,9 +103,11 @@ function packShelf(
   const fillSpan = mode === 'side' ? region.length : region.width;
   const growSpan = mode === 'side' ? region.width : region.length;
 
-  let growCursor = 0; // начало активной полки по оси роста
-  let fillCursor = 0; // позиция в активной полке по оси укладки
-  let shelfDepth = 0; // максимальный размер по оси роста в активной полке
+  // Best-fit по открытым полкам с backfill (ADR 017): полки не закрываются, единица кладётся в полку
+  // с минимальным остатком по оси укладки среди подходящих (тай-брейк — меньший индекс = ближе к
+  // началу роста). Только последняя полка может углубляться; в более раннюю кладём единицу, лишь если
+  // её глубина уже вмещает (growExtent <= depth), иначе она задела бы следующую полку.
+  const shelves: Shelf[] = [];
 
   for (const req of requests) {
     if (req.count <= 0) continue;
@@ -108,35 +117,44 @@ function packShelf(
     const growExtent = mode === 'side' ? fp.dy : fp.dx;
 
     for (let i = 0; i < req.count; i++) {
-      const fitsCurrent =
-        fillCursor + fillExtent <= fillSpan &&
-        growCursor + Math.max(shelfDepth, growExtent) <= growSpan;
-      if (fitsCurrent) {
-        pushPlacement(out, req.cargoTypeId, fp, mode, fillCursor, growCursor);
-        fillCursor += fillExtent + clearance;
-        if (growExtent > shelfDepth) shelfDepth = growExtent;
+      let best = -1;
+      let bestResidual = Infinity;
+      for (let s = 0; s < shelves.length; s++) {
+        const sh = shelves[s];
+        const canDeepen = s === shelves.length - 1; // только последняя полка растёт в глубину
+        const growFits = canDeepen
+          ? sh.growStart + Math.max(sh.depth, growExtent) <= growSpan
+          : growExtent <= sh.depth;
+        if (sh.fillUsed + fillExtent > fillSpan || !growFits) continue;
+        const residual = fillSpan - (sh.fillUsed + fillExtent);
+        if (residual < bestResidual) {
+          bestResidual = residual;
+          best = s;
+        }
+      }
+      if (best >= 0) {
+        const sh = shelves[best];
+        pushPlacement(out, req.cargoTypeId, fp, mode, sh.fillUsed, sh.growStart);
+        sh.fillUsed += fillExtent + clearance;
+        if (growExtent > sh.depth) sh.depth = growExtent;
         continue;
       }
-      // текущая полка не вмещает — открываем следующую
-      const nextGrow = growCursor + shelfDepth + (shelfDepth > 0 ? clearance : 0);
-      if (nextGrow + growExtent <= growSpan && fillExtent <= fillSpan) {
-        growCursor = nextGrow;
-        fillCursor = 0;
-        shelfDepth = growExtent;
-        pushPlacement(out, req.cargoTypeId, fp, mode, fillCursor, growCursor);
-        fillCursor += fillExtent + clearance;
-      } else {
-        break; // оставшиеся единицы этого запроса не размещаются
-      }
+      // ни одна открытая полка не подходит — открываем новую за последней
+      const last = shelves[shelves.length - 1];
+      const growStart = last ? last.growStart + last.depth + clearance : 0;
+      if (growStart + growExtent > growSpan || fillExtent > fillSpan) break; // единица (и хвост) не влезает
+      pushPlacement(out, req.cargoTypeId, fp, mode, 0, growStart);
+      shelves.push({ growStart, depth: growExtent, fillUsed: fillExtent + clearance });
     }
   }
   return out;
 }
 
 /**
- * Детерминированная shelf/next-fit укладка футпринтов по области пола (ADR 004, 011, 012).
- * Ориентация — по макс-влезанию на уровне типа; ось полки — по `loadingMode`; порядок входа =
- * приоритет (переполнение → хвост не размещается). Координаты — от origin области (0,0).
+ * Детерминированная shelf-укладка футпринтов по области пола (ADR 004/011/012/017): best-fit по
+ * открытым полкам с backfill. Ориентация — по макс-влезанию на уровне типа (+ фильтр доступа
+ * погрузчика, ADR 018); ось полки — по `loadingMode`; порядок входа = приоритет (переполнение →
+ * хвост не размещается). Координаты — от origin области (0,0).
  */
 export function packFloor(
   region: Region,

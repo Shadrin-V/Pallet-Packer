@@ -136,6 +136,30 @@ describe('packFloor — reference fills', () => {
   });
 });
 
+describe('packFloor — dense heuristic: best-fit + backfill (ADR 017)', () => {
+  const r = (id: string, len: number): FloorRequest => ({
+    cargoTypeId: id,
+    length: len,
+    width: 300,
+    rotation: 'none',
+    count: 1,
+  });
+
+  it('backfills an earlier shelf that next-fit abandoned', () => {
+    // side: fill=length(1000), grow=width(650) → two 300-deep shelves fit (0,300), a third (600) does not.
+    // a(400) opens shelf0; b(700) does not fit shelf0's 600 remainder → shelf1; c(700) fits neither and
+    // cannot open shelf2. d(500) fits shelf0's 600mm remainder. Next-fit (active=shelf1) drops d; best-fit
+    // backfills shelf0 → d placed.
+    const region = { length: 1000, width: 650 };
+    const out = packFloor(region, [r('a', 400), r('b', 700), r('c', 700), r('d', 500)], {
+      loadingMode: 'side',
+    });
+    expect(out.map((p) => p.cargoTypeId).sort()).toEqual(['a', 'b', 'd']);
+    const d = out.find((p) => p.cargoTypeId === 'd')!;
+    expect([d.x, d.y]).toEqual([400, 0]); // backfilled into shelf0 (grow 0), after a
+  });
+});
+
 describe('packFloor — fork access (ADR 018)', () => {
   it('rear loading places every two-sided EUR lengthwise (lwh 33), trading density for access', () => {
     const twoSided: FloorRequest = { ...eur(), forkAccess: 'twoSides', forkAxis: 'length' };
@@ -273,6 +297,7 @@ describe('packFloor — property: no geometry violations', () => {
           expect(findGeometryViolations(load, layout)).toEqual([]);
         },
       ),
+      { numRuns: 500 }, // best-fit + backfill is new logic (ADR 017) — stress it harder
     );
   });
 });
