@@ -9,6 +9,7 @@ import type {
   LoadingMode,
   ForkAccess,
   ForkAxis,
+  OrderGrouping,
 } from './constants';
 
 /** Optimisation objective. MVP supports only `maxUnits`. */
@@ -72,6 +73,8 @@ export interface Load {
   clearance?: number;
   /** Loading mode for the vehicle; api-contract 0.4.0. */
   loadingMode?: LoadingMode;
+  /** Order-zone policy; default 'strict' (ADR 016, api-contract 0.10.0). */
+  orderGrouping?: OrderGrouping;
   objective?: Objective;
 }
 

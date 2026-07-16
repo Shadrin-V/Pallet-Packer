@@ -33,6 +33,8 @@ export const TRANSLATION_KEYS = [
   'ladeplan.vehicleInner',
   'ladeplan.orders',
   'ladeplan.loadingMode',
+  'ladeplan.orderGrouping',
+  'ladeplan.orderGroupingHint',
   'ladeplan.mode.rear',
   'ladeplan.mode.side',
   'ladeplan.mode.combined',

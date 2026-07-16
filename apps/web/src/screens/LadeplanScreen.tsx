@@ -3,10 +3,16 @@
 // per-order legend + compact metrics. Full-width sheet; A4 landscape print (theme.css).
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
 import { useEffect, useState } from 'react';
-import { findGeometryViolations, type Layout, type Load, type LoadingMode } from '@shadrin-v/engine';
+import {
+  findGeometryViolations,
+  type Layout,
+  type Load,
+  type LoadingMode,
+  type OrderGrouping,
+} from '@shadrin-v/engine';
 import { formatLength } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
-import { Button } from '../ui/primitives';
+import { Button, InfoHint } from '../ui/primitives';
 import { LoadingModeSwitch } from '../ui/LoadingModeSwitch';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
@@ -38,11 +44,13 @@ export function LadeplanScreen({
   layout,
   onBack,
   onLoadingModeChange,
+  onOrderGroupingChange,
 }: {
   load: Load;
   layout: Layout;
   onBack?: () => void;
   onLoadingModeChange?: (mode: LoadingMode) => void;
+  onOrderGroupingChange?: (grouping: OrderGrouping) => void;
 }) {
   const { locale, tt } = useLocale();
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
@@ -53,12 +61,16 @@ export function LadeplanScreen({
   const onRotateStack = (sel: StackSel) => setEdited((prev) => rotateStack(load, prev, sel));
   const violations = findGeometryViolations(load, edited).length;
 
-  // A strategy change recomputes from scratch, discarding manual edits. `edited !== layout` holds only
-  // after a manual edit (both reset to the same reference on recompute), so warn only when there's loss.
-  const handleLoadingModeChange = (mode: LoadingMode) => {
+  // Any strategy change recomputes from scratch, discarding manual edits. `edited !== layout` holds
+  // only after a manual edit (both reset to the same reference on recompute), so warn only on loss.
+  const withDiscardGuard = (recompute: () => void) => {
     if (edited !== layout && !globalThis.confirm(tt('ladeplan.discardEditsConfirm'))) return;
-    onLoadingModeChange?.(mode);
+    recompute();
   };
+  const handleLoadingModeChange = (mode: LoadingMode) =>
+    withDiscardGuard(() => onLoadingModeChange?.(mode));
+  const handleOrderGroupingChange = (checked: boolean) =>
+    withDiscardGuard(() => onOrderGroupingChange?.(checked ? 'densityFirst' : 'strict'));
 
   const v = load.vehicle;
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
@@ -75,6 +87,18 @@ export function LadeplanScreen({
       <div className="mb-5 flex flex-wrap items-center justify-end gap-2 print:hidden">
         {onLoadingModeChange && (
           <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
+        )}
+        {onOrderGroupingChange && (
+          <label className="inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
+            <input
+              type="checkbox"
+              aria-label={tt('ladeplan.orderGrouping')}
+              checked={(load.orderGrouping ?? 'strict') === 'densityFirst'}
+              onChange={(e) => handleOrderGroupingChange(e.target.checked)}
+            />
+            <span className="truncate">{tt('ladeplan.orderGrouping')}</span>
+            <InfoHint ariaLabel={tt('ladeplan.orderGrouping')} text={tt('ladeplan.orderGroupingHint')} />
+          </label>
         )}
         {onBack && (
           <Button variant="secondary" onClick={onBack}>

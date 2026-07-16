@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { calculateLayout, findGeometryViolations, type Layout, type Load, type LoadingMode } from '@shadrin-v/engine';
+import {
+  calculateLayout,
+  findGeometryViolations,
+  type Layout,
+  type Load,
+  type LoadingMode,
+  type OrderGrouping,
+} from '@shadrin-v/engine';
 import { LocaleProvider } from './i18n/LocaleContext';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
@@ -48,6 +55,11 @@ export function App() {
     onCalculate({ ...result.load, loadingMode: mode });
   };
 
+  const onOrderGroupingChange = (grouping: OrderGrouping) => {
+    if (!result) return;
+    onCalculate({ ...result.load, orderGrouping: grouping });
+  };
+
   return (
     <LocaleProvider initial="de">
       {/* Setup is screen-only; printing yields just the Ladeplan document. */}
@@ -60,6 +72,7 @@ export function App() {
           layout={result.layout}
           onBack={() => setResult(null)}
           onLoadingModeChange={onLoadingModeChange}
+          onOrderGroupingChange={onOrderGroupingChange}
         />
       )}
     </LocaleProvider>

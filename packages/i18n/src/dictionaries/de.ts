@@ -30,6 +30,9 @@ export const de: Dictionary = {
   'ladeplan.vehicleInner': 'Fahrzeug (innen)',
   'ladeplan.orders': 'Aufträge',
   'ladeplan.loadingMode': 'Belademodus',
+  'ladeplan.orderGrouping': 'Dichte vor Auftragstrennung',
+  'ladeplan.orderGroupingHint':
+    'Dichter gepackt, aber Aufträge sind gemischt und müssen beim Entladen sortiert werden.',
   'ladeplan.mode.rear': 'Von hinten',
   'ladeplan.mode.side': 'Von der Seite',
   'ladeplan.mode.combined': 'Automatisch',

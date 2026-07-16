@@ -30,6 +30,9 @@ export const ru: Dictionary = {
   'ladeplan.vehicleInner': 'Кузов (внутри)',
   'ladeplan.orders': 'Заказы',
   'ladeplan.loadingMode': 'Режим загрузки',
+  'ladeplan.orderGrouping': 'Плотность важнее группировки',
+  'ladeplan.orderGroupingHint':
+    'Плотнее, но заказы перемешаны — при разгрузке их придётся разбирать.',
   'ladeplan.mode.rear': 'Сзади',
   'ladeplan.mode.side': 'Сбоку',
   'ladeplan.mode.combined': 'Автоматически',
