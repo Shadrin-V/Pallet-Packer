@@ -52,6 +52,22 @@ describe('crossSection geometry', () => {
     expect(new Set(rects.map((r) => r.depth))).toEqual(new Set([0, 1]));
   });
 
+  it('side view depth: the row nearest the viewer (largest floor y) is the front row (T2)', () => {
+    const rects = sideRects(load, layout, V.height);
+    // Convention: viewer stands at y = width looking towards y = 0 → largest y is nearest → depth 0.
+    for (const x of new Set(rects.map((r) => r.x))) {
+      const col = rects.filter((r) => r.x === x);
+      const maxRowY = Math.max(...col.map((r) => r.rowY!));
+      const front = col.find((r) => r.depth === 0)!;
+      expect(front.rowY).toBe(maxRowY);
+      // and the back row(s) sit at smaller y with a higher depth
+      for (const r of col.filter((r) => r !== front)) {
+        expect(r.rowY!).toBeLessThan(maxRowY);
+        expect(r.depth!).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it('orderIndexMap assigns palette indices by first appearance', () => {
     const m = orderIndexMap(load);
     expect(m.get('SO-1')).toBe(0);

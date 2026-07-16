@@ -15,6 +15,8 @@ export interface CutRect {
   count?: number;
   /** side view only: depth rank of the stack at this x (0 = front row, larger = further back). */
   depth?: number;
+  /** side view only: the stack's floor y (across the width) — the source of `depth`. */
+  rowY?: number;
 }
 
 /** Map each orderId to its palette index (order of first appearance). */
@@ -83,14 +85,17 @@ export function sideRects(load: Load, layout: Layout, vehicleHeight: number): Cu
     if (!cur || top > cur.top) byPos.set(key, { x: p.x, y: p.y, top, w: dx, series: c.series, cargoTypeId: p.cargoTypeId });
   }
   const stacks = [...byPos.values()];
-  // depth = rank of this stack's y among the stacks sharing its x (front row y-min = depth 0)
+  // depth = rank of this stack's y among the stacks sharing its x.
+  // Convention: the side view is taken from the BOTTOM edge of the top view (the viewer stands at
+  // y = width looking towards y = 0). So the row with the LARGEST y is nearest the viewer → depth 0
+  // (drawn last, full opacity); smaller y = further back → higher depth (drawn first, dimmed).
   const ysByX = new Map<number, number[]>();
   for (const s of stacks) {
     const arr = ysByX.get(s.x) ?? [];
     arr.push(s.y);
     ysByX.set(s.x, arr);
   }
-  for (const arr of ysByX.values()) arr.sort((a, b) => a - b);
+  for (const arr of ysByX.values()) arr.sort((a, b) => b - a);
   return stacks.map((s) => ({
     x: s.x,
     y: vehicleHeight - s.top,
@@ -99,5 +104,6 @@ export function sideRects(load: Load, layout: Layout, vehicleHeight: number): Cu
     series: s.series,
     cargoTypeId: s.cargoTypeId,
     depth: ysByX.get(s.x)!.indexOf(s.y),
+    rowY: s.y,
   }));
 }

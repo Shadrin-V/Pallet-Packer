@@ -367,11 +367,15 @@ function PositionRow({
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
+    // Listen on 'click', NOT 'mousedown': collapsing on mousedown reflows the page before mouseup,
+    // so the browser dispatches the click on an ancestor instead of the button the user pressed
+    // (e.g. "+ Position") and its handler never runs. On 'click' the button's React handler (root
+    // delegation) fires first, then this closes the panel.
     const onDoc = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) onSetOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
   }, [open, onSetOpen]);
 
   return (
