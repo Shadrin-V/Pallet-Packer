@@ -41,6 +41,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.fig.load',
   'ladeplan.pltAbbr',
   'ladeplan.notPlaced',
+  'ladeplan.rotateStack',
   'action.print',
   'action.back',
 

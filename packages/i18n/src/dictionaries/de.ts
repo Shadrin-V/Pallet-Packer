@@ -38,6 +38,7 @@ export const de: Dictionary = {
   'ladeplan.fig.load': 'Auslastung',
   'ladeplan.pltAbbr': 'Pal.',
   'ladeplan.notPlaced': '{n} nicht platziert',
+  'ladeplan.rotateStack': 'Stapel drehen',
   'action.print': 'Drucken',
   'action.back': 'Zurück',
 

@@ -12,7 +12,7 @@ import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
 import { Metrics } from './components/Metrics';
 import { orderIndexMap } from './components/cutaway';
-import { moveStack, type StackSel } from './components/dragLayout';
+import { moveStack, rotateStack, type StackSel } from './components/editLayout';
 
 function Figure({ value, label }: { value: string; label: string }) {
   return (
@@ -42,11 +42,12 @@ export function LadeplanScreen({
   onBack?: () => void;
 }) {
   const { locale, tt } = useLocale();
-  // Editable copy for manual stack drag; reset whenever a fresh layout is computed.
+  // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
   useEffect(() => setEdited(layout), [layout]);
   const onMoveStack = (sel: StackSel, toX: number, toY: number) =>
     setEdited((prev) => moveStack(load, prev, sel, toX, toY));
+  const onRotateStack = (sel: StackSel) => setEdited((prev) => rotateStack(load, prev, sel));
   const violations = findGeometryViolations(load, edited).length;
 
   const v = load.vehicle;
@@ -98,7 +99,7 @@ export function LadeplanScreen({
         {/* diagrams — near-full-bleed on print for maximum width */}
         <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} />
+            <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} onRotateStack={onRotateStack} />
           </div>
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} />
