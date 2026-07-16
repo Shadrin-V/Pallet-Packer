@@ -36,6 +36,26 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].state).toBe('entschachtelt');
   });
 
+  it('defaults orientation to free (no fork constraint) and hides the fork-axis control', () => {
+    renderSetup(() => {});
+    expect((screen.getByLabelText('Ausrichtung') as HTMLSelectElement).value).toBe('free');
+    expect(screen.queryByLabelText('Gabelzufahrt')).not.toBeInTheDocument();
+  });
+
+  it('a two-sided orientation sets forkAccess/forkAxis on the built Load (ADR 018)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.selectOptions(screen.getByLabelText('Ausrichtung'), 'twoSided');
+    // the fork-entry axis control now appears
+    expect(screen.getByLabelText('Gabelzufahrt')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].forkAccess).toBe('twoSides');
+    expect(load.cargo[0].forkAxis).toBe('length');
+    expect(load.cargo[0].rotation).toBe('yawOnly');
+  });
+
   it('Verschachtelt without a valid Δh disables Berechnen', async () => {
     renderSetup(() => {});
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));

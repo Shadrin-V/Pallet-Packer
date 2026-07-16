@@ -6,12 +6,20 @@ import type {
   Vehicle,
   CargoType,
   RotationRule,
+  ForkAccess,
+  ForkAxis,
   NestingState,
   NestingMode,
   StackPreview,
 } from '@shadrin-v/engine';
-import { computeStack } from '@shadrin-v/engine';
+import { computeStack, FORK_AXES } from '@shadrin-v/engine';
 import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components/stackFormula';
+import {
+  ORIENTATION_CHOICES,
+  orientationChoiceOf,
+  orientationFieldsFor,
+  type OrientationChoice,
+} from './components/orientationChoice';
 import { StackDiagram } from './components/StackDiagram';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
@@ -34,6 +42,8 @@ export interface PositionState {
   quantity: Num;
   state: NestingState;
   rotation: RotationRule;
+  forkAccess?: ForkAccess; // forklift access (ADR 018); undefined = all4
+  forkAxis?: ForkAxis; // fork-entry axis for a two-sided pallet; default 'length'
   stepHeight: Num; // nesting step: Δh (sequential) or h_д (pairwise)
   nestingMode: NestingMode;
   maxNested: Num; // nesting cap
@@ -94,6 +104,7 @@ const emptyPosition = (): PositionState => ({
   quantity: 1,
   state: 'entschachtelt',
   rotation: 'yawOnly',
+  forkAxis: 'length',
   stepHeight: '',
   nestingMode: 'pairwise',
   maxNested: '',
@@ -120,6 +131,9 @@ function toCargo(p: PositionState, orderId: string): CargoType {
     height: numOr0(p.height),
     quantity: numOr0(p.quantity),
     rotation: p.rotation,
+    ...(p.forkAccess === 'twoSides'
+      ? { forkAccess: 'twoSides' as const, forkAxis: p.forkAxis ?? 'length' }
+      : {}),
     stacking: { stackable: true, ...(numOr0(p.maxTiers) > 0 ? { maxTiers: numOr0(p.maxTiers) } : {}) },
     nesting: nestable
       ? {
@@ -203,12 +217,6 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     onCalculate({ vehicle, cargo });
   };
 
-  const rotationOptions = [
-    { value: 'none' as RotationRule, label: tt('cargoType.rotation.none') },
-    { value: 'yawOnly' as RotationRule, label: tt('cargoType.rotation.yawOnly') },
-    { value: 'full' as RotationRule, label: tt('cargoType.rotation.full') },
-  ];
-
   return (
     <>
       <HeroHeader />
@@ -251,7 +259,6 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             order={o}
             index={oi}
             vehicle={vehicle}
-            rotationOptions={rotationOptions}
             userPallets={userPallets}
             onSavePreset={(p) => setUserPallets(addUserPallet(p))}
             onDeletePreset={(key) => setUserPallets(removeUserPallet(key))}
@@ -295,7 +302,6 @@ function OrderCard({
   order,
   index,
   vehicle,
-  rotationOptions,
   userPallets,
   onSavePreset,
   onDeletePreset,
@@ -307,7 +313,6 @@ function OrderCard({
   order: OrderState;
   index: number;
   vehicle: Vehicle;
-  rotationOptions: { value: RotationRule; label: string }[];
   userPallets: DimPreset[];
   onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
   onDeletePreset: (key: string) => void;
@@ -336,7 +341,6 @@ function OrderCard({
             position={p}
             index={index}
             vehicle={vehicle}
-            rotationOptions={rotationOptions}
             userPallets={userPallets}
             onSavePreset={onSavePreset}
             onDeletePreset={onDeletePreset}
@@ -367,7 +371,6 @@ function PositionRow({
   position: p,
   index,
   vehicle,
-  rotationOptions,
   userPallets,
   onSavePreset,
   onDeletePreset,
@@ -379,7 +382,6 @@ function PositionRow({
   position: PositionState;
   index: number;
   vehicle: Vehicle;
-  rotationOptions: { value: RotationRule; label: string }[];
   userPallets: DimPreset[];
   onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
   onDeletePreset: (key: string) => void;
@@ -460,10 +462,28 @@ function PositionRow({
             { value: 'verschachtelt', label: tt('setup.state.ver') },
           ]}
         />
-        {/* fixed width + truncate so a long RU rotation label can't blow out the row width */}
+        {/* Orientation = rotation + forklift access as one choice (ADR 018). Fixed width + truncate so
+            a long RU label can't blow out the row; the fork-axis picker appears only for two-sided. */}
         <span className="w-[10.5rem] shrink-0">
-          <Select ariaLabel={tt('cargoType.rotation.label')} value={p.rotation} onChange={(rotation) => onChange({ rotation })} options={rotationOptions} className="w-full" />
+          <Select
+            ariaLabel={tt('cargoType.orientation.label')}
+            value={orientationChoiceOf(p.rotation, p.forkAccess)}
+            onChange={(choice) => onChange(orientationFieldsFor(choice as OrientationChoice))}
+            options={ORIENTATION_CHOICES.map((c) => ({ value: c, label: tt(`cargoType.orientation.${c}`) }))}
+            className="w-full"
+          />
         </span>
+        {orientationChoiceOf(p.rotation, p.forkAccess) === 'twoSided' && (
+          <span className="w-[8.5rem] shrink-0">
+            <Select
+              ariaLabel={tt('cargoType.forkAxis.label')}
+              value={p.forkAxis ?? 'length'}
+              onChange={(forkAxis) => onChange({ forkAxis: forkAxis as ForkAxis })}
+              options={FORK_AXES.map((a) => ({ value: a, label: tt(`cargoType.forkAxis.${a}`) }))}
+              className="w-full"
+            />
+          </span>
+        )}
         {preview && preview.count > 0 && (
           <Chip tone={p.state === 'verschachtelt' ? 'mint' : 'default'}>
             {tt('setup.stack')} {preview.count}
