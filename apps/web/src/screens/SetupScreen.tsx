@@ -18,7 +18,8 @@ import { OrderSwatch } from '../lib/swatch';
 import { orderColorToken } from '../lib/orderColor';
 import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
-import { VEHICLE_PRESETS, PALLET_PRESETS } from '../data/presets';
+import { VEHICLE_PRESETS, PALLET_PRESETS, type DimPreset } from '../data/presets';
+import { loadUserPallets, addUserPallet, removeUserPallet, isUserPreset } from '../data/userPresets';
 import { demoSetup } from '../data/demo';
 
 // ---- state model ----------------------------------------------------------
@@ -141,6 +142,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   const defaultVehicle = (): Vehicle => ({ id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height });
   const [vehicle, setVehicle] = useState<Vehicle>(() => initialVehicle ?? loadSetup()?.vehicle ?? defaultVehicle());
   const [orders, setOrders] = useState<OrderState[]>(() => initialOrders ?? loadSetup()?.orders ?? [emptyOrder(1)]);
+  // User pallet catalogue (T4): kept at screen level so a preset saved in one row shows up in the
+  // dropdowns of all the others. Reset clears the draft, never this catalogue.
+  const [userPallets, setUserPallets] = useState<DimPreset[]>(() => loadUserPallets());
 
   // Persist the working draft on every change so a page refresh does not lose input.
   useEffect(() => {
@@ -248,6 +252,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             index={oi}
             vehicle={vehicle}
             rotationOptions={rotationOptions}
+            userPallets={userPallets}
+            onSavePreset={(p) => setUserPallets(addUserPallet(p))}
+            onDeletePreset={(key) => setUserPallets(removeUserPallet(key))}
             tt={tt}
             onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
             onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
@@ -289,6 +296,9 @@ function OrderCard({
   index,
   vehicle,
   rotationOptions,
+  userPallets,
+  onSavePreset,
+  onDeletePreset,
   tt,
   onOrderIdChange,
   onPositionChange,
@@ -298,6 +308,9 @@ function OrderCard({
   index: number;
   vehicle: Vehicle;
   rotationOptions: { value: RotationRule; label: string }[];
+  userPallets: DimPreset[];
+  onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
+  onDeletePreset: (key: string) => void;
   tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
   onOrderIdChange: (v: string) => void;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
@@ -324,6 +337,9 @@ function OrderCard({
             index={index}
             vehicle={vehicle}
             rotationOptions={rotationOptions}
+            userPallets={userPallets}
+            onSavePreset={onSavePreset}
+            onDeletePreset={onDeletePreset}
             tt={tt}
             open={openId === p.id}
             onSetOpen={(o) => setOpenId(o ? p.id : null)}
@@ -352,6 +368,9 @@ function PositionRow({
   index,
   vehicle,
   rotationOptions,
+  userPallets,
+  onSavePreset,
+  onDeletePreset,
   tt,
   open,
   onSetOpen,
@@ -361,12 +380,20 @@ function PositionRow({
   index: number;
   vehicle: Vehicle;
   rotationOptions: { value: RotationRule; label: string }[];
+  userPallets: DimPreset[];
+  onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
+  onDeletePreset: (key: string) => void;
   tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
   open: boolean;
   onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
 }) {
   const dimsPresent = numOr0(p.length) > 0 && numOr0(p.width) > 0 && numOr0(p.height) > 0;
+  // Built-ins and the user catalogue behave alike: a preset is "selected" when its dimensions match.
+  const allPallets = [...PALLET_PRESETS, ...userPallets];
+  const currentPreset = allPallets.find(
+    (pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height,
+  );
   const invalid = stepInvalid(p.state, p.stepHeight, p.height);
   let preview: StackPreview | null = null;
   if (dimsPresent && !invalid) {
@@ -400,17 +427,17 @@ function PositionRow({
         <OrderSwatch index={index} width={12} height={26} />
         <Select
           ariaLabel={tt('cargoType.label')}
-          value={PALLET_PRESETS.find((pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height)?.key ?? 'custom'}
+          value={currentPreset?.key ?? 'custom'}
           onChange={(key) => {
             // Picking another article collapses the nesting-rules panel (E16).
             onSetOpen(false);
-            const preset = PALLET_PRESETS.find((pp) => pp.key === key);
+            const preset = allPallets.find((pp) => pp.key === key);
             if (preset)
               onChange({ name: p.name || preset.name, length: preset.length, width: preset.width, height: preset.height });
           }}
           options={[
             { value: 'custom', label: tt('setup.vehiclePreset.custom') },
-            ...PALLET_PRESETS.map((pp) => ({ value: pp.key, label: pp.name })),
+            ...allPallets.map((pp) => ({ value: pp.key, label: pp.name })),
           ]}
         />
         <span className="min-w-[5.5rem] flex-1">
@@ -501,6 +528,33 @@ function PositionRow({
               </>
             )}
           </div>
+
+          {/* pallet catalogue actions — in the details panel, the row itself is already at its
+              width limit (long RU labels). Name comes from the article field, fallback L×W×H. */}
+          {dimsPresent && !currentPreset && (
+            <div>
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  onSavePreset({
+                    name: p.name || `${numOr0(p.length)}×${numOr0(p.width)}×${numOr0(p.height)}`,
+                    length: numOr0(p.length),
+                    width: numOr0(p.width),
+                    height: numOr0(p.height),
+                  })
+                }
+              >
+                {tt('setup.savePreset')}
+              </Button>
+            </div>
+          )}
+          {currentPreset && isUserPreset(currentPreset.key) && (
+            <div>
+              <Button variant="ghost" onClick={() => onDeletePreset(currentPreset.key)}>
+                {tt('setup.deletePreset')}
+              </Button>
+            </div>
+          )}
 
           {/* validation hint + live formula */}
           {p.state === 'verschachtelt' && (
