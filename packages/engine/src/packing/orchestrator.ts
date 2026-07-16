@@ -102,6 +102,8 @@ export function packLoad(load: Load): Layout {
         width: c.width,
         rotation: c.rotation,
         count: c.fill ? 1_000_000 : Math.ceil(c.quantity / S),
+        forkAccess: c.forkAccess,
+        forkAxis: c.forkAxis,
       };
       (c.fill ? fillReqs : requests).push(req);
     }

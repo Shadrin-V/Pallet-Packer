@@ -23,3 +23,11 @@ export type Orientation = (typeof ORIENTATIONS)[number];
 /** Loading mode for the vehicle (api-contract 0.4.0). */
 export const LOADING_MODES = ['rear', 'side', 'combined'] as const;
 export type LoadingMode = (typeof LOADING_MODES)[number];
+
+/** Forklift access to a stack: all four sides, or only two opposite sides (ADR 018, api-contract 0.11.0). */
+export const FORK_ACCESS = ['all4', 'twoSides'] as const;
+export type ForkAccess = (typeof FORK_ACCESS)[number];
+
+/** For a two-sided stack, the pallet axis the forks run along (accessible faces are normal to it). */
+export const FORK_AXES = ['length', 'width'] as const;
+export type ForkAxis = (typeof FORK_AXES)[number];

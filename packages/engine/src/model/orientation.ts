@@ -1,5 +1,11 @@
 // Rotation → orientation mapping (single source; ADR 013). Consumed by geometry, validation, packing.
-import { type Orientation, type RotationRule, ORIENTATIONS } from './constants';
+import {
+  type Orientation,
+  type RotationRule,
+  type LoadingMode,
+  type ForkAxis,
+  ORIENTATIONS,
+} from './constants';
 
 /**
  * Orientations a rotation rule notionally permits. Lenient: `full` → all six (used by validation's
@@ -25,6 +31,19 @@ export function allowedOrientations(rotation: RotationRule): Orientation[] {
  */
 export function floorOrientations(rotation: RotationRule): Array<'lwh' | 'wlh'> {
   return rotation === 'none' ? ['lwh'] : ['lwh', 'wlh'];
+}
+
+/**
+ * Yaw orientation a two-sided stack is pinned to so its fork-entry axis faces the loading door
+ * (ADR 018). `combined` (both doors available) leaves either yaw accessible → returns null (no pin).
+ * Single source shared by the packer (chooseOrientation) and the geometry validator.
+ */
+export function forkPinnedOrientation(mode: LoadingMode, axis: ForkAxis): 'lwh' | 'wlh' | null {
+  if (mode === 'combined') return null;
+  // rear door → forks run along x (truck length); side door → along y (width). Axis 'length' aligns
+  // the pallet's length with that axis, 'width' its width.
+  if (mode === 'rear') return axis === 'length' ? 'lwh' : 'wlh';
+  return axis === 'length' ? 'wlh' : 'lwh'; // side
 }
 
 /** Map an orientation (axis order l/w/h → x/y/z) to (dx, dy, dz) from base length/width/height. */

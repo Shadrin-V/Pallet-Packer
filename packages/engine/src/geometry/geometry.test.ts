@@ -98,3 +98,32 @@ describe('findGeometryViolations (qrd.9)', () => {
     expect(kinds(load([cargoA, cargoB]), layout([a, b]))).toContain('overlap');
   });
 });
+
+describe('findGeometryViolations — fork access (ADR 018)', () => {
+  const twoSided = (over: Partial<CargoType> = {}) =>
+    cargo({ id: 'a', rotation: 'yawOnly', forkAccess: 'twoSides', forkAxis: 'length', ...over });
+  const withMode = (mode: Load['loadingMode'], cargos: CargoType[]): Load => ({
+    ...load(cargos),
+    loadingMode: mode,
+  });
+
+  it('flags a two-sided pallet oriented against its pinned orientation under rear', () => {
+    const l = withMode('rear', [twoSided()]);
+    expect(kinds(l, layout([place({ orientation: 'wlh' })]))).toContain('fork-access');
+  });
+
+  it('accepts the pinned orientation under rear', () => {
+    const l = withMode('rear', [twoSided()]);
+    expect(kinds(l, layout([place({ orientation: 'lwh' })]))).not.toContain('fork-access');
+  });
+
+  it('does not constrain orientation under combined (both doors available)', () => {
+    const l = withMode('combined', [twoSided()]);
+    expect(kinds(l, layout([place({ orientation: 'wlh' })]))).not.toContain('fork-access');
+  });
+
+  it('does not constrain all4 access', () => {
+    const l = withMode('rear', [twoSided({ forkAccess: 'all4' })]);
+    expect(kinds(l, layout([place({ orientation: 'wlh' })]))).not.toContain('fork-access');
+  });
+});

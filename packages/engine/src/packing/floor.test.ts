@@ -46,6 +46,57 @@ describe('chooseOrientation (max-fit, ADR 011)', () => {
   });
 });
 
+describe('chooseOrientation — fork access (ADR 018)', () => {
+  // In REGION, an unpinned EUR maximises fill at wlh (34 > 33 lwh). A two-sided stack must present its
+  // accessible pair to the loading door, so fork access can override that max-fit choice.
+  const eur = (over: Partial<FloorRequest> = {}) =>
+    req({ length: 1200, width: 800, rotation: 'yawOnly', ...over });
+
+  it('all4 (default) leaves the max-fit choice untouched: EUR → wlh', () => {
+    expect(chooseOrientation(eur(), REGION, 0, 'rear').orientation).toBe('wlh');
+  });
+
+  it('twoSides + forkAxis length pins to lwh under rear', () => {
+    const fp = chooseOrientation(eur({ forkAccess: 'twoSides', forkAxis: 'length' }), REGION, 0, 'rear');
+    expect(fp.orientation).toBe('lwh');
+    expect([fp.dx, fp.dy]).toEqual([1200, 800]);
+  });
+
+  it('twoSides + forkAxis length pins to wlh under side', () => {
+    const fp = chooseOrientation(eur({ forkAccess: 'twoSides', forkAxis: 'length' }), REGION, 0, 'side');
+    expect(fp.orientation).toBe('wlh');
+  });
+
+  it('twoSides + forkAxis width pins to wlh under rear', () => {
+    const fp = chooseOrientation(eur({ forkAccess: 'twoSides', forkAxis: 'width' }), REGION, 0, 'rear');
+    expect(fp.orientation).toBe('wlh');
+  });
+
+  it('twoSides + forkAxis width pins to lwh under side', () => {
+    const fp = chooseOrientation(eur({ forkAccess: 'twoSides', forkAxis: 'width' }), REGION, 0, 'side');
+    expect(fp.orientation).toBe('lwh');
+  });
+
+  it('defaults forkAxis to length when omitted', () => {
+    expect(chooseOrientation(eur({ forkAccess: 'twoSides' }), REGION, 0, 'rear').orientation).toBe('lwh');
+  });
+
+  it('combined does not pin — both doors keep either yaw accessible → max-fit (wlh)', () => {
+    const fp = chooseOrientation(eur({ forkAccess: 'twoSides', forkAxis: 'length' }), REGION, 0, 'combined');
+    expect(fp.orientation).toBe('wlh');
+  });
+
+  it('rotation none takes precedence: no yaw to constrain, stays lwh', () => {
+    const fp = chooseOrientation(
+      eur({ forkAccess: 'twoSides', forkAxis: 'width', rotation: 'none' }),
+      REGION,
+      0,
+      'rear',
+    );
+    expect(fp.orientation).toBe('lwh');
+  });
+});
+
 import { packFloor, type FloorPlacement } from './floor';
 
 function eur(count = 100000): FloorRequest {
@@ -82,6 +133,19 @@ describe('packFloor — reference fills', () => {
 
   it('respects requested count', () => {
     expect(packFloor(REGION, [eur(10)], { loadingMode: 'side' })).toHaveLength(10);
+  });
+});
+
+describe('packFloor — fork access (ADR 018)', () => {
+  it('rear loading places every two-sided EUR lengthwise (lwh 33), trading density for access', () => {
+    const twoSided: FloorRequest = { ...eur(), forkAccess: 'twoSides', forkAxis: 'length' };
+    const out = packFloor(REGION, [twoSided], { loadingMode: 'rear' });
+    expect(out).toHaveLength(33); // lwh (33), not the max-fit wlh (34)
+    expect(out.every((p) => p.orientation === 'lwh')).toBe(true);
+  });
+
+  it('all4 EUR keeps the max-fit 34 under rear (default, no constraint)', () => {
+    expect(packFloor(REGION, [eur()], { loadingMode: 'rear' })).toHaveLength(34);
   });
 });
 

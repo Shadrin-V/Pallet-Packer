@@ -191,6 +191,30 @@ describe('packLoad (qrd.7)', () => {
     expect(layout.metrics.totalPlaced).toBe(0);
   });
 
+  it('fork access: a two-sided pallet is pinned lengthwise under rear and stays geometry-clean (ADR 018)', () => {
+    const l = load({
+      vehicle: { id: 'v', name: 'V', length: 2400, width: 1200, height: 1000 },
+      cargo: [
+        cargo({
+          id: 'eur',
+          length: 1200,
+          width: 800,
+          height: 1000,
+          quantity: 4,
+          rotation: 'yawOnly',
+          forkAccess: 'twoSides',
+          forkAxis: 'length',
+        }),
+      ],
+      loadingMode: 'rear',
+    });
+    const layout = packLoad(l);
+    // Unpinned max-fit would rotate to wlh (3 across); access pins every unit to lwh (2 across).
+    expect(layout.placements.length).toBeGreaterThan(0);
+    expect(layout.placements.every((p) => p.orientation === 'lwh')).toBe(true);
+    expect(findGeometryViolations(l, layout)).toEqual([]);
+  });
+
   it('zones: orderId groups sit in adjacent x-ranges, A before B', () => {
     const l = load({
       vehicle: { id: 'v', name: 'V', length: 4000, width: 1000, height: 1000 },

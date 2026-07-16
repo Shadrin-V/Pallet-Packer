@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest';
 import * as engine from './index';
 
 describe('@shadrin-v/engine bootstrap', () => {
-  it('exposes the API contract version 0.9.0', () => {
-    expect(engine.ENGINE_CONTRACT_VERSION).toBe('0.9.0');
+  it('exposes the API contract version 0.11.0', () => {
+    expect(engine.ENGINE_CONTRACT_VERSION).toBe('0.11.0');
+  });
+
+  it('exposes the fork-access constants (ADR 018)', () => {
+    expect(engine.FORK_ACCESS).toEqual(['all4', 'twoSides']);
+    expect(engine.FORK_AXES).toEqual(['length', 'width']);
   });
 
   it('exposes the public API surface', () => {

@@ -1,8 +1,8 @@
 import type { Layout, Load, Placement } from '../model/index';
-import { allowedOrientations, orientedDims } from '../model/orientation';
+import { allowedOrientations, forkPinnedOrientation, orientedDims } from '../model/orientation';
 
 export interface GeometryViolation {
-  kind: 'out-of-bounds' | 'overlap' | 'orientation';
+  kind: 'out-of-bounds' | 'overlap' | 'orientation' | 'fork-access';
   details: Record<string, unknown>;
 }
 
@@ -40,6 +40,23 @@ export function findGeometryViolations(load: Load, layout: Layout): GeometryViol
         kind: 'orientation',
         details: { cargoTypeId: c.id, orientation: p.orientation, rotation: c.rotation },
       });
+    }
+
+    // Fork access (ADR 018): a two-sided stack must present its accessible pair to the loading door,
+    // pinning its yaw orientation under a single-door mode. Only footprint-yaw placements are checked.
+    if (c.forkAccess === 'twoSides' && (p.orientation === 'lwh' || p.orientation === 'wlh')) {
+      const pinned = forkPinnedOrientation(load.loadingMode ?? 'combined', c.forkAxis ?? 'length');
+      if (pinned !== null && p.orientation !== pinned) {
+        violations.push({
+          kind: 'fork-access',
+          details: {
+            cargoTypeId: c.id,
+            orientation: p.orientation,
+            loadingMode: load.loadingMode ?? 'combined',
+            forkAxis: c.forkAxis ?? 'length',
+          },
+        });
+      }
     }
 
     if (
