@@ -22,3 +22,4 @@
 | 015 | [Полноценное приложение + интеграция ERPNext (B→A)](015-fullstack-app-erpnext.md)         | Принято |
 | 016 | [Ослабление смежности зон заказов (orderGrouping)](016-order-grouping-density-toggle.md)  | Принято |
 | 017 | [Плотная напольная эвристика: best-fit + backfill](017-dense-floor-heuristic.md)          | Принято |
+| 018 | [Доступ погрузчика как ограничение ориентации (forkAccess)](018-fork-access-orientation.md) | Принято |
