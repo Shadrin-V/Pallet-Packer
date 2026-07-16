@@ -50,4 +50,13 @@ describe('App shell (single page)', () => {
     await userEvent.click(toggle);
     expect(JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}').orderGrouping).toBe('strict');
   });
+
+  it('clicking the order-grouping info hint does not toggle the strategy', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    // The hint's "i" button shares the aria-label but is a button, not the checkbox.
+    await userEvent.click(screen.getByRole('button', { name: 'Dichte vor Auftragstrennung' }));
+    expect((screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }) as HTMLInputElement).checked).toBe(false);
+  });
 });
