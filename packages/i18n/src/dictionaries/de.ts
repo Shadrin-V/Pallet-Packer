@@ -25,7 +25,8 @@ export const de: Dictionary = {
   'setup.demo.nestingHint': 'Verschachtelt neben entschachtelt, sequenziell und paarweise, Limits für Ebenen und Verschachtelung.',
   'setup.demo.overload': 'Überladung',
   'setup.demo.overloadHint': 'Mehr Ladung als hineinpasst — nicht platzierte Paletten und Gabelzugang von 2 Seiten.',
-  'setup.demoLoaded': 'Demo {n}/{total}: {name} — nochmal klicken für die nächste.',
+  'setup.demoLoaded': 'Demo {n}/{total}: {name} —',
+  'setup.demoNext': 'Nochmal klicken für die nächste Demo.',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
@@ -39,12 +40,14 @@ export const de: Dictionary = {
   'ladeplan.vehicleInner': 'Fahrzeug (innen)',
   'ladeplan.orders': 'Aufträge',
   'ladeplan.loadingMode': 'Belademodus',
+  'ladeplan.loadingModeHint':
+    'Von welcher Seite be- und entladen wird. «Von hinten»: nur die Hecktür — Reihen wachsen von vorne zur Tür. «Von der Seite»: nur die Plane. «Hinten und Seite»: beide offen — es werden beide Varianten gerechnet und die dichtere gezeigt.',
   'ladeplan.orderGrouping': 'Dichte vor Auftragstrennung',
   'ladeplan.orderGroupingHint':
     'Dichter gepackt, aber Aufträge sind gemischt und müssen beim Entladen sortiert werden.',
   'ladeplan.mode.rear': 'Von hinten',
   'ladeplan.mode.side': 'Von der Seite',
-  'ladeplan.mode.combined': 'Automatisch',
+  'ladeplan.mode.combined': 'Hinten und Seite',
   'ladeplan.fig.pallets': 'Paletten',
   'ladeplan.fig.positions': 'Stellplätze',
   'ladeplan.fig.load': 'Auslastung',

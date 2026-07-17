@@ -25,7 +25,8 @@ export const ru: Dictionary = {
   'setup.demo.nestingHint': 'Вложенное рядом с невложенным, последовательно и парами, лимиты ярусов и вложений.',
   'setup.demo.overload': 'Перегруз',
   'setup.demo.overloadHint': 'Груза больше, чем влезает — неразмещённые поддоны и заход вил с 2 сторон.',
-  'setup.demoLoaded': 'Демо {n}/{total}: {name} — нажмите ещё раз для следующего.',
+  'setup.demoLoaded': 'Демо {n}/{total}: {name} —',
+  'setup.demoNext': 'Нажмите ещё раз для следующего варианта.',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',
@@ -39,12 +40,14 @@ export const ru: Dictionary = {
   'ladeplan.vehicleInner': 'Кузов (внутри)',
   'ladeplan.orders': 'Заказы',
   'ladeplan.loadingMode': 'Режим загрузки',
+  'ladeplan.loadingModeHint':
+    'С какой стороны грузят и разгружают. «Сзади»: только задняя дверь — ряды растут от передка к двери. «Сбоку»: только тент. «Сзади и сбоку»: открыты обе — считаются оба варианта, показывается более плотный.',
   'ladeplan.orderGrouping': 'Плотность важнее группировки',
   'ladeplan.orderGroupingHint':
     'Плотнее, но заказы перемешаны — при разгрузке их придётся разбирать.',
   'ladeplan.mode.rear': 'Сзади',
   'ladeplan.mode.side': 'Сбоку',
-  'ladeplan.mode.combined': 'Автоматически',
+  'ladeplan.mode.combined': 'Сзади и сбоку',
   'ladeplan.fig.pallets': 'Поддоны',
   'ladeplan.fig.positions': 'Места',
   'ladeplan.fig.load': 'Заполнение',

@@ -28,6 +28,7 @@ export const TRANSLATION_KEYS = [
   'setup.demo.overload',
   'setup.demo.overloadHint',
   'setup.demoLoaded',
+  'setup.demoNext',
 
   // Ladeplan / result screen
   'ladeplan.title',
@@ -42,6 +43,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.vehicleInner',
   'ladeplan.orders',
   'ladeplan.loadingMode',
+  'ladeplan.loadingModeHint',
   'ladeplan.orderGrouping',
   'ladeplan.orderGroupingHint',
   'ladeplan.mode.rear',
