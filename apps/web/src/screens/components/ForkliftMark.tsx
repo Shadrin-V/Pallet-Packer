@@ -10,13 +10,13 @@ export function ForkliftMark({ x, y }: { x: number; y: number }) {
   const bodyW = 2300;
   const bodyH = 1150;
   const forkL = 1200;
-  const stroke = 'var(--line-strong)';
+  const stroke = 'var(--muted)';
   return (
     <g
       transform={`translate(${x} ${y})`}
       aria-hidden="true"
       style={{ pointerEvents: 'none' }}
-      opacity={0.18}
+      opacity={0.45}
       fill="none"
       stroke={stroke}
       strokeWidth={1.5}

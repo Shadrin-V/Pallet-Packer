@@ -9,9 +9,15 @@
 //
 // The 1:1 scale is structural, not measured: this SVG's viewBox is exactly as wide as the hold's
 // (vehicle.length) and both render at width:100% inside the same column, so the mm→px factor is
-// identical by construction. A test pins that equality — if the widths drift, the scale drifts
-// silently. The floor grows in DEPTH instead, which is also what keeps it from reading as a second
-// truck: three rows of EPAL are ~2800 mm against the hold's 2430.
+// identical by construction. The floor grows in DEPTH instead, which is also what keeps it from
+// reading as a second truck: three rows of EPAL are ~2800 mm against the hold's 2430.
+//
+// That construction is fragile in one specific way, and it has already bitten once: ANY horizontal
+// padding, border or scrollbar between this section and the column narrows the svg, and the scale
+// drifts while the viewBox still matches. So the section carries no horizontal padding or border —
+// the header is padded on its own — and the floor does not scroll: a scrollbar that takes width
+// (Windows, Linux) would silently break the very thing this surface exists to promise. A unit test
+// can only pin the viewBox; the pixels are checked in a real browser.
 //
 // It is a workbench, not a document: screen-only (print:hidden), and the PNG export ignores it — it
 // picks up `svg[data-cutaway]` only, and nothing here carries that marker.
@@ -83,9 +89,9 @@ export function WarehouseFloor({
     <section
       aria-label={tt('warehouse.title')}
       data-testid="warehouse-floor"
-      className="select-none rounded-card border border-line bg-sub px-4 py-3 print:hidden"
+      className="select-none rounded-card bg-sub py-3 print:hidden"
     >
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4">
         <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
         {total > 0 && (
           <span className="text-caption font-semibold text-danger" data-testid="warehouse-count">
@@ -98,9 +104,7 @@ export function WarehouseFloor({
       </div>
 
       {total > 0 && (
-        // The floor is capped on screen and scrolls: 108 unplaced pallets are three metres of yard,
-        // and they must not push the plan itself off the page.
-        <div className="max-h-[340px] overflow-y-auto">
+        <div>
           <svg
             viewBox={`0 0 ${floor.width} ${floor.height}`}
             width="100%"
