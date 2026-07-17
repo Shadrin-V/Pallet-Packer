@@ -2,7 +2,17 @@
 import { useState, type ReactNode } from 'react';
 
 /** Small "i" info button that reveals a hint popover on click (keyboard-accessible). */
-export function InfoHint({ text, ariaLabel }: { text: string; ariaLabel: string }) {
+export function InfoHint({
+  text,
+  ariaLabel,
+  align = 'left',
+}: {
+  text: string;
+  ariaLabel: string;
+  /** Which edge to anchor the tooltip on. 'right' opens it leftward so a hint near the right edge of
+   *  its container is not clipped (QA: two-sided orientation hint). Default 'left' opens rightward. */
+  align?: 'left' | 'right';
+}) {
   const [open, setOpen] = useState(false);
   return (
     <span className="relative inline-flex align-middle">
@@ -19,7 +29,7 @@ export function InfoHint({ text, ariaLabel }: { text: string; ariaLabel: string 
       {open && (
         <span
           role="tooltip"
-          className="absolute left-0 top-6 z-20 w-64 rounded-ctl border border-line bg-card p-2.5 text-caption font-normal normal-case tracking-normal text-muted shadow-pop"
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-6 z-20 w-64 rounded-ctl border border-line bg-card p-2.5 text-caption font-normal normal-case tracking-normal text-muted shadow-pop`}
         >
           {text}
         </span>

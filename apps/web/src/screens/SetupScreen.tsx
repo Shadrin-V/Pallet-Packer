@@ -541,6 +541,7 @@ function PositionRow({
             <InfoHint
               ariaLabel={tt('cargoType.orientation.twoSided')}
               text={tt('cargoType.orientation.twoSidedHint')}
+              align="right"
             />
           </>
         )}
