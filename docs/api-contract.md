@@ -2,7 +2,7 @@
 
 > Граница между ядром `@shadrin-v/engine`, UI (Lovable) и будущим MCP-сервером.
 > Это источник истины по формам входа/выхода. **Ломающее изменение → ADR + правка этого файла
-> до реализации.** Версия контракта: `0.11.0` (аддитивно; полная история версий — в конце файла).
+> до реализации.** Версия контракта: `0.12.0` (аддитивно; полная история версий — в конце файла).
 
 Единицы: все линейные размеры — **целые миллиметры**. Координаты — от угла грузового отсека
 (`x` — длина, `y` — ширина, `z` — высота). Движок текст не возвращает — только данные и коды ошибок.
@@ -189,9 +189,42 @@ interface Report {
 | `computeStack`      | `CargoType`,`Vehicle`| `StackPreview`    | Предпросмотр вертикального штабеля (2.5D)   |
 | `orientedDims`      | `l,w,h,Orientation`  | `[dx,dy,dz]`      | Габариты единицы в ориентации (для отрисовки видов) |
 | `findGeometryViolations` | `Load`,`Layout` | `GeometryViolation[]` | Проверка (в т.ч. отредактированной вручную) раскладки |
+| `moveStack`         | `Load`,`Layout`,`StackRef`,`x`,`y` | `EditResult` | Ручная правка: перенести стопку ([ADR 019](adr/019-manual-layout-editing-api.md)) |
+| `rotateStack`       | `Load`,`Layout`,`StackRef` | `EditResult` | Ручная правка: повернуть стопку на 90° (yaw) |
+| `unplaceStack`      | `Load`,`Layout`,`StackRef` | `EditResult` | Снять стопку с пола → единицы уходят в `unplaced` |
+| `placeStack`        | `Load`,`Layout`,`PlaceStackSpec` | `EditResult` | Поставить стопку из неразмещённых в `(x,y)` |
+| `stackBuffer`       | `Load`,`Layout`      | `BufferStack[]`   | Неразмещённое, собранное в стопки (буфер) |
 
 В MVP `list/upsert` работают против браузерного хранилища (IndexedDB) на стороне UI; чистая
 функция ядра — `calculateLayout` и `getLayoutReport`. Формы входа/выхода стабильны для всех сред.
+
+### Операции ручной правки (0.12.0, [ADR 019](adr/019-manual-layout-editing-api.md))
+
+Алгебра правок раскладки — в ядре: UI отвечает за указатель и snap, правила — за движком.
+
+```ts
+interface StackRef { cargoTypeId: string; x: number; y: number }   // колонка = cargoTypeId + x + y
+
+interface PlaceStackSpec {
+  cargoTypeId: string;
+  x: number;
+  y: number;
+  orientation: 'lwh' | 'wlh';   // только yaw (ADR 013)
+  units?: number;               // по умолчанию — полная стопка, но не больше, чем есть в unplaced
+}
+
+interface EditResult { layout: Layout; error?: EngineError }        // отказ → ИСХОДНЫЙ layout + код
+
+interface BufferStack { cargoTypeId: string; units: number }        // порядок = порядок cargo в Load
+```
+
+**Инварианты правок.** Любой результат геометрически валиден (`findGeometryViolations === []`),
+иначе операция отказывает и возвращает исходный `layout` с кодом причины. Правила
+`nesting`/`stacking`/`rotation`/`forkAccess` не ослабляются. Колонка строится тем же кодом, что и у
+упаковщика (высота — `computeVerticalStack`, `z` ярусов — ADR 003/009), поэтому ручная стопка не
+может быть выше расчётной. Баланс сохраняется: `placed + unplaced` по типу неизменен —
+`unplaceStack` возвращает единицы в `unplaced`, `placeStack` вычитает их оттуда. Метрики
+пересчитывает ядро.
 
 ## 3. Коды ошибок
 
@@ -206,6 +239,12 @@ interface Report {
 | `ERR_INVALID_ROTATION`      | Неизвестный режим вращения                             |
 | `ERR_EMPTY_LOAD`            | `cargo` пуст                                           |
 | `ERR_UNKNOWN_VEHICLE`       | Кузов не найден в хранилище (для list/upsert-сценариев)|
+| `ERR_EDIT_NO_STACK`         | Правка: по `StackRef` нет колонки                      |
+| `ERR_EDIT_OVERLAP`          | Правка: футпринт пересекает другую стопку               |
+| `ERR_EDIT_OUT_OF_BOUNDS`    | Правка: стопка выходит за габарит кузова                |
+| `ERR_EDIT_FORK_ACCESS`      | Правка: ориентация ломает доступ погрузчика при текущем `loadingMode` (ADR 018) |
+| `ERR_EDIT_ROTATION`         | Правка: тип запрещает вращение или колонка не yaw-однородна |
+| `ERR_EDIT_NOTHING_TO_PLACE` | Правка: у типа нет неразмещённых единиц                 |
 
 Ошибка — структура `{ code: string; details?: Record<string, unknown> }`; несколько ошибок
 валидации возвращаются списком.
@@ -226,6 +265,11 @@ interface Report {
 - `contractVersion` в `Layout` позволяет клиентам проверять совместимость.
 
 ### История версий
+- `0.12.0` — добавлены операции ручной правки раскладки: `moveStack`, `rotateStack`, `unplaceStack`,
+  `placeStack`, `stackBuffer` + типы `StackRef`/`PlaceStackSpec`/`EditResult`/`BufferStack` и коды
+  `ERR_EDIT_*` ([ADR 019](adr/019-manual-layout-editing-api.md)). `moveStack`/`rotateStack` перенесены
+  из UI в ядро без смены семантики (в контракте их раньше не было). Аддитивно: существующие операции
+  и типы не менялись. `ENGINE_CONTRACT_VERSION` → `0.12.0` (`LKWkalk-dwc.1`).
 - `0.11.0` — добавлены `CargoType.forkAccess` (`'all4' | 'twoSides'`, default `'all4'`) и
   `CargoType.forkAxis` (`'length' | 'width'`, default `'length'`): доступ погрузчика как жёсткое
   ограничение ориентации ([ADR 018](adr/018-fork-access-orientation.md)). Добавлен вид нарушения

@@ -96,9 +96,10 @@ export function LadeplanScreen({
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
   useEffect(() => setEdited(layout), [layout]);
+  // The engine refuses an impossible edit and says why (ADR 019); surfacing that reason is dwc.4.
   const onMoveStack = (sel: StackSel, toX: number, toY: number) =>
-    setEdited((prev) => moveStack(load, prev, sel, toX, toY));
-  const onRotateStack = (sel: StackSel) => setEdited((prev) => rotateStack(load, prev, sel));
+    setEdited((prev) => moveStack(load, prev, sel, toX, toY).layout);
+  const onRotateStack = (sel: StackSel) => setEdited((prev) => rotateStack(load, prev, sel).layout);
   const violations = findGeometryViolations(load, edited).length;
 
   // Any strategy change recomputes from scratch, discarding manual edits. `edited !== layout` holds
