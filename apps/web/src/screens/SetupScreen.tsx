@@ -28,7 +28,7 @@ import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '.
 import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS, PALLET_PRESETS, type DimPreset } from '../data/presets';
 import { loadUserPallets, addUserPallet, removeUserPallet, isUserPreset } from '../data/userPresets';
-import { demoSetup } from '../data/demo';
+import { DEMO_VARIANTS } from '../data/demo';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
@@ -179,6 +179,11 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
   // edit the user makes clears it implicitly and persists as normal.
   const skipNextSaveRef = useRef(false);
+  // Demo carousel position (rgv.5). Not persisted — the demo itself is transient.
+  const [demoIndex, setDemoIndex] = useState(0);
+  /** Which variant the form currently holds (index into DEMO_VARIANTS), or null for the user's own
+   *  input. Drives the caption; cleared as soon as the user edits anything. */
+  const [loadedDemo, setLoadedDemo] = useState<number | null>(null);
 
   // Persist the working draft on every change so a page refresh does not lose input.
   useEffect(() => {
@@ -186,14 +191,19 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       skipNextSaveRef.current = false;
       return;
     }
+    // A save means the user edited the form: what is on screen is their draft, not the demo.
+    setLoadedDemo(null);
     saveSetup({ vehicle, orders });
   }, [vehicle, orders]);
 
-  /** Fill a rich demo plan and compute it right away (build the Load from the demo data directly —
+  /** Fill a demo plan and compute it right away (build the Load from the demo data directly —
    *  setState is async, so we must not read it back in this tick). Transient: neither the demo setup
-   *  nor its computed plan is persisted, so a reload returns to the user's pre-demo state (QA). */
+   *  nor its computed plan is persisted, so a reload returns to the user's pre-demo state (QA).
+   *  Each click advances the carousel by one and wraps (rgv.5) — a fixed cycle, not a random pick. */
   const handleDemo = () => {
-    const d = demoSetup();
+    const d = DEMO_VARIANTS[demoIndex].build();
+    setDemoIndex((i) => (i + 1) % DEMO_VARIANTS.length);
+    setLoadedDemo(demoIndex);
     skipNextSaveRef.current = true; // don't overwrite the saved draft with the demo
     setVehicle(d.vehicle);
     setOrders(d.orders);
@@ -290,11 +300,24 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         </div>
       </section>
 
-      {/* Orders */}
-      <div className="mb-3 flex items-center justify-between">
+      {/* Orders. Demo lives here, with the input it fills — not next to the destructive Reset (rgv.4). */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
-        <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
+          <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
+        </div>
       </div>
+      {loadedDemo !== null && (
+        <p className="mb-3 text-caption text-muted" data-testid="demo-caption">
+          {fillTemplate(tt('setup.demoLoaded'), {
+            n: loadedDemo + 1,
+            total: DEMO_VARIANTS.length,
+            name: tt(DEMO_VARIANTS[loadedDemo].nameKey),
+          })}{' '}
+          {tt(DEMO_VARIANTS[loadedDemo].hintKey)}
+        </p>
+      )}
 
       <div className="flex flex-col gap-4">
         {orders.map((o, oi) => (
@@ -324,7 +347,6 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       </div>
 
       <div className="mt-6 flex justify-end gap-2">
-        <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
         <Button variant="secondary" onClick={handleReset}>{tt('action.reset')}</Button>
         <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
       </div>
@@ -412,6 +434,20 @@ function OrderCard({
             </button>
           </div>
         )}
+      </div>
+
+      {/* Column headings for the position fields (rgv.6). The vehicle bar has always had them; the
+          position row did not, so its numbers read as a bare "1200 · 800 · 144 · 186". Widths mirror
+          PositionRow exactly. Only from xl: below that the row wraps and a header would not line up
+          with anything — the per-field aria-labels carry the meaning there. */}
+      <div className="hidden xl:flex items-center gap-1.5 border-b border-line bg-sub px-4 pb-1 pt-2 text-label uppercase tracking-wide text-faint">
+        <span className="w-3 shrink-0" />
+        <span className="w-36 shrink-0">{tt('cargoType.label')}</span>
+        <span className="w-32 shrink-0">{tt('field.name')}</span>
+        <span className="w-24">{tt('field.length')}</span>
+        <span className="w-24">{tt('field.width')}</span>
+        <span className="w-24">{tt('field.height')}</span>
+        <span className="w-20">{tt('field.quantity')}</span>
       </div>
 
       <div className="divide-y divide-line">
@@ -509,6 +545,8 @@ function PositionRow({
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <OrderSwatch index={index} width={12} height={26} />
         <Select
+          // fixed width so the column headings above the rows line up with the fields (rgv.6)
+          className="w-36 shrink-0"
           ariaLabel={tt('cargoType.label')}
           value={currentPreset?.key ?? 'custom'}
           onChange={(key) => {
@@ -523,7 +561,11 @@ function PositionRow({
             ...allPallets.map((pp) => ({ value: pp.key, label: pp.name })),
           ]}
         />
-        <span className="min-w-[5.5rem] max-w-[14rem] flex-1">
+        {/* Fixed width (was min/max + flex-1): a flexible column here shifted every heading above
+            the numeric fields out of line with them (rgv.6). Kept narrow on purpose — measured in a
+            real browser, the row spends ~1026 of the 1036 px the card offers, so a wider name column
+            wraps every row's "Stapel N" chip onto a second line and doubles the form's height. */}
+        <span className="w-32 shrink-0">
           <TextField ariaLabel={tt('field.name')} value={p.name} onChange={(name) => onChange({ name })} placeholder={tt('cargoType.label')} />
         </span>
         <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
@@ -545,7 +587,7 @@ function PositionRow({
         />
         {/* Orientation = rotation + forklift access as one choice (ADR 018). Fixed width + truncate so
             a long RU label can't blow out the row; the fork-axis picker appears only for two-sided. */}
-        <span className="w-[10.5rem] shrink-0">
+        <span className="w-36 shrink-0">
           <Select
             ariaLabel={tt('cargoType.orientation.label')}
             value={orientationChoiceOf(p.rotation, p.forkAccess)}

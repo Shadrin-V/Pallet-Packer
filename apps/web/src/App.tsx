@@ -10,6 +10,7 @@ import {
 import { LocaleProvider } from './i18n/LocaleContext';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
+import { EmptyPlan } from './screens/components/EmptyPlan';
 
 const LOAD_STORAGE_KEY = 'ladungsplaner.load';
 // Stable orderId→palette slot, persisted separately so the Load format stays unchanged (QA #2).
@@ -94,15 +95,19 @@ export function App() {
       <div className="print:hidden">
         <SetupScreen onCalculate={onCalculate} onReset={() => setResult(null)} />
       </div>
-      {result && (
+      {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until the
+          first Berechnen it stands in as an empty state. There is no "back": the plan is removed by
+          Zurücksetzen, which says so and asks first. */}
+      {result ? (
         <LadeplanScreen
           load={result.load}
           layout={result.layout}
           orderColors={result.orderColors}
-          onBack={() => setResult(null)}
           onLoadingModeChange={onLoadingModeChange}
           onOrderGroupingChange={onOrderGroupingChange}
         />
+      ) : (
+        <EmptyPlan />
       )}
     </LocaleProvider>
   );

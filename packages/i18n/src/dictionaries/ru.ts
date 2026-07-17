@@ -19,6 +19,13 @@ export const ru: Dictionary = {
   'setup.emptyOrders': 'Заказов пока нет. Добавьте заказ.',
   'setup.savePreset': 'Сохранить как пресет',
   'setup.deletePreset': 'Удалить пресет',
+  'setup.demo.mixed': 'Смешанные заказы',
+  'setup.demo.mixedHint': '4 заказа, 7 типов груза, оба режима вложения, 2-сторонний поддон.',
+  'setup.demo.nesting': 'Вложение и штабели',
+  'setup.demo.nestingHint': 'Вложенное рядом с невложенным, последовательно и парами, лимиты ярусов и вложений.',
+  'setup.demo.overload': 'Перегруз',
+  'setup.demo.overloadHint': 'Груза больше, чем влезает — неразмещённые поддоны и заход вил с 2 сторон.',
+  'setup.demoLoaded': 'Демо {n}/{total}: {name} — нажмите ещё раз для следующего.',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',
@@ -46,8 +53,9 @@ export const ru: Dictionary = {
   'ladeplan.rotateStack': 'Повернуть стопку',
   'ladeplan.discardEditsConfirm':
     'Ручные изменения раскладки будут потеряны при смене стратегии. Продолжить?',
+  'ladeplan.emptyHint': 'Заполните заказы и нажмите «Рассчитать» — план загрузки появится здесь.',
+  'ladeplan.unplacedFig': 'Не размещено',
   'action.print': 'Печать',
-  'action.back': 'Назад',
 
   'field.name': 'Название',
   'field.length': 'Длина',

@@ -76,6 +76,41 @@ describe('LadeplanScreen', () => {
 });
 
 // Export (qrd.15): PDF via the print dialog, PNG rasterised client-side, JSON verbatim per contract.
+// The plan's worst news must sit with the summary figures, not only in the legend far below (rgv.7).
+describe('LadeplanScreen — unplaced figure', () => {
+  it('omits the unplaced figure when everything fits', () => {
+    renderLadeplan(); // 8 cubes fill the 2×2×2 hold exactly
+    expect(screen.queryByTestId('fig-unplaced')).not.toBeInTheDocument();
+  });
+
+  it('shows the unplaced count with the figures when some units did not fit', () => {
+    const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={overloaded} layout={calculateLayout(overloaded)} />
+      </LocaleProvider>,
+    );
+    const fig = screen.getByTestId('fig-unplaced');
+    expect(fig).toHaveTextContent('3'); // 11 requested − 8 placed
+    expect(fig).toHaveTextContent('Nicht platziert');
+  });
+});
+
+describe('LadeplanScreen — action bar groups', () => {
+  it('labels the strategy and export groups instead of one flat row (rgv.3)', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={load} layout={layout} onLoadingModeChange={vi.fn()} />
+      </LocaleProvider>,
+    );
+    // The mode switch already exposes its own group named "Belademodus"; the bar adds the visible
+    // heading above it, plus a real group around the output actions.
+    expect(screen.getByRole('group', { name: 'Belademodus' })).toBeInTheDocument();
+    expect(screen.getByText('Export')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Export' })).toBeInTheDocument();
+  });
+});
+
 describe('LadeplanScreen — export', () => {
   afterEach(() => {
     vi.restoreAllMocks();

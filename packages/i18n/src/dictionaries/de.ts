@@ -19,6 +19,13 @@ export const de: Dictionary = {
   'setup.emptyOrders': 'Noch keine Aufträge. Fügen Sie einen Auftrag hinzu.',
   'setup.savePreset': 'Als Preset speichern',
   'setup.deletePreset': 'Preset löschen',
+  'setup.demo.mixed': 'Gemischte Aufträge',
+  'setup.demo.mixedHint': '4 Aufträge, 7 Ladungsarten, beide Verschachtelungsmodi, 2-seitige Palette.',
+  'setup.demo.nesting': 'Verschachtelung und Stapel',
+  'setup.demo.nestingHint': 'Verschachtelt neben entschachtelt, sequenziell und paarweise, Limits für Ebenen und Verschachtelung.',
+  'setup.demo.overload': 'Überladung',
+  'setup.demo.overloadHint': 'Mehr Ladung als hineinpasst — nicht platzierte Paletten und Gabelzugang von 2 Seiten.',
+  'setup.demoLoaded': 'Demo {n}/{total}: {name} — nochmal klicken für die nächste.',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
@@ -46,8 +53,9 @@ export const de: Dictionary = {
   'ladeplan.rotateStack': 'Stapel drehen',
   'ladeplan.discardEditsConfirm':
     'Manuelle Änderungen an der Anordnung gehen beim Strategiewechsel verloren. Fortfahren?',
+  'ladeplan.emptyHint': 'Aufträge ausfüllen und «Berechnen» drücken — der Ladeplan erscheint hier.',
+  'ladeplan.unplacedFig': 'Nicht platziert',
   'action.print': 'Drucken',
-  'action.back': 'Zurück',
 
   'field.name': 'Name',
   'field.length': 'Länge',
