@@ -46,7 +46,7 @@ describe('App shell (single page)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     // Default strategy is combined → "Automatisch" is the pressed option.
-    expect(screen.getByRole('button', { name: 'Automatisch' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
 
     await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
 
@@ -117,7 +117,7 @@ describe('App shell (single page)', () => {
       render(<App />);
       await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
       // combined is the current default; Demo overrides it to rear (not inherited from prior state).
-      expect(screen.getByRole('button', { name: 'Automatisch' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
 
       await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
 
@@ -137,7 +137,7 @@ describe('App shell (single page)', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
       expect(JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}').loadingMode ?? 'combined').toBe('combined');
-      expect(screen.getByRole('button', { name: 'Automatisch' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('Demo is a transient preview — it does not overwrite the persisted setup or plan (QA)', async () => {
@@ -164,7 +164,7 @@ describe('App shell (single page)', () => {
       const loadBefore = localStorage.getItem('ladungsplaner.load');
 
       await userEvent.click(screen.getByRole('button', { name: 'Demo' })); // transient preview (rear)
-      await userEvent.click(screen.getByRole('button', { name: 'Automatisch' })); // change strategy on it
+      await userEvent.click(screen.getByRole('button', { name: 'Hinten und Seite' })); // change strategy on it
 
       // still a preview → the persisted plan must be untouched
       expect(localStorage.getItem('ladungsplaner.load')).toBe(loadBefore);

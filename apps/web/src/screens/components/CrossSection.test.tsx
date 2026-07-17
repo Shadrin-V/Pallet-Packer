@@ -40,10 +40,17 @@ describe('CrossSection rendering polish', () => {
     expect(container.querySelector('[vector-effect="non-scaling-stroke"]')).toBeInTheDocument();
   });
 
-  it('labels the side view Vorne / Hinten', () => {
-    renderCut('side', 'Seitenansicht');
+  // Both cutaways share the x axis, so one set of markers under the TOP view labels the pair (QA).
+  it('labels Vorne / Hinten under the top view, and only there', () => {
+    renderCut('top', 'Draufsicht');
     expect(screen.getByText('Vorne')).toBeInTheDocument();
     expect(screen.getByText('Hinten')).toBeInTheDocument();
+  });
+
+  it('does not repeat the Vorne / Hinten markers on the side view', () => {
+    renderCut('side', 'Seitenansicht');
+    expect(screen.queryByText('Vorne')).not.toBeInTheDocument();
+    expect(screen.queryByText('Hinten')).not.toBeInTheDocument();
   });
 
   it('shows the ×N stack count on the top view', () => {

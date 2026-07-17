@@ -180,7 +180,15 @@ export function LadeplanScreen({
         {(onLoadingModeChange || onOrderGroupingChange) && (
           <ActionGroup label={tt('ladeplan.loadingMode')} ariaGroup={false}>
             {onLoadingModeChange && (
-              <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
+              <>
+                <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
+                {/* "Hinten und Seite" names the access (both doors open), not a magic mode — the hint
+                    spells out that both variants are computed and the denser one is shown (QA). */}
+                <InfoHint
+                  ariaLabel={tt('ladeplan.loadingMode')}
+                  text={tt('ladeplan.loadingModeHint')}
+                />
+              </>
             )}
             {onOrderGroupingChange && (
               // InfoHint is a button and must stay OUTSIDE the <label>, else clicking it would activate

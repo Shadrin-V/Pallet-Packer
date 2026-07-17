@@ -153,13 +153,6 @@ export function CrossSection({
   return (
     <figure className="m-0">
       <figcaption className="mb-1 text-label uppercase font-semibold text-faint">{label}</figcaption>
-      {/* Vorne / Hinten sit above the diagram (out of the way of the stacks), small and muted. */}
-      {view === 'side' && (
-        <div className="mb-0.5 flex justify-between px-0.5 text-[10px] uppercase tracking-wide text-faint">
-          <span>{tt('ladeplan.front')}</span>
-          <span>{tt('ladeplan.back')}</span>
-        </div>
-      )}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${length} ${spanY}`}
@@ -222,6 +215,15 @@ export function CrossSection({
         })}
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
       </svg>
+      {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both
+          cutaways share the x axis (vehicle length), so one set of markers labels the pair — and
+          hanging them above the side view read as if only that view had a front and a back. */}
+      {view === 'top' && (
+        <div className="mt-0.5 flex justify-between px-0.5 text-[10px] uppercase tracking-wide text-faint">
+          <span>{tt('ladeplan.front')}</span>
+          <span>{tt('ladeplan.back')}</span>
+        </div>
+      )}
     </figure>
   );
 }

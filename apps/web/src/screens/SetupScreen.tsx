@@ -309,13 +309,15 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         </div>
       </div>
       {loadedDemo !== null && (
+        // What this demo IS comes first; how to get the next one is an aside at the end (QA).
         <p className="mb-3 text-caption text-muted" data-testid="demo-caption">
           {fillTemplate(tt('setup.demoLoaded'), {
             n: loadedDemo + 1,
             total: DEMO_VARIANTS.length,
             name: tt(DEMO_VARIANTS[loadedDemo].nameKey),
           })}{' '}
-          {tt(DEMO_VARIANTS[loadedDemo].hintKey)}
+          {tt(DEMO_VARIANTS[loadedDemo].hintKey)}{' '}
+          <span className="text-faint">{tt('setup.demoNext')}</span>
         </p>
       )}
 

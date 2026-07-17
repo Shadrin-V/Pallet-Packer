@@ -17,14 +17,14 @@ describe('LoadingModeSwitch', () => {
   it('renders the three loading modes as a labelled segmented group', () => {
     renderSwitch('combined');
     expect(screen.getByRole('group', { name: 'Belademodus' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Automatisch' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Von hinten' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Von der Seite' })).toBeInTheDocument();
   });
 
   it('marks the current mode as pressed', () => {
     renderSwitch('combined');
-    expect(screen.getByRole('button', { name: 'Automatisch' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Von hinten' })).toHaveAttribute('aria-pressed', 'false');
   });
 
