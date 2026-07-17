@@ -29,12 +29,12 @@ export const TRANSLATION_KEYS = [
   'setup.demo.overloadHint',
   'setup.demoLoaded',
   'setup.demoNext',
-  'buffer.title',
-  'buffer.hint',
-  'buffer.count',
-  'buffer.empty',
-  'buffer.rotate',
-  'buffer.dropHint',
+  'warehouse.title',
+  'warehouse.hint',
+  'warehouse.count',
+  'warehouse.empty',
+  'warehouse.rotate',
+  'warehouse.dropHint',
 
   // Ladeplan / result screen
   'ladeplan.title',

@@ -29,7 +29,8 @@ import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
 import { moveStack, rotateStack, snap, type StackSel } from './components/editLayout';
-import { BufferStrip, type BufferTile } from './components/BufferStrip';
+import { WarehouseFloor } from './components/WarehouseFloor';
+import type { BufferTile } from './components/warehouseLayout';
 
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
@@ -398,7 +399,7 @@ export function LadeplanScreen({
 
           {/* Workbench, not document: the buffer sits with the top view it feeds, and prints nothing. */}
           <div ref={bufferRef} className="print:hidden">
-            <BufferStrip
+            <WarehouseFloor
               load={load}
               tiles={tiles}
               orderColors={orderColorMap}

@@ -98,8 +98,8 @@ describe('LadeplanScreen — unplaced figure', () => {
 
 // The buffer (dwc.3): what is NOT in the hold. jsdom has no layout, so the drag geometry itself is
 // verified in a real browser — these guard the wiring and the states the user can reach by clicking.
-describe('LadeplanScreen — stack buffer', () => {
-  /** 11 cubes into a hold that takes 8 → 3 left over for the buffer. */
+describe('LadeplanScreen — warehouse floor', () => {
+  /** 11 cubes into a hold that takes 8 → 3 left over for the warehouse. */
   const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
   const renderOverloaded = () =>
     render(
@@ -107,14 +107,19 @@ describe('LadeplanScreen — stack buffer', () => {
         <LadeplanScreen load={overloaded} layout={calculateLayout(overloaded)} />
       </LocaleProvider>,
     );
+  /** The tile's footprint, read off the shape itself — there is no card to read it from. */
+  const footprint = (tile: HTMLElement) => {
+    const r = tile.querySelector('rect')!;
+    return `${r.getAttribute('width')}×${r.getAttribute('height')}`;
+  };
 
   it('offers the unplaced units as draggable stacks, not as a bare number', () => {
     renderOverloaded();
-    expect(screen.getByTestId('buffer-strip')).toBeInTheDocument();
-    expect(screen.getByTestId('buffer-count')).toHaveTextContent('3 nicht platziert');
+    expect(screen.getByTestId('warehouse-floor')).toBeInTheDocument();
+    expect(screen.getByTestId('warehouse-count')).toHaveTextContent('3 nicht platziert');
     // Tiles are STACKS, not units: the hold takes two cubes per column, so 3 leftovers arrive as a
     // full stack of 2 plus a remainder of 1 — that is what the user actually drags.
-    const tiles = screen.getAllByTestId('buffer-tile');
+    const tiles = screen.getAllByTestId('warehouse-tile');
     expect(tiles).toHaveLength(2);
     expect(tiles.map((t) => t.textContent)).toEqual([
       expect.stringContaining('×2'),
@@ -122,13 +127,13 @@ describe('LadeplanScreen — stack buffer', () => {
     ]);
   });
 
-  it('says the buffer is empty when everything is in the hold', () => {
+  it('says the warehouse is empty when everything is in the hold', () => {
     renderLadeplan(); // 8 cubes fill the hold exactly
-    expect(screen.getByTestId('buffer-strip')).toHaveTextContent('Alles platziert');
-    expect(screen.queryAllByTestId('buffer-tile')).toHaveLength(0);
+    expect(screen.getByTestId('warehouse-floor')).toHaveTextContent('Alles platziert');
+    expect(screen.queryAllByTestId('warehouse-tile')).toHaveLength(0);
   });
 
-  it('turns a stack in the buffer, so it can be dropped in the other way round', async () => {
+  it('turns a stack on the floor, so it can be dropped in the other way round', async () => {
     const pallets: Load = {
       vehicle: { id: 'v', name: 'LKW', length: 1200, width: 800, height: 1000 },
       cargo: [{ ...load.cargo[0], id: 'p', name: 'Pal', length: 1200, width: 800, height: 900, quantity: 2, rotation: 'yawOnly' }],
@@ -138,15 +143,16 @@ describe('LadeplanScreen — stack buffer', () => {
         <LadeplanScreen load={pallets} layout={calculateLayout(pallets)} />
       </LocaleProvider>,
     );
-    const tile = screen.getByTestId('buffer-tile');
-    expect(tile).toHaveTextContent('1200×800');
+    expect(footprint(screen.getByTestId('warehouse-tile'))).toBe('1200×800');
 
-    await userEvent.click(screen.getByRole('button', { name: /Stapel im Puffer drehen/ }));
-    expect(screen.getByTestId('buffer-tile')).toHaveTextContent('800×1200'); // yaw flipped
+    // No ⟳ button any more: click selects the stack, the handle turns it — the hold's own gesture.
+    await userEvent.click(screen.getByTestId('warehouse-tile'));
+    await userEvent.click(screen.getByRole('button', { name: /Stapel im Lager drehen/ }));
+    expect(footprint(screen.getByTestId('warehouse-tile'))).toBe('800×1200'); // yaw flipped
   });
 
-  // Orientation is per cargo TYPE: buffer stacks of one type are interchangeable and their order
-  // shifts on every edit, so an index-keyed orientation would hand the rotation to a random stack.
+  // Orientation is per cargo TYPE: stacks of one type are interchangeable and their order shifts on
+  // every edit, so an index-keyed orientation would hand the rotation to a random stack.
   it('keeps a rotation on its cargo type, not on a slot in the list', async () => {
     const two: Load = {
       vehicle: { id: 'v', name: 'LKW', length: 1200, width: 800, height: 1000 },
@@ -160,19 +166,21 @@ describe('LadeplanScreen — stack buffer', () => {
       </LocaleProvider>,
     );
     // one position in the hold, two stacks left over → both tiles are the same type
-    expect(screen.getAllByTestId('buffer-tile')).toHaveLength(2);
+    expect(screen.getAllByTestId('warehouse-tile')).toHaveLength(2);
 
-    await userEvent.click(screen.getAllByRole('button', { name: /Stapel im Puffer drehen/ })[0]);
+    await userEvent.click(screen.getAllByTestId('warehouse-tile')[0]);
+    await userEvent.click(screen.getByRole('button', { name: /Stapel im Lager drehen/ }));
 
     // both tiles of that type now read the rotated footprint — nothing depends on list position
-    for (const tile of screen.getAllByTestId('buffer-tile')) {
-      expect(tile).toHaveTextContent('800×1200');
+    for (const tile of screen.getAllByTestId('warehouse-tile')) {
+      expect(footprint(tile)).toBe('800×1200');
     }
   });
 
-  it('offers no rotation for cargo whose rule forbids it', () => {
+  it('offers no rotation for cargo whose rule forbids it', async () => {
     renderOverloaded(); // the cube type is rotation: 'none'
-    expect(screen.getAllByRole('button', { name: /Stapel im Puffer drehen/ })[0]).toBeDisabled();
+    await userEvent.click(screen.getAllByTestId('warehouse-tile')[0]);
+    expect(screen.queryByRole('button', { name: /Stapel im Lager drehen/ })).not.toBeInTheDocument();
   });
 
   it('carries a ghost of the stack while it is being dragged', () => {

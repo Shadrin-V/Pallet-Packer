@@ -27,13 +27,13 @@ export const de: Dictionary = {
   'setup.demo.overloadHint': 'Mehr Ladung als hineinpasst — nicht platzierte Paletten und Gabelzugang von 2 Seiten.',
   'setup.demoLoaded': 'Demo {n}/{total}: {name} —',
   'setup.demoNext': 'Nochmal klicken für die nächste Demo.',
-  'buffer.title': 'Puffer',
-  'buffer.hint':
-    'Nicht platzierte Stapel. Einen Stapel in den Laderaum ziehen, um ihn zu setzen — oder einen Stapel aus dem Laderaum hierher ziehen, um Platz zu schaffen (z. B. zum Drehen).',
-  'buffer.count': '{n} nicht platziert',
-  'buffer.empty': 'Alles platziert — der Puffer ist leer.',
-  'buffer.rotate': 'Stapel im Puffer drehen',
-  'buffer.dropHint': 'Zum Setzen in den Laderaum ziehen',
+  'warehouse.title': 'Lager',
+  'warehouse.hint':
+    'Nicht platzierte Stapel, im Maßstab 1:1 wie im Laderaum. Einen Stapel in den Laderaum ziehen, um ihn zu setzen — oder einen Stapel aus dem Laderaum hierher ziehen, um Platz zu schaffen (z. B. zum Drehen).',
+  'warehouse.count': '{n} nicht platziert',
+  'warehouse.empty': 'Alles platziert — das Lager ist leer.',
+  'warehouse.rotate': 'Stapel im Lager drehen',
+  'warehouse.dropHint': 'Zum Setzen in den Laderaum ziehen',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
