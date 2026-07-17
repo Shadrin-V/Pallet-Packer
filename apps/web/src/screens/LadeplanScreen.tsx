@@ -2,7 +2,7 @@
 // palette per docs/design/design-system.md. Brand head + meta band + figures + top/side cutaways +
 // per-order legend + compact metrics. Full-width sheet; A4 landscape print (theme.css).
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   findGeometryViolations,
   type Layout,
@@ -25,11 +25,45 @@ import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
 import { moveStack, rotateStack, type StackSel } from './components/editLayout';
 
-function Figure({ value, label }: { value: string; label: string }) {
+function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
-    <div className="text-right">
-      <div className="text-title font-[700] leading-none tabular-nums text-brand">{value}</div>
-      <div className="mt-1 text-label uppercase tracking-wide text-muted">{label}</div>
+    <div className="text-right" data-testid={danger ? 'fig-unplaced' : undefined}>
+      <div
+        className={`text-title font-[700] leading-none tabular-nums ${danger ? 'text-danger' : 'text-brand'}`}
+      >
+        {value}
+      </div>
+      <div className={`mt-1 text-label uppercase tracking-wide ${danger ? 'text-danger' : 'text-muted'}`}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+/** A labelled cluster of controls on the action bar — the label says what the controls do (rgv.3). */
+function ActionGroup({
+  label,
+  className = '',
+  ariaGroup = true,
+  children,
+}: {
+  label: string;
+  className?: string;
+  /** false when a child already exposes a group with this same name (e.g. the Segmented switch) —
+   *  two nested groups sharing one name are ambiguous to assistive tech. */
+  ariaGroup?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-1 ${className}`}>
+      <span className="text-label uppercase tracking-wide text-faint">{label}</span>
+      <div
+        role={ariaGroup ? 'group' : undefined}
+        aria-label={ariaGroup ? label : undefined}
+        className="flex flex-wrap items-center gap-1.5"
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -46,14 +80,12 @@ function MetaField({ label, value }: { label: string; value: string }) {
 export function LadeplanScreen({
   load,
   layout,
-  onBack,
   orderColors,
   onLoadingModeChange,
   onOrderGroupingChange,
 }: {
   load: Load;
   layout: Layout;
-  onBack?: () => void;
   /** Stable orderId→palette slot from Setup, so plan colours survive a reorder and match Setup (QA #2). */
   orderColors?: Record<string, number>;
   onLoadingModeChange?: (mode: LoadingMode) => void;
@@ -91,10 +123,16 @@ export function LadeplanScreen({
   const sheetRef = useRef<HTMLDivElement>(null);
   // Single source for the summary figures: the meta band renders these, and the PNG carries the
   // same objects — the exported sheet cannot disagree with the screen it depicts.
+  // Unplaced is the plan's worst news, so it rides with the figures (in danger colour) rather than
+  // hiding in the legend — but only when there is bad news to tell (rgv.7).
+  const unplacedTotal = edited.unplaced.reduce((sum, u) => sum + u.count, 0);
   const figures = [
     { label: tt('ladeplan.fig.pallets'), value: grp(m.totalPlaced) },
     { label: tt('ladeplan.fig.positions'), value: String(m.usedFloorPositions) },
     { label: tt('ladeplan.fig.load'), value: `${Math.round(m.floorFillPercent)} %` },
+    ...(unplacedTotal > 0
+      ? [{ label: tt('ladeplan.unplacedFig'), value: grp(unplacedTotal), danger: true }]
+      : []),
   ];
   const handleExportPng = async () => {
     const captions = [tt('ladeplan.top'), tt('ladeplan.side')];
@@ -136,36 +174,36 @@ export function LadeplanScreen({
       data-violations={violations}
       className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 print:max-w-none print:p-0"
     >
-      {/* on-screen action bar (not printed) */}
-      <div className="mb-5 flex flex-wrap items-center justify-end gap-2 print:hidden">
-        {onLoadingModeChange && (
-          <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
+      {/* On-screen action bar (not printed). Two named groups — strategy on the left, output on the
+          right — instead of one undifferentiated row of controls (rgv.3). */}
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 print:hidden">
+        {(onLoadingModeChange || onOrderGroupingChange) && (
+          <ActionGroup label={tt('ladeplan.loadingMode')} ariaGroup={false}>
+            {onLoadingModeChange && (
+              <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
+            )}
+            {onOrderGroupingChange && (
+              // InfoHint is a button and must stay OUTSIDE the <label>, else clicking it would activate
+              // the label and toggle the checkbox (flip the strategy just from reading the hint).
+              <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    aria-label={tt('ladeplan.orderGrouping')}
+                    checked={(load.orderGrouping ?? 'strict') === 'densityFirst'}
+                    onChange={(e) => handleOrderGroupingChange(e.target.checked)}
+                  />
+                  <span className="truncate">{tt('ladeplan.orderGrouping')}</span>
+                </label>
+                <InfoHint ariaLabel={tt('ladeplan.orderGrouping')} text={tt('ladeplan.orderGroupingHint')} />
+              </span>
+            )}
+          </ActionGroup>
         )}
-        {onOrderGroupingChange && (
-          // InfoHint is a button and must stay OUTSIDE the <label>, else clicking it would activate
-          // the label and toggle the checkbox (flip the strategy just from reading the hint).
-          <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
-            <label className="inline-flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                aria-label={tt('ladeplan.orderGrouping')}
-                checked={(load.orderGrouping ?? 'strict') === 'densityFirst'}
-                onChange={(e) => handleOrderGroupingChange(e.target.checked)}
-              />
-              <span className="truncate">{tt('ladeplan.orderGrouping')}</span>
-            </label>
-            <InfoHint ariaLabel={tt('ladeplan.orderGrouping')} text={tt('ladeplan.orderGroupingHint')} />
-          </span>
-        )}
-        {onBack && (
-          <Button variant="secondary" onClick={onBack}>
-            {tt('action.back')}
-          </Button>
-        )}
-        {/* Export group. PDF deliberately routes through the same print dialog as "Drucken" — the
+
+        {/* Output group. PDF deliberately routes through the same print dialog as "Drucken" — the
             A4 sheet IS the report; the hint tells the user to pick "save as PDF" there. */}
-        <span className="inline-flex items-center gap-1.5">
-          <span className="text-caption font-semibold text-muted">{tt('action.export')}</span>
+        <ActionGroup label={tt('action.export')} className="ml-auto">
           <Button variant="secondary" onClick={() => window.print()}>
             {tt('action.exportPdf')}
           </Button>
@@ -173,6 +211,7 @@ export function LadeplanScreen({
           <InfoHint
             ariaLabel={`${tt('action.export')} ${tt('action.exportPdf')}`}
             text={tt('action.exportPdfHint')}
+            align="right"
           />
           <Button variant="secondary" onClick={handleExportPng}>
             {tt('action.exportPng')}
@@ -180,10 +219,12 @@ export function LadeplanScreen({
           <Button variant="secondary" onClick={() => exportPlanJson(load, edited)}>
             {tt('action.exportJson')}
           </Button>
-        </span>
-        <Button variant="primary" onClick={() => window.print()}>
-          {tt('action.print')}
-        </Button>
+          <span className="ml-2 border-l border-line pl-3">
+            <Button variant="primary" onClick={() => window.print()}>
+              {tt('action.print')}
+            </Button>
+          </span>
+        </ActionGroup>
       </div>
 
       <div
@@ -207,7 +248,7 @@ export function LadeplanScreen({
           )}
           <div className="ml-auto flex items-end gap-6">
             {figures.map((f) => (
-              <Figure key={f.label} value={f.value} label={f.label} />
+              <Figure key={f.label} value={f.value} label={f.label} danger={f.danger} />
             ))}
           </div>
         </div>

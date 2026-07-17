@@ -21,6 +21,13 @@ export const TRANSLATION_KEYS = [
   'setup.emptyOrders',
   'setup.savePreset',
   'setup.deletePreset',
+  'setup.demo.mixed',
+  'setup.demo.mixedHint',
+  'setup.demo.nesting',
+  'setup.demo.nestingHint',
+  'setup.demo.overload',
+  'setup.demo.overloadHint',
+  'setup.demoLoaded',
 
   // Ladeplan / result screen
   'ladeplan.title',
@@ -47,8 +54,9 @@ export const TRANSLATION_KEYS = [
   'ladeplan.notPlaced',
   'ladeplan.rotateStack',
   'ladeplan.discardEditsConfirm',
+  'ladeplan.emptyHint',
+  'ladeplan.unplacedFig',
   'action.print',
-  'action.back',
 
   // Shared field labels (vehicle + cargo-type forms)
   'field.name',

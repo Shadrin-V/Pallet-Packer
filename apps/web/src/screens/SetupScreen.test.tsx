@@ -222,6 +222,38 @@ describe('SetupScreen', () => {
     expect(load.cargo.some((c) => c.stacking.maxTiers === 6)).toBe(true);
   });
 
+  // Demo is a carousel of three showcases walked in a FIXED order (rgv.5), and it lives in the
+  // Orders header next to "+ Auftrag", not beside the destructive Reset (rgv.4).
+  it('cycles through the three demo variants and wraps around', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    const demo = screen.getByRole('button', { name: 'Demo' });
+
+    const firstOrderIds = async () => {
+      await userEvent.click(demo);
+      const load = onCalculate.mock.calls.at(-1)![0] as Load;
+      return [...new Set(load.cargo.map((c) => c.orderId))].join(',');
+    };
+
+    const first = await firstOrderIds();
+    const second = await firstOrderIds();
+    const third = await firstOrderIds();
+    const fourth = await firstOrderIds();
+
+    expect(new Set([first, second, third]).size).toBe(3); // three distinct showcases
+    expect(fourth).toBe(first); // …and back to the start
+  });
+
+  it('names the loaded demo variant, and drops the caption once the user edits', async () => {
+    renderSetup(vi.fn());
+    await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
+    expect(screen.getByTestId('demo-caption')).toHaveTextContent('Demo 1/3: Gemischte Aufträge');
+
+    const orderId = screen.getAllByLabelText('Auftrags-ID')[0] as HTMLInputElement;
+    await userEvent.type(orderId, 'X');
+    expect(screen.queryByTestId('demo-caption')).not.toBeInTheDocument();
+  });
+
   it('reset clears the setup back to defaults (#4)', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const onReset = vi.fn();

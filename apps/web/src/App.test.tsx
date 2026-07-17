@@ -9,6 +9,25 @@ describe('App shell (single page)', () => {
     expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent('Ladungsplaner');
   });
 
+  // One page, not two: the plan section is part of the page from the start (rgv.2). Before the first
+  // Berechnen it stands in as an empty state; "Zurück" is gone with the two-screen flow (rgv.1).
+  it('shows the plan section as an empty state before the first Berechnen', () => {
+    render(<App />);
+    const empty = screen.getByTestId('empty-plan');
+    expect(empty).toHaveTextContent('Ladeplan');
+    expect(empty).toHaveTextContent(/Aufträge ausfüllen und «Berechnen» drücken/);
+    expect(screen.queryByRole('img', { name: 'Draufsicht' })).not.toBeInTheDocument();
+  });
+
+  it('replaces the empty state with the plan once computed, and offers no "Zurück"', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    expect(screen.getByRole('img', { name: 'Draufsicht' })).toBeInTheDocument();
+    expect(screen.queryByTestId('empty-plan')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zurück' })).not.toBeInTheDocument();
+  });
+
   it('keeps Setup mounted and preserves input after Berechnen (no reset)', async () => {
     render(<App />);
     const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
