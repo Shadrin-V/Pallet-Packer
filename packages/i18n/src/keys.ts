@@ -29,6 +29,12 @@ export const TRANSLATION_KEYS = [
   'setup.demo.overloadHint',
   'setup.demoLoaded',
   'setup.demoNext',
+  'buffer.title',
+  'buffer.hint',
+  'buffer.count',
+  'buffer.empty',
+  'buffer.rotate',
+  'buffer.dropHint',
 
   // Ladeplan / result screen
   'ladeplan.title',
@@ -144,6 +150,14 @@ export const TRANSLATION_KEYS = [
   'ERR_INVALID_ROTATION',
   'ERR_EMPTY_LOAD',
   'ERR_UNKNOWN_VEHICLE',
+
+  // Manual layout edits (contract 0.12.0, ADR 019)
+  'ERR_EDIT_NO_STACK',
+  'ERR_EDIT_OVERLAP',
+  'ERR_EDIT_OUT_OF_BOUNDS',
+  'ERR_EDIT_FORK_ACCESS',
+  'ERR_EDIT_ROTATION',
+  'ERR_EDIT_NOTHING_TO_PLACE',
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

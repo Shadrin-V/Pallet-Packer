@@ -33,6 +33,14 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
       'ERR_INVALID_ROTATION',
       'ERR_EMPTY_LOAD',
       'ERR_UNKNOWN_VEHICLE',
+      // manual layout edits (contract 0.12.0, ADR 019) — the UI must be able to say why an edit
+      // was refused, so these need a translation just as much as the validation codes
+      'ERR_EDIT_NO_STACK',
+      'ERR_EDIT_OVERLAP',
+      'ERR_EDIT_OUT_OF_BOUNDS',
+      'ERR_EDIT_FORK_ACCESS',
+      'ERR_EDIT_ROTATION',
+      'ERR_EDIT_NOTHING_TO_PLACE',
     ]);
     for (const code of errorCodes) {
       expect(DICTIONARIES.de[code]).toBeTruthy();

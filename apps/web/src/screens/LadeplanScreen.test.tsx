@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
@@ -93,6 +93,93 @@ describe('LadeplanScreen — unplaced figure', () => {
     const fig = screen.getByTestId('fig-unplaced');
     expect(fig).toHaveTextContent('3'); // 11 requested − 8 placed
     expect(fig).toHaveTextContent('Nicht platziert');
+  });
+});
+
+// The buffer (dwc.3): what is NOT in the hold. jsdom has no layout, so the drag geometry itself is
+// verified in a real browser — these guard the wiring and the states the user can reach by clicking.
+describe('LadeplanScreen — stack buffer', () => {
+  /** 11 cubes into a hold that takes 8 → 3 left over for the buffer. */
+  const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
+  const renderOverloaded = () =>
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={overloaded} layout={calculateLayout(overloaded)} />
+      </LocaleProvider>,
+    );
+
+  it('offers the unplaced units as draggable stacks, not as a bare number', () => {
+    renderOverloaded();
+    expect(screen.getByTestId('buffer-strip')).toBeInTheDocument();
+    expect(screen.getByTestId('buffer-count')).toHaveTextContent('3 nicht platziert');
+    // Tiles are STACKS, not units: the hold takes two cubes per column, so 3 leftovers arrive as a
+    // full stack of 2 plus a remainder of 1 — that is what the user actually drags.
+    const tiles = screen.getAllByTestId('buffer-tile');
+    expect(tiles).toHaveLength(2);
+    expect(tiles.map((t) => t.textContent)).toEqual([
+      expect.stringContaining('×2'),
+      expect.stringContaining('×1'),
+    ]);
+  });
+
+  it('says the buffer is empty when everything is in the hold', () => {
+    renderLadeplan(); // 8 cubes fill the hold exactly
+    expect(screen.getByTestId('buffer-strip')).toHaveTextContent('Alles platziert');
+    expect(screen.queryAllByTestId('buffer-tile')).toHaveLength(0);
+  });
+
+  it('turns a stack in the buffer, so it can be dropped in the other way round', async () => {
+    const pallets: Load = {
+      vehicle: { id: 'v', name: 'LKW', length: 1200, width: 800, height: 1000 },
+      cargo: [{ ...load.cargo[0], id: 'p', name: 'Pal', length: 1200, width: 800, height: 900, quantity: 2, rotation: 'yawOnly' }],
+    };
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={pallets} layout={calculateLayout(pallets)} />
+      </LocaleProvider>,
+    );
+    const tile = screen.getByTestId('buffer-tile');
+    expect(tile).toHaveTextContent('1200×800');
+
+    await userEvent.click(screen.getByRole('button', { name: /Stapel im Puffer drehen/ }));
+    expect(screen.getByTestId('buffer-tile')).toHaveTextContent('800×1200'); // yaw flipped
+  });
+
+  // Orientation is per cargo TYPE: buffer stacks of one type are interchangeable and their order
+  // shifts on every edit, so an index-keyed orientation would hand the rotation to a random stack.
+  it('keeps a rotation on its cargo type, not on a slot in the list', async () => {
+    const two: Load = {
+      vehicle: { id: 'v', name: 'LKW', length: 1200, width: 800, height: 1000 },
+      cargo: [
+        { ...load.cargo[0], id: 'a', name: 'A', length: 1200, width: 800, height: 900, quantity: 3, rotation: 'yawOnly' },
+      ],
+    };
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={two} layout={calculateLayout(two)} />
+      </LocaleProvider>,
+    );
+    // one position in the hold, two stacks left over → both tiles are the same type
+    expect(screen.getAllByTestId('buffer-tile')).toHaveLength(2);
+
+    await userEvent.click(screen.getAllByRole('button', { name: /Stapel im Puffer drehen/ })[0]);
+
+    // both tiles of that type now read the rotated footprint — nothing depends on list position
+    for (const tile of screen.getAllByTestId('buffer-tile')) {
+      expect(tile).toHaveTextContent('800×1200');
+    }
+  });
+
+  it('offers no rotation for cargo whose rule forbids it', () => {
+    renderOverloaded(); // the cube type is rotation: 'none'
+    expect(screen.getAllByRole('button', { name: /Stapel im Puffer drehen/ })[0]).toBeDisabled();
+  });
+
+  it('carries a ghost of the stack while it is being dragged', () => {
+    renderOverloaded();
+    expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10 });
+    expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
   });
 });
 
