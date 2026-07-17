@@ -6,7 +6,7 @@
 // screen-only (print:hidden) — the printed Ladeplan shows the load, not the editing UI.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Layout, Load } from '@shadrin-v/engine';
-import { HatchMarks } from '../../lib/swatch';
+import { StackShape } from './StackShape';
 import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
 import type { StackSel } from './editLayout';
@@ -203,10 +203,7 @@ export function CrossSection({
           const isSelected = !!sel && sameStack(sel, { cargoTypeId: r.cargoTypeId, x: r.x, y: r.y });
           return (
             <g key={i} transform={tf} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
-              {/* solid tint base + direct-line hatch (prints, unlike a <pattern>) + colour outline */}
-              <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`var(--s${r.series})`} fillOpacity={behind ? 0.06 : 0.16} />
-              <HatchMarks x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} spacing={180} strokeWidth={1.3} opacity={behind ? 0.25 : 0.8} />
-              <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+              <StackShape x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} muted={behind} hatchSpacing={180} />
               {view === 'top' && (r.count ?? 1) > 1 && (
                 <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
                   ×{r.count}
