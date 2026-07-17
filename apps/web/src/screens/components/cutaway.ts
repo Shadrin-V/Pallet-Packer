@@ -1,6 +1,6 @@
 // Pure geometry for the cutaway views. Rects come from the engine Layout + orientedDims — heights
 // use z+dz (real stack height), NEVER tier counts (design-system §7).
-import { orientedDims, type Layout, type Load } from '@shadrin-v/engine';
+import { orientedDims, type Layout, type Load, type Orientation } from '@shadrin-v/engine';
 import { orderColorToken } from '../../lib/orderColor';
 
 export interface CutRect {
@@ -13,6 +13,8 @@ export interface CutRect {
   cargoTypeId: string;
   /** units in this stack (top view label ×N) */
   count?: number;
+  /** the stack's own orientation — what a drag has to hand the engine to resolve a drop */
+  orientation?: Orientation;
   /** side view only: depth rank of the stack at this x (0 = front row, larger = further back). */
   depth?: number;
   /** side view only: the stack's floor y (across the width) — the source of `depth`. */
@@ -63,7 +65,7 @@ export function topRects(load: Load, layout: Layout, colors?: Map<string, number
     const key = `${p.cargoTypeId}:${p.x}:${p.y}`;
     const existing = byPos.get(key);
     if (existing) existing.count = (existing.count ?? 1) + 1;
-    else byPos.set(key, { x: p.x, y: p.y, w: dx, h: dy, series: c.series, cargoTypeId: p.cargoTypeId, count: 1 });
+    else byPos.set(key, { x: p.x, y: p.y, w: dx, h: dy, series: c.series, cargoTypeId: p.cargoTypeId, count: 1, orientation: p.orientation });
   }
   return [...byPos.values()];
 }

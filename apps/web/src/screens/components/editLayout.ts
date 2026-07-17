@@ -1,15 +1,11 @@
-// Pointer-side adapter for manual layout edits. The rules live in the engine (ADR 019, contract
-// 0.12.0): `moveStack`/`rotateStack`/`unplaceStack`/`placeStack` validate, refuse with a reason and
-// recompute metrics there. What is genuinely the UI's own is here — the snap grid, and the
-// convenience of getting a Layout back for React state.
-import {
-  moveStack as moveStackCore,
-  rotateStack as rotateStackCore,
-  type EditResult,
-  type Layout,
-  type Load,
-  type StackRef,
-} from '@shadrin-v/engine';
+// The pointer's own share of manual layout edits. The rules live in the engine (ADR 019), and since
+// ADR 020 so does the search for a place (`resolveDrop`) — what is left here is genuinely the UI's:
+// the grid a dragged stack's AIM is rounded to.
+//
+// The grid tidies the aim only. The magnet then resolves that aim to a real spot, which may be flush
+// against a neighbour at any millimetre (a 1340 mm Sonderpalette leaves no round edges) — so the
+// resolved coordinates go to the engine untouched. Rounding them again would undo the fit.
+import type { StackRef } from '@shadrin-v/engine';
 
 export const SNAP_MM = 100;
 
@@ -20,12 +16,3 @@ export function snap(v: number, grid = SNAP_MM): number {
 
 /** A floor stack, addressed the way the engine addresses it. */
 export type StackSel = StackRef;
-
-/** Drop the dragged stack at the snapped pointer position. */
-export function moveStack(load: Load, layout: Layout, sel: StackSel, toX: number, toY: number): EditResult {
-  return moveStackCore(load, layout, sel, snap(toX), snap(toY));
-}
-
-export function rotateStack(load: Load, layout: Layout, sel: StackSel): EditResult {
-  return rotateStackCore(load, layout, sel);
-}

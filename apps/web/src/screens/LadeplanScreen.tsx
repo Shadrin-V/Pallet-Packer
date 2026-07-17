@@ -5,8 +5,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   findGeometryViolations,
+  moveStack,
   orientedDims,
   placeStack,
+  resolveDrop,
+  rotateStack,
   stackBuffer,
   unplaceStack,
   type EngineError,
@@ -27,8 +30,9 @@ import { orderBreakdown } from './components/orderBreakdown';
 import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
-import { moveStack, rotateStack, snap, type StackSel } from './components/editLayout';
+import { snap, type StackSel } from './components/editLayout';
 import { WarehouseFloor } from './components/WarehouseFloor';
+import type { DropPreview } from './components/CrossSection';
 import type { BufferTile } from './components/warehouseLayout';
 
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
@@ -131,6 +135,8 @@ export function LadeplanScreen({
     setEditError(error ?? null);
     setEdited(next);
   };
+  // toX/toY are already resolved by the magnet (ADR 020) — the strict core operation gets them as
+  // they are. Re-snapping here would pull a flush fit back off its neighbour's edge.
   const onMoveStack = (sel: StackSel, toX: number, toY: number) =>
     applyEdit((prev) => moveStack(load, prev, sel, toX, toY));
   const onRotateStack = (sel: StackSel) => applyEdit((prev) => rotateStack(load, prev, sel));
@@ -154,6 +160,10 @@ export function LadeplanScreen({
       return { ...prev, [id]: (prev[id] ?? 'lwh') === 'lwh' ? 'wlh' : 'lwh' };
     });
 
+  // Declared before its readers: the drop preview reads it DURING RENDER (not just from a handler),
+  // so a `const` further down the body would be in the temporal dead zone by the time it is reached.
+  const sheetRef = useRef<HTMLDivElement>(null);
+
   /** The top-view cutaway, i.e. the drop target — the same svg the PNG export picks up. */
   const topSvg = () => sheetRef.current?.querySelector<SVGSVGElement>('svg[data-cutaway="top"]') ?? null;
 
@@ -171,30 +181,50 @@ export function LadeplanScreen({
     return { x: p.x, y: p.y };
   };
 
-  const dropTileAt = (index: number, clientX: number, clientY: number) => {
+  /** The aim of a carried tile, in hold mm, or null when the pointer is not over the top view.
+   *  The cursor holds the stack by its middle — that is where the user is pointing — so the corner
+   *  is derived from it. The magnet does the rest; it also pulls a corner back inside the hold, so
+   *  aiming at the far corner means "put it in the corner" rather than "hang out and be told off". */
+  const tileAim = (index: number, clientX: number, clientY: number) => {
     const at = toHoldMm(clientX, clientY);
-    if (!at) return; // released outside the hold — just put the tile back, no complaint
     const tile = tiles[index];
-    const cargo = load.cargo.find((c) => c.id === tile.cargoTypeId);
-    if (!cargo) return;
-    // The cursor holds the stack by its middle, which is where the user aims it — then the corner is
-    // clamped into the hold: aiming at the far corner means "put it in the corner", not "let it hang
-    // out and be told off". Overlaps are still the engine's to refuse.
+    const cargo = tile && load.cargo.find((c) => c.id === tile.cargoTypeId);
+    if (!at || !cargo) return null;
     const [dx, dy] = orientedDims(cargo.length, cargo.width, cargo.height, tile.orientation);
-    const clamp = (v: number, max: number) => Math.min(Math.max(snap(v), 0), Math.max(0, snap(max)));
-    applyEdit((prev) =>
-      placeStack(load, prev, {
+    return {
+      tile,
+      dx,
+      dy,
+      spec: {
         cargoTypeId: tile.cargoTypeId,
-        x: clamp(at.x - dx / 2, load.vehicle.length - dx),
-        y: clamp(at.y - dy / 2, load.vehicle.width - dy),
+        x: snap(at.x - dx / 2),
+        y: snap(at.y - dy / 2),
         orientation: tile.orientation,
         units: tile.units,
-      }),
-    );
+      },
+    };
   };
 
-  // A tile is carried with global listeners: the drag starts in the strip (HTML) and ends over the
-  // cutaway (SVG), so no single element sees the whole gesture.
+  /** What the ghost over the hold shows while a tile is carried in from the warehouse. */
+  const tilePreview: DropPreview | null = (() => {
+    if (!dragTile) return null;
+    const aim = tileAim(dragTile.index, dragTile.x, dragTile.y);
+    if (!aim) return null; // not over the hold — nothing to promise
+    const r = resolveDrop(load, edited, aim.spec);
+    return { x: r.x, y: r.y, dx: aim.dx, dy: aim.dy, ok: r.ok, blocking: r.blocking };
+  })();
+
+  const dropTileAt = (index: number, clientX: number, clientY: number) => {
+    const aim = tileAim(index, clientX, clientY);
+    if (!aim) return; // released outside the hold — just put the tile back, no complaint
+    // Place where the ghost said it would go. Resolving again here (rather than reusing tilePreview)
+    // keeps this correct even if the release carries a position no move event reported.
+    const r = resolveDrop(load, edited, aim.spec);
+    applyEdit((prev) => placeStack(load, prev, { ...aim.spec, x: r.x, y: r.y }));
+  };
+
+  // A tile is carried with global listeners: the drag starts in the warehouse (HTML) and ends over
+  // the cutaway (SVG), so no single element sees the whole gesture.
   useEffect(() => {
     if (!dragTile) return;
     const move = (e: PointerEvent) => setDragTile((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
@@ -240,7 +270,6 @@ export function LadeplanScreen({
 
   // Export (qrd.15) — always of `edited`, i.e. exactly what is on screen. PDF reuses the tuned A4
   // print sheet via the browser dialog; PNG recomposes the live cutaways off the sheet.
-  const sheetRef = useRef<HTMLDivElement>(null);
   // Single source for the summary figures: the meta band renders these, and the PNG carries the
   // same objects — the exported sheet cannot disagree with the screen it depicts.
   // Unplaced is the plan's worst news, so it rides with the figures (in danger colour) rather than
@@ -405,6 +434,7 @@ export function LadeplanScreen({
               onMoveStack={onMoveStack}
               onRotateStack={onRotateStack}
               onDropOutside={onDropOutside}
+              preview={tilePreview}
             />
           </div>
 

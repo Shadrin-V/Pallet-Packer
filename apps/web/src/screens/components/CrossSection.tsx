@@ -1,16 +1,31 @@
 // Cutaway SVG in mm coordinates (design-system §7). Calque background + 1000mm grid, thick vehicle
 // frame, per-order colour+hatch rects. Strokes use non-scaling-stroke (px widths) so lines stay
 // crisp regardless of the mm→px scale. Heights from the engine (z+dz), never tier counts.
-// Top view supports manual stack drag (snap + revalidate) when onMoveStack is provided, and a
-// click-to-select + 90° yaw rotate affordance when onRotateStack is (T5). Selection chrome is
-// screen-only (print:hidden) — the printed Ladeplan shows the load, not the editing UI.
+// Top view supports manual stack drag when onMoveStack is provided, and a click-to-select + 90° yaw
+// rotate affordance when onRotateStack is (T5). Selection chrome is screen-only (print:hidden) — the
+// printed Ladeplan shows the load, not the editing UI.
+//
+// A drag shows its outcome BEFORE the release (ADR 020): the engine resolves the aim on every move,
+// the ghost sits where the stack would actually land — green if it may, red on the aim plus red
+// outlines on whatever is in the way if it may not. The release then applies exactly what was shown;
+// anything else would make the preview a lie.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { Layout, Load } from '@shadrin-v/engine';
+import { resolveDrop, type Layout, type Load, type StackRef } from '@shadrin-v/engine';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
 import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
-import type { StackSel } from './editLayout';
+import { snap, type StackSel } from './editLayout';
+
+/** Where a dragged stack would land, and whether it may — the engine's answer, drawn. */
+export interface DropPreview {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  ok: boolean;
+  blocking: StackRef[];
+}
 
 function gridLines(max: number, step = 1000): number[] {
   const lines: number[] = [];
@@ -24,6 +39,8 @@ interface DragState {
   startY: number;
   dx: number;
   dy: number;
+  /** The engine's verdict for the current pointer position, or null before the first move. */
+  preview: DropPreview | null;
 }
 
 /** Below this pointer travel (mm) a press counts as a click (select), not a drag (move). */
@@ -41,6 +58,7 @@ export function CrossSection({
   onMoveStack,
   onRotateStack,
   onDropOutside,
+  preview,
 }: {
   load: Load;
   layout: Layout;
@@ -55,6 +73,9 @@ export function CrossSection({
   /** A stack dragged off the cutaway and dropped elsewhere (e.g. onto the buffer strip). Pointer
    *  capture keeps the events coming here even once the pointer has left this svg. */
   onDropOutside?: (sel: StackSel, clientX: number, clientY: number) => void;
+  /** Preview for a drag the PARENT owns (a stack carried in from the warehouse). The component's own
+   *  drags preview themselves; whichever is live gets drawn. */
+  preview?: DropPreview | null;
 }) {
   const tt = useT();
   const { length, width, height } = load.vehicle;
@@ -87,16 +108,35 @@ export function CrossSection({
     return { x: p.x, y: p.y };
   };
 
+  /** Ask the engine where this drag would land. Cheap enough for every pointermove: only bounds and
+   *  overlap depend on position (ADR 020), so no throttling — and the ghost cannot promise what
+   *  the drop would refuse, because both ask the same function. */
+  const previewFor = (s: StackSel, dx: number, dy: number): DropPreview => {
+    const r = rects.find((c) => c.cargoTypeId === s.cargoTypeId && c.x === s.x && c.y === s.y);
+    const orientation = r?.orientation === 'wlh' ? 'wlh' : 'lwh';
+    // The snap grid is the UI's own (it tidies the aim); the magnet then refines it to a real spot,
+    // so the resolved coordinates are used as-is — snapping them again would undo a flush fit.
+    const res = resolveDrop(
+      load,
+      layout,
+      { cargoTypeId: s.cargoTypeId, x: snap(s.x + dx), y: snap(s.y + dy), orientation },
+      { exclude: s },
+    );
+    return { x: res.x, y: res.y, dx: r?.w ?? 0, dy: r?.h ?? 0, ok: res.ok, blocking: res.blocking };
+  };
+
   const onDown = (r: CutRect) => (e: ReactPointerEvent) => {
     if (!draggable) return;
     const s = toSvg(e);
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    setDrag({ sel: { cargoTypeId: r.cargoTypeId, x: r.x, y: r.y }, startX: s.x, startY: s.y, dx: 0, dy: 0 });
+    setDrag({ sel: { cargoTypeId: r.cargoTypeId, x: r.x, y: r.y }, startX: s.x, startY: s.y, dx: 0, dy: 0, preview: null });
   };
   const onMove = (e: ReactPointerEvent) => {
     if (!drag) return;
     const s = toSvg(e);
-    setDrag({ ...drag, dx: s.x - drag.startX, dy: s.y - drag.startY });
+    const dx = s.x - drag.startX;
+    const dy = s.y - drag.startY;
+    setDrag({ ...drag, dx, dy, preview: previewFor(drag.sel, dx, dy) });
   };
   const onUp = (e: ReactPointerEvent) => {
     if (!drag) return;
@@ -116,7 +156,10 @@ export function CrossSection({
     if (Math.hypot(drag.dx, drag.dy) < CLICK_SLOP_MM) {
       if (rotatable) setSel((cur) => (cur && sameStack(cur, drag.sel) ? null : drag.sel));
     } else {
-      onMoveStack?.(drag.sel, drag.sel.x + drag.dx, drag.sel.y + drag.dy);
+      // Apply what the ghost promised. Falling back to the raw aim would let the drop land somewhere
+      // other than where the user watched it hover.
+      const to = drag.preview ?? previewFor(drag.sel, drag.dx, drag.dy);
+      onMoveStack?.(drag.sel, to.x, to.y);
       setSel(null);
     }
     setDrag(null);
@@ -184,6 +227,47 @@ export function CrossSection({
             </g>
           );
         })}
+        {(() => {
+          const shown = drag?.preview ?? preview;
+          if (!shown || view !== 'top') return null;
+          const tint = shown.ok ? 'var(--brand)' : 'var(--danger)';
+          return (
+            <g className="print:hidden" pointerEvents="none">
+              {/* what is in the way — named by the engine, not guessed here */}
+              {shown.blocking.map((b, i) => {
+                const hit = rects.find((c) => c.cargoTypeId === b.cargoTypeId && c.x === b.x && c.y === b.y);
+                return hit ? (
+                  <rect
+                    key={`blk${i}`}
+                    data-testid="drop-blocker"
+                    x={hit.x}
+                    y={hit.y}
+                    width={hit.w}
+                    height={hit.h}
+                    fill="var(--danger)"
+                    fillOpacity={0.12}
+                    stroke="var(--danger)"
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null;
+              })}
+              <rect
+                data-testid="drop-preview"
+                x={shown.x}
+                y={shown.y}
+                width={shown.dx}
+                height={shown.dy}
+                fill={tint}
+                fillOpacity={0.14}
+                stroke={tint}
+                strokeWidth={2.5}
+                strokeDasharray={shown.ok ? undefined : '8 5'}
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          );
+        })()}
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
       </svg>
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both

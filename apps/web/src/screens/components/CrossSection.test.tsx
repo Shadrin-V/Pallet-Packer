@@ -194,3 +194,45 @@ describe('side view dimming (D2)', () => {
     expect(outline.getAttribute('stroke-opacity')).toBeNull(); // контур в полную силу
   });
 });
+
+// Перетаскивание целиком в jsdom не проверить: getScreenCTM там не реализован, любое движение
+// сворачивается в ноль. Здесь — отрисовка призрака по готовому решению движка; сам жест
+// (pointer → resolveDrop → призрак → постановка) проверяется в реальном Chrome.
+describe('drop preview', () => {
+  const renderPreview = (preview: Parameters<typeof CrossSection>[0]['preview']) =>
+    render(
+      <LocaleProvider initial="de">
+        <CrossSection load={load} layout={layout} view="top" label="Draufsicht" preview={preview} />
+      </LocaleProvider>,
+    );
+
+  it('shows a green ghost where the stack would actually land', () => {
+    const { container } = renderPreview({ x: 1000, y: 0, dx: 1000, dy: 1000, ok: true, blocking: [] });
+    const ghost = container.querySelector('[data-testid="drop-preview"]')!;
+    expect(ghost).toHaveAttribute('stroke', 'var(--brand)');
+    expect(ghost).toHaveAttribute('x', '1000');
+  });
+
+  it('shows a red ghost and outlines exactly what is in the way', () => {
+    const { container } = renderPreview({
+      x: 0,
+      y: 0,
+      dx: 1000,
+      dy: 1000,
+      ok: false,
+      blocking: [{ cargoTypeId: 'c1', x: 0, y: 0 }],
+    });
+    expect(container.querySelector('[data-testid="drop-preview"]')).toHaveAttribute(
+      'stroke',
+      'var(--danger)',
+    );
+    const blocked = container.querySelectorAll('[data-testid="drop-blocker"]');
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0]).toHaveAttribute('x', '0');
+  });
+
+  it('draws no ghost when nothing is being dragged', () => {
+    const { container } = renderPreview(null);
+    expect(container.querySelector('[data-testid="drop-preview"]')).toBeNull();
+  });
+});
