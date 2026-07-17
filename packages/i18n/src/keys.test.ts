@@ -42,7 +42,6 @@ describe('TRANSLATION_KEYS', () => {
       'action.calculate',
       'action.exportJson',
       'results.totalPlaced',
-      'results.unplaced',
       'results.floorFillPercent',
       'results.volumeFillPercent',
       'results.placed',

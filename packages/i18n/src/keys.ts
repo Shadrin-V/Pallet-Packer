@@ -57,7 +57,6 @@ export const TRANSLATION_KEYS = [
   'ladeplan.mode.combined',
   'ladeplan.fig.pallets',
   'ladeplan.fig.positions',
-  'ladeplan.fig.load',
   'ladeplan.pltAbbr',
   'ladeplan.notPlaced',
   'ladeplan.rotateStack',
@@ -129,7 +128,6 @@ export const TRANSLATION_KEYS = [
 
   // Results / report metrics
   'results.totalPlaced',
-  'results.unplaced',
   'results.floorFillPercent',
   'results.volumeFillPercent',
   'results.placed',

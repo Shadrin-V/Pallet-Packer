@@ -57,7 +57,6 @@ export const de: Dictionary = {
   'ladeplan.mode.combined': 'Hinten und Seite',
   'ladeplan.fig.pallets': 'Paletten',
   'ladeplan.fig.positions': 'Stellplätze',
-  'ladeplan.fig.load': 'Auslastung',
   'ladeplan.pltAbbr': 'Pal.',
   'ladeplan.notPlaced': '{n} nicht platziert',
   'ladeplan.rotateStack': 'Stapel drehen',
@@ -127,7 +126,6 @@ export const de: Dictionary = {
   'setup.resetConfirm': 'Alle Eingaben und den Ladeplan zurücksetzen?',
 
   'results.totalPlaced': 'Platziert gesamt',
-  'results.unplaced': 'Nicht platziert',
   'results.floorFillPercent': 'Bodenauslastung',
   'results.volumeFillPercent': 'Volumenauslastung',
   'results.placed': 'Platziert',

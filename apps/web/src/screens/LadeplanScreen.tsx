@@ -1,6 +1,6 @@
 // Ladeplan / result screen (LKWkalk-73u, batch-2 LKWkalk-2ll) — эталон docs/lovable/ladeplan-reference.html,
 // palette per docs/design/design-system.md. Brand head + meta band + figures + top/side cutaways +
-// per-order legend + compact metrics. Full-width sheet; A4 landscape print (theme.css).
+// per-order legend. All totals live in the meta band — one source (D1). A4 landscape print (theme.css).
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -22,7 +22,6 @@ import { LoadingModeSwitch } from '../ui/LoadingModeSwitch';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
-import { Metrics } from './components/Metrics';
 import { orderIndexMap } from './components/cutaway';
 import { orderBreakdown } from './components/orderBreakdown';
 import { fillTemplate } from './components/stackFormula';
@@ -250,7 +249,10 @@ export function LadeplanScreen({
   const figures = [
     { label: tt('ladeplan.fig.pallets'), value: grp(m.totalPlaced) },
     { label: tt('ladeplan.fig.positions'), value: String(m.usedFloorPositions) },
-    { label: tt('ladeplan.fig.load'), value: `${Math.round(m.floorFillPercent)} %` },
+    // "Заполнение пола", not just "Заполнение": next to the volume figure, the bare word is
+    // ambiguous — and the precise strings already existed for the row this band replaces.
+    { label: tt('results.floorFillPercent'), value: `${Math.round(m.floorFillPercent)} %` },
+    { label: tt('results.volumeFillPercent'), value: `${Math.round(m.volumeFillPercent)} %` },
     ...(unplacedTotal > 0
       ? [{ label: tt('ladeplan.unplacedFig'), value: grp(unplacedTotal), danger: true }]
       : []),
@@ -424,10 +426,9 @@ export function LadeplanScreen({
           </div>
         </div>
 
-        {/* foot: legend (prominent) + compact metrics */}
+        {/* foot: the per-order breakdown. All totals live in the meta band — one source, said once (D1). */}
         <div className="flex flex-col gap-4 border-t border-line px-6 py-4 print:gap-2 print:py-2" style={{ breakInside: 'avoid' }}>
           <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} />
-          <Metrics layout={edited} />
         </div>
       </div>
 

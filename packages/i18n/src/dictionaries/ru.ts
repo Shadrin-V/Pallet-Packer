@@ -57,7 +57,6 @@ export const ru: Dictionary = {
   'ladeplan.mode.combined': 'Сзади и сбоку',
   'ladeplan.fig.pallets': 'Поддоны',
   'ladeplan.fig.positions': 'Места',
-  'ladeplan.fig.load': 'Заполнение',
   'ladeplan.pltAbbr': 'подд.',
   'ladeplan.notPlaced': '{n} не размещено',
   'ladeplan.rotateStack': 'Повернуть стопку',
@@ -127,7 +126,6 @@ export const ru: Dictionary = {
   'setup.resetConfirm': 'Сбросить все данные и план загрузки?',
 
   'results.totalPlaced': 'Всего размещено',
-  'results.unplaced': 'Не размещено',
   'results.floorFillPercent': 'Заполнение пола',
   'results.volumeFillPercent': 'Заполнение объёма',
   'results.placed': 'Размещено',

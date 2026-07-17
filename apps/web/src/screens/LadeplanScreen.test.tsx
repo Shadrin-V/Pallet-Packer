@@ -49,10 +49,11 @@ describe('LadeplanScreen', () => {
     expect(screen.getByText('Fahrzeug (innen)')).toBeInTheDocument();
     // de grouping: 2000 → "2.000"; unit once at the end
     expect(screen.getByText('2.000 × 2.000 × 2.000 mm')).toBeInTheDocument();
-    // figure labels (also echoed in the compact metrics row → use getAllByText)
-    expect(screen.getAllByText('Paletten').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Stellplätze').length).toBeGreaterThan(0);
-    expect(screen.getByText('Auslastung')).toBeInTheDocument();
+    // Figure labels. The band is now the only place they appear (D1), hence getByText — and
+    // "Bodenauslastung" rather than a bare "Auslastung", which is ambiguous next to the volume.
+    expect(screen.getByText('Paletten')).toBeInTheDocument();
+    expect(screen.getByText('Stellplätze')).toBeInTheDocument();
+    expect(screen.getByText('Bodenauslastung')).toBeInTheDocument();
   });
 
   it('legend breaks the order down by position (name × placed)', () => {
@@ -189,6 +190,29 @@ describe('LadeplanScreen — warehouse floor', () => {
     expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10 });
     expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
+  });
+});
+
+describe('LadeplanScreen — figures (D1 + D3)', () => {
+  const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
+
+  // The meta band and the old Metrics row repeated four of five numbers; "not placed" was said three
+  // times (figure, legend, metrics). One band, one place.
+  it('carries every number once, in the meta band', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={overloaded} layout={calculateLayout(overloaded)} />
+      </LocaleProvider>,
+    );
+    for (const label of ['Paletten', 'Stellplätze', 'Bodenauslastung', 'Volumenauslastung', 'Nicht platziert']) {
+      expect(screen.getAllByText(label)).toHaveLength(1);
+    }
+  });
+
+  it('drops the unplaced figure when there is no bad news to tell', () => {
+    renderLadeplan(); // 8 cubes fill the hold exactly
+    expect(screen.queryByText('Nicht platziert')).not.toBeInTheDocument();
+    expect(screen.getByText('Volumenauslastung')).toBeInTheDocument();
   });
 });
 
