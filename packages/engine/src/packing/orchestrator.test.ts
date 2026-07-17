@@ -211,6 +211,29 @@ describe('packLoad (qrd.7)', () => {
     expect(findGeometryViolations({ vehicle, cargo: cargoTypes, loadingMode: 'rear' }, dense)).toEqual([]);
   });
 
+  describe('densityFirst is never worse than strict (QA: heterogeneous multi-order cargo)', () => {
+    // Footprints mirror the demo: several orders whose zones pack tightly on their own, but whose
+    // combined single-region shelf packing leaves width gaps. densityFirst must not fit fewer.
+    const vehicle = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
+    const heterogeneous: CargoType[] = [
+      cargo({ id: 'epal1', orderId: 'A', length: 1200, width: 800, height: 144, quantity: 186, rotation: 'yawOnly', state: 'verschachtelt', nesting: { nestable: true, stepHeight: 22, nestingMode: 'pairwise', allowUnpairedTop: true } }),
+      cargo({ id: 'epal2', orderId: 'A', length: 1200, width: 1000, height: 162, quantity: 100, rotation: 'yawOnly', state: 'verschachtelt', nesting: { nestable: true, stepHeight: 30, nestingMode: 'sequential', maxNested: 25 } }),
+      cargo({ id: 'epal6', orderId: 'B', length: 800, width: 600, height: 144, quantity: 160, rotation: 'yawOnly', state: 'verschachtelt', nesting: { nestable: true, stepHeight: 20, nestingMode: 'pairwise', maxNested: 20 } }),
+      cargo({ id: 'viertel', orderId: 'B', length: 600, width: 400, height: 144, quantity: 96, rotation: 'yawOnly', stacking: { stackable: true, maxTiers: 6 } }),
+      cargo({ id: 'sonder', orderId: 'C', length: 1340, width: 890, height: 178, quantity: 42, rotation: 'yawOnly' }),
+      cargo({ id: 'epal3', orderId: 'D', length: 1000, width: 1200, height: 144, quantity: 216, rotation: 'none' }),
+    ];
+
+    for (const mode of ['rear', 'side', 'combined'] as LoadingMode[]) {
+      it(`${mode}: densityFirst places >= strict and stays geometry-clean`, () => {
+        const strict = packLoad({ vehicle, cargo: heterogeneous, loadingMode: mode, orderGrouping: 'strict' });
+        const dense = packLoad({ vehicle, cargo: heterogeneous, loadingMode: mode, orderGrouping: 'densityFirst' });
+        expect(dense.metrics.totalPlaced).toBeGreaterThanOrEqual(strict.metrics.totalPlaced);
+        expect(findGeometryViolations({ vehicle, cargo: heterogeneous, loadingMode: mode }, dense)).toEqual([]);
+      });
+    }
+  });
+
   it('fork access: a two-sided pallet is pinned lengthwise under rear and stays geometry-clean (ADR 018)', () => {
     const l = load({
       vehicle: { id: 'v', name: 'V', length: 2400, width: 1200, height: 1000 },
