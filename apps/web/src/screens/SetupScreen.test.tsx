@@ -270,6 +270,22 @@ describe('SetupScreen', () => {
       );
     });
 
+    it('an order keeps its colour when reordered (QA: move must be visible)', async () => {
+      renderSetup(() => {});
+      // three orders: SO-1, SO-2, SO-3 → colour series 1, 2, 3
+      await userEvent.click(screen.getAllByRole('button', { name: /Auftrag hinzufügen/ })[0]);
+      await userEvent.click(screen.getAllByRole('button', { name: /Auftrag hinzufügen/ })[0]);
+      const colourOf = (orderId: string) => {
+        const input = (screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).find((i) => i.value === orderId)!;
+        return input.closest('section')!.getAttribute('style') ?? '';
+      };
+      expect(colourOf('SO-2')).toContain('--s2');
+      // move SO-2 up to the first slot; its colour must stay --s2 (bound to the order, not the row)
+      await userEvent.click(screen.getAllByRole('button', { name: 'Auftrag nach oben' })[1]);
+      expect((screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value)).toEqual(['SO-2', 'SO-1', 'SO-3']);
+      expect(colourOf('SO-2')).toContain('--s2');
+    });
+
     it('disables up on the first order and down on the last', async () => {
       await twoOrders();
       const up = screen.getAllByRole('button', { name: 'Auftrag nach oben' });

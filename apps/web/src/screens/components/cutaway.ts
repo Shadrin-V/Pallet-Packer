@@ -36,23 +36,25 @@ interface CargoInfo {
   series: number;
 }
 
-function cargoInfoMap(load: Load): Map<string, CargoInfo> {
-  const oidx = orderIndexMap(load);
+/** Palette slot per orderId: a caller-supplied stable map (Setup colorIndex) wins, so an order keeps
+ *  its colour when the list is reordered; otherwise fall back to order-of-appearance (QA #2). */
+function cargoInfoMap(load: Load, colors?: Map<string, number>): Map<string, CargoInfo> {
+  const slots = colors ?? orderIndexMap(load);
   const m = new Map<string, CargoInfo>();
   for (const c of load.cargo) {
     m.set(c.id, {
       l: c.length,
       w: c.width,
       h: c.height,
-      series: orderColorToken(oidx.get(c.orderId ?? '') ?? 0).series,
+      series: orderColorToken(slots.get(c.orderId ?? '') ?? 0).series,
     });
   }
   return m;
 }
 
 /** Top view (Draufsicht): one footprint rect per floor position, with the stack count. */
-export function topRects(load: Load, layout: Layout): CutRect[] {
-  const info = cargoInfoMap(load);
+export function topRects(load: Load, layout: Layout, colors?: Map<string, number>): CutRect[] {
+  const info = cargoInfoMap(load, colors);
   const byPos = new Map<string, CutRect>();
   for (const p of layout.placements) {
     const c = info.get(p.cargoTypeId);
@@ -72,8 +74,8 @@ export function topRects(load: Load, layout: Layout): CutRect[] {
  * `depth` ranks them front→back so the renderer can dim the rear rows (depth > 0) and draw them
  * behind the front row — showing back-row loads instead of hiding them.
  */
-export function sideRects(load: Load, layout: Layout, vehicleHeight: number): CutRect[] {
-  const info = cargoInfoMap(load);
+export function sideRects(load: Load, layout: Layout, vehicleHeight: number, colors?: Map<string, number>): CutRect[] {
+  const info = cargoInfoMap(load, colors);
   const byPos = new Map<string, { x: number; y: number; top: number; w: number; series: number; cargoTypeId: string }>();
   for (const p of layout.placements) {
     const c = info.get(p.cargoTypeId);

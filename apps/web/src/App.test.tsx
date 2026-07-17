@@ -51,6 +51,13 @@ describe('App shell (single page)', () => {
     expect(JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}').orderGrouping).toBe('strict');
   });
 
+  it('persists a stable orderId→colour map so the plan matches Setup after a reload (QA #2)', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    // the default single order SO-1 gets palette slot 0; the map is persisted alongside the plan
+    expect(JSON.parse(localStorage.getItem('ladungsplaner.orderColors') ?? '{}')).toEqual({ 'SO-1': 0 });
+  });
+
   it('clicking the order-grouping info hint does not toggle the strategy', async () => {
     render(<App />);
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));

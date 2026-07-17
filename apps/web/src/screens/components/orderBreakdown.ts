@@ -17,13 +17,16 @@ export interface BreakdownItem {
 
 export interface OrderBreakdown {
   orderId: string;
-  /** Palette index (colour + hatch series), = orderIndexMap order. */
+  /** Display/sort order = order-of-appearance in the plan (zone order). */
   index: number;
+  /** Palette slot (colour + hatch series). Stable per order (Setup colorIndex) when a colour map is
+   *  supplied; otherwise equals `index` (order-of-appearance). QA #2. */
+  colorIndex: number;
   items: BreakdownItem[];
   placedTotal: number;
 }
 
-export function orderBreakdown(load: Load, layout: Layout): OrderBreakdown[] {
+export function orderBreakdown(load: Load, layout: Layout, colors?: Map<string, number>): OrderBreakdown[] {
   const placedBy = new Map<string, number>();
   for (const p of layout.placements) {
     placedBy.set(p.cargoTypeId, (placedBy.get(p.cargoTypeId) ?? 0) + 1);
@@ -39,7 +42,8 @@ export function orderBreakdown(load: Load, layout: Layout): OrderBreakdown[] {
     const orderId = c.orderId ?? '';
     let entry = orders.get(orderId);
     if (!entry) {
-      entry = { orderId, index: oidx.get(orderId) ?? 0, items: [], placedTotal: 0 };
+      const index = oidx.get(orderId) ?? 0;
+      entry = { orderId, index, colorIndex: colors?.get(orderId) ?? index, items: [], placedTotal: 0 };
       orders.set(orderId, entry);
     }
     const placed = placedBy.get(c.id) ?? 0;

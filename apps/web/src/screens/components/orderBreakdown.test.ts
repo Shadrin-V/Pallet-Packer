@@ -61,6 +61,23 @@ describe('orderBreakdown', () => {
     expect(bd[1].placedTotal).toBe(0);
   });
 
+  it('colours by a provided stable map while keeping appearance display order (QA #2)', () => {
+    const layout: Layout = {
+      placements: [placement('a'), placement('c')],
+      unplaced: [],
+      metrics: { totalPlaced: 2, usedFloorPositions: 2, floorFillPercent: 5, volumeFillPercent: 2 },
+      contractVersion: '0.9.0',
+    };
+    // stable palette: SO-1→slot 3, SO-2→slot 0 (unrelated to appearance)
+    const colors = new Map([['SO-1', 3], ['SO-2', 0]]);
+    const bd = orderBreakdown(load, layout, colors);
+    // display order is still appearance (SO-1 first)…
+    expect(bd.map((o) => o.orderId)).toEqual(['SO-1', 'SO-2']);
+    // …but the palette slot comes from the map
+    expect(bd.find((o) => o.orderId === 'SO-1')!.colorIndex).toBe(3);
+    expect(bd.find((o) => o.orderId === 'SO-2')!.colorIndex).toBe(0);
+  });
+
   it('falls back to the cargo id when name is empty', () => {
     const load2: Load = {
       vehicle: load.vehicle,

@@ -54,14 +54,18 @@ export interface PositionState {
 export interface OrderState {
   key: string;
   orderId: string;
+  /** Stable palette slot (0-based), assigned at creation and never renumbered — so an order keeps
+   *  its colour + hatch when the list is reordered, on both Setup and the Ladeplan (QA). */
+  colorIndex: number;
   positions: PositionState[];
 }
 
 export interface SetupScreenProps {
   initialVehicle?: Vehicle;
   initialOrders?: OrderState[];
-  /** `persist: false` computes a throwaway preview (Demo) that must not overwrite the saved plan. */
-  onCalculate: (load: Load, opts?: { persist?: boolean }) => void;
+  /** `persist: false` computes a throwaway preview (Demo) that must not overwrite the saved plan.
+   *  `orderColors` maps orderId → stable palette slot so plan colours match Setup after reorder. */
+  onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => void;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
 }
@@ -79,7 +83,11 @@ function loadSetup(): PersistedSetup | null {
     const raw = globalThis.localStorage?.getItem(SETUP_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSetup;
-    if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) return parsed;
+    if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) {
+      // Backfill colorIndex for drafts saved before stable colours existed (by array position).
+      const orders = parsed.orders.map((o, i) => ({ ...o, colorIndex: o.colorIndex ?? i }));
+      return { ...parsed, orders };
+    }
   } catch {
     /* corrupt / unavailable — ignore */
   }
@@ -116,10 +124,16 @@ const emptyPosition = (): PositionState => ({
 const emptyOrder = (n: number): OrderState => ({
   key: uid(),
   orderId: `SO-${n}`,
+  colorIndex: n - 1, // 1-based n → 0-based palette slot; addOrder passes os.length + 1
   positions: [emptyPosition()],
 });
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
+
+/** orderId → stable palette slot, sent with every computed plan so the Ladeplan colours an order the
+ *  same as Setup regardless of list order (QA #2). */
+const buildOrderColors = (os: OrderState[]): Record<string, number> =>
+  Object.fromEntries(os.map((o) => [o.orderId, o.colorIndex]));
 
 /** Build the engine CargoType for a position (used for both preview and the final Load). */
 export function toCargo(p: PositionState, orderId: string): CargoType {
@@ -192,7 +206,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         loadingMode: 'rear',
         orderGrouping: 'strict',
       },
-      { persist: false },
+      { persist: false, orderColors: buildOrderColors(d.orders) },
     );
   };
 
@@ -244,7 +258,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   const handleCalculate = () => {
     if (anyInvalid) return;
     const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
-    onCalculate({ vehicle, cargo });
+    onCalculate({ vehicle, cargo }, { orderColors: buildOrderColors(orders) });
   };
 
   return (
@@ -287,7 +301,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
           <OrderCard
             key={o.key}
             order={o}
-            index={oi}
+            index={o.colorIndex}
             vehicle={vehicle}
             userPallets={userPallets}
             onSavePreset={(p) => setUserPallets(addUserPallet(p))}
