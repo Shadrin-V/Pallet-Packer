@@ -139,6 +139,18 @@ describe('App shell (single page)', () => {
       expect(localStorage.getItem('ladungsplaner.load')).toBe(loadBefore);
     });
 
+    it('toggling a strategy on the Demo preview keeps it transient (does not persist) (QA)', async () => {
+      render(<App />);
+      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      const loadBefore = localStorage.getItem('ladungsplaner.load');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Demo' })); // transient preview (rear)
+      await userEvent.click(screen.getByRole('button', { name: 'Automatisch' })); // change strategy on it
+
+      // still a preview → the persisted plan must be untouched
+      expect(localStorage.getItem('ladungsplaner.load')).toBe(loadBefore);
+    });
+
     it('a reload after Demo returns to the pre-demo state, not the demo (QA)', async () => {
       const { unmount } = render(<App />);
       const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;

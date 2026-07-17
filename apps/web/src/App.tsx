@@ -76,15 +76,16 @@ export function App() {
   };
 
   // Recompute the current plan under a new loading strategy (ADR 012). Manual edits are intentionally
-  // discarded — the fresh layout resets LadeplanScreen's editable copy.
+  // discarded — the fresh layout resets LadeplanScreen's editable copy. Preserve transience: toggling
+  // a strategy on a Demo preview must NOT turn it into a persisted plan (QA).
   const onLoadingModeChange = (mode: LoadingMode) => {
     if (!result) return;
-    onCalculate({ ...result.load, loadingMode: mode });
+    onCalculate({ ...result.load, loadingMode: mode }, { persist: !result.transient });
   };
 
   const onOrderGroupingChange = (grouping: OrderGrouping) => {
     if (!result) return;
-    onCalculate({ ...result.load, orderGrouping: grouping });
+    onCalculate({ ...result.load, orderGrouping: grouping }, { persist: !result.transient });
   };
 
   return (
