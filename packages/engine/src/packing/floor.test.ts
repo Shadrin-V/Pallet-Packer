@@ -158,6 +158,20 @@ describe('packFloor — dense heuristic: best-fit + backfill (ADR 017)', () => {
     const d = out.find((p) => p.cargoTypeId === 'd')!;
     expect([d.x, d.y]).toEqual([400, 0]); // backfilled into shelf0 (grow 0), after a
   });
+
+  it('backfills a pocket behind a shorter stack in the same shelf (ymv)', () => {
+    // rear: grow=x(len 1000), fill=y(width 1000). A is 1000 deep and sets the shelf depth; B is only
+    // 600 deep → a 400×500 pocket stays empty behind it; C (400 deep) fits that pocket, and there is
+    // no room to open a new shelf (grow is full). The shelf pass alone leaves C unplaced.
+    const region = { length: 1000, width: 1000 };
+    const A: FloorRequest = { cargoTypeId: 'a', length: 1000, width: 500, rotation: 'none', count: 1 };
+    const B: FloorRequest = { cargoTypeId: 'b', length: 600, width: 500, rotation: 'none', count: 1 };
+    const C: FloorRequest = { cargoTypeId: 'c', length: 400, width: 500, rotation: 'none', count: 1 };
+    const out = packFloor(region, [A, B, C], { loadingMode: 'rear' });
+    expect(out.map((p) => p.cargoTypeId).sort()).toEqual(['a', 'b', 'c']);
+    const c = out.find((p) => p.cargoTypeId === 'c')!;
+    expect([c.x, c.y, c.dx, c.dy]).toEqual([600, 500, 400, 500]); // placed in the pocket behind b
+  });
 });
 
 describe('packFloor — fork access (ADR 018)', () => {
