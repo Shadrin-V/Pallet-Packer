@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { LadeplanScreen } from './LadeplanScreen';
+import * as exportPlan from '../lib/exportPlan';
 
 const V = { id: 'v1', name: 'LKW', length: 2000, width: 2000, height: 2000 };
 const load: Load = {
@@ -191,6 +192,26 @@ describe('LadeplanScreen — warehouse floor', () => {
   });
 });
 
+describe('LadeplanScreen — section order', () => {
+  // Owner's batch: side view on top, then the top view, then the warehouse it feeds.
+  it('reads side view → top view → warehouse', () => {
+    const { container } = renderLadeplan();
+    const marks = [...container.querySelectorAll('svg[data-cutaway], [data-testid="warehouse-floor"]')];
+    expect(marks.map((el) => el.getAttribute('data-cutaway') ?? 'warehouse')).toEqual([
+      'side',
+      'top',
+      'warehouse',
+    ]);
+  });
+
+  // Both cutaways share the x axis, so one pair of markers under the TOP view labels them both.
+  it('keeps Vorne / Hinten under the top view once the side view moves above it', () => {
+    renderLadeplan();
+    expect(screen.getAllByText('Vorne')).toHaveLength(1);
+    expect(screen.getAllByText('Hinten')).toHaveLength(1);
+  });
+});
+
 describe('LadeplanScreen — action bar groups', () => {
   it('labels the strategy and export groups instead of one flat row (rgv.3)', () => {
     render(
@@ -221,11 +242,30 @@ describe('LadeplanScreen — export', () => {
 
   // The PNG composes exactly the two cutaways. Selecting them by role="img" once swept in the
   // legend swatches too (square aspect → a metres-tall sheet), hence the explicit marker.
-  it('marks exactly the two projections as cutaways, top before side', () => {
+  it('marks exactly the two projections as cutaways, side before top', () => {
     const { container } = renderLadeplan();
     const cutaways = [...container.querySelectorAll('svg[data-cutaway]')];
-    expect(cutaways.map((el) => el.getAttribute('data-cutaway'))).toEqual(['top', 'side']);
+    expect(cutaways.map((el) => el.getAttribute('data-cutaway'))).toEqual(['side', 'top']);
     expect(container.querySelectorAll('svg[role="img"]').length).toBeGreaterThan(cutaways.length);
+  });
+
+  // The captions used to be a hard-coded array indexed by DOM position, so reordering the sections
+  // would have swapped them silently. They now come from the svg that is actually being exported.
+  it('captions each PNG section from its own data-cutaway, not from its position', async () => {
+    const spy = vi.spyOn(exportPlan, 'exportPlanPng').mockResolvedValue(undefined);
+    renderLadeplan();
+    await userEvent.click(screen.getByRole('button', { name: 'PNG' }));
+
+    const sections = spy.mock.calls[0][1].sections;
+    expect(
+      sections.map((s: { caption: string; svg: SVGSVGElement }) => [
+        s.svg.dataset.cutaway,
+        s.caption,
+      ]),
+    ).toEqual([
+      ['side', 'Seitenansicht'],
+      ['top', 'Draufsicht'],
+    ]);
   });
 
   it('PDF opens the print dialog (browser "save as PDF")', async () => {

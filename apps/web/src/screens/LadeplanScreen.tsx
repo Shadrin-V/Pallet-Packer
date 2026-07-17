@@ -256,7 +256,10 @@ export function LadeplanScreen({
       : []),
   ];
   const handleExportPng = async () => {
-    const captions = [tt('ladeplan.top'), tt('ladeplan.side')];
+    // The caption comes from the svg being exported, not from its position: a hard-coded array
+    // indexed by DOM order would swap the captions the moment the sections are reordered — silently,
+    // in a file the user sends on to someone else.
+    const captionOf: Record<string, string> = { top: tt('ladeplan.top'), side: tt('ladeplan.side') };
     // Cutaways only — `role="img"` alone would also drag in legend swatches and stack diagrams.
     const svgs = [...(sheetRef.current?.querySelectorAll<SVGSVGElement>('svg[data-cutaway]') ?? [])];
     try {
@@ -281,7 +284,7 @@ export function LadeplanScreen({
             .join(', ')}`,
           color: orderColorToken(o.colorIndex).colorVar,
         })),
-        sections: svgs.map((svg, i) => ({ caption: captions[i] ?? '', svg })),
+        sections: svgs.map((svg) => ({ caption: captionOf[svg.dataset.cutaway ?? ''] ?? '', svg })),
       });
     } catch (err) {
       // Keep a trace: without it a prod report of "export does nothing" is undiagnosable.
@@ -382,8 +385,14 @@ export function LadeplanScreen({
           </div>
         </div>
 
-        {/* diagrams — near-full-bleed on print for maximum width */}
+        {/* diagrams — near-full-bleed on print for maximum width.
+            Order (owner's batch): side view, then top view, then the warehouse. The hold and the
+            warehouse end up adjacent, which is where the work happens — stacks travel between them. */}
         <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:px-1 print:py-2">
+          <div className="cut" style={{ breakInside: 'avoid' }}>
+            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
+          </div>
+
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection
               load={load}
@@ -397,7 +406,7 @@ export function LadeplanScreen({
             />
           </div>
 
-          {/* Workbench, not document: the buffer sits with the top view it feeds, and prints nothing. */}
+          {/* Workbench, not document: the warehouse sits with the top view it feeds, and prints nothing. */}
           <div ref={bufferRef} className="print:hidden">
             <WarehouseFloor
               load={load}
@@ -412,9 +421,6 @@ export function LadeplanScreen({
                 {editErrorText(editError.code)}
               </p>
             )}
-          </div>
-          <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
           </div>
         </div>
 
