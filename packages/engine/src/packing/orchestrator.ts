@@ -75,23 +75,30 @@ function zonesOf(cargo: CargoType[], grouping: OrderGrouping): CargoType[][] {
   return order.map((k) => map.get(k)!);
 }
 
-/**
- * Orchestrate a full Load into a Layout (qrd.7): zone by orderId (ADR 011), place each zone's floor
- * footprints via packFloor (ADR 004/012), expand each floor position into a per-tier column via
- * computeVerticalStack + columnPlacements, and track unplaced remainders. Zones are laid out as
- * adjacent slices along vehicle length (order = first appearance in `load.cargo`).
- */
-export function packLoad(load: Load): Layout {
+interface ZonePacking {
+  placements: Placement[];
+  placedByType: Map<string, number>;
+  usedFloorPositions: number;
+}
+
+function zoneTotalPlaced(z: ZonePacking): number {
+  let total = 0;
+  for (const n of z.placedByType.values()) total += n;
+  return total;
+}
+
+/** Pack a given list of zones as adjacent slices along the vehicle length (the shared inner loop of
+ *  {@link packLoad}). Each zone: floor footprints via packFloor, then per-tier columns. */
+function packZones(load: Load, zones: CargoType[][]): ZonePacking {
   const { vehicle } = load;
   const clearance = load.clearance ?? 0;
   const loadingMode = load.loadingMode ?? 'combined'; // contract/ADR-012 default
-  const grouping: OrderGrouping = load.orderGrouping ?? 'strict'; // contract/ADR-016 default
   const placements: Placement[] = [];
   const placedByType = new Map<string, number>();
   let usedFloorPositions = 0;
   let xOffset = 0;
 
-  for (const zone of zonesOf(load.cargo, grouping)) {
+  for (const zone of zones) {
     const region = { length: vehicle.length - xOffset, width: vehicle.width };
     if (region.length <= 0) break;
     // vertical capacity per type
@@ -132,6 +139,29 @@ export function packLoad(load: Load): Layout {
     }
     xOffset += maxX + (maxX > 0 ? clearance : 0);
   }
+  return { placements, placedByType, usedFloorPositions };
+}
+
+/**
+ * Orchestrate a full Load into a Layout (qrd.7): zone by orderId (ADR 011), place each zone's floor
+ * footprints via packFloor (ADR 004/012), expand each floor position into a per-tier column via
+ * computeVerticalStack + columnPlacements, and track unplaced remainders. Zones are laid out as
+ * adjacent slices along vehicle length (order = first appearance in `load.cargo`).
+ *
+ * `densityFirst` (ADR 016) means "density beats grouping": it must never fit fewer than `strict`.
+ * The single-region pack can lose to per-zone packing on heterogeneous cargo (zones pack tight on
+ * full width; one interleaved region leaves width gaps), so densityFirst returns whichever of the
+ * two layouts places more (tie → strict, deterministic).
+ */
+export function packLoad(load: Load): Layout {
+  const grouping: OrderGrouping = load.orderGrouping ?? 'strict'; // contract/ADR-016 default
+  const strictPack = packZones(load, zonesOf(load.cargo, 'strict'));
+  let chosen = strictPack;
+  if (grouping === 'densityFirst') {
+    const single = packZones(load, zonesOf(load.cargo, 'densityFirst'));
+    if (zoneTotalPlaced(single) > zoneTotalPlaced(strictPack)) chosen = single;
+  }
+  const { placements, placedByType, usedFloorPositions } = chosen;
 
   const unplaced: UnplacedCount[] = [];
   for (const c of load.cargo) {
