@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, type Load } from '@shadrin-v/engine';
 import { App } from './App';
 
 describe('App shell (single page)', () => {
@@ -96,23 +95,10 @@ describe('App shell (single page)', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
 
-      expect(JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}').loadingMode).toBe('rear');
+      // The strategy is reflected in the (in-memory) Ladeplan; Demo is transient so it is not
+      // persisted (see the demo-transience tests). Placement of the two-sided position is guarded
+      // in data/demo.test.ts against the engine directly.
       expect(screen.getByRole('button', { name: 'Von hinten' })).toHaveAttribute('aria-pressed', 'true');
-    });
-
-    it('Demo actually places the two-sided position so fork access is visible (4bj.13)', async () => {
-      render(<App />);
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
-      await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
-
-      // The showcase is pointless if the two-sided position never lands (it sits in an over-filled
-      // demo). Rebuild the layout from the real persisted Load and assert it has placements.
-      const load = JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}') as Load;
-      const twoSided = load.cargo.find((c) => c.forkAccess === 'twoSides');
-      expect(twoSided).toBeDefined();
-      const layout = calculateLayout(load);
-      const placed = layout.placements.filter((p) => p.cargoTypeId === twoSided!.id).length;
-      expect(placed).toBeGreaterThan(0);
     });
 
     it('Reset clears the strategy so the next plan is fresh combined', async () => {
@@ -126,6 +112,37 @@ describe('App shell (single page)', () => {
 
       expect(JSON.parse(localStorage.getItem('ladungsplaner.load') ?? '{}').loadingMode ?? 'combined').toBe('combined');
       expect(screen.getByRole('button', { name: 'Automatisch' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('Demo is a transient preview — it does not overwrite the persisted setup or plan (QA)', async () => {
+      render(<App />);
+      const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
+      await userEvent.clear(orderId);
+      await userEvent.type(orderId, 'SO-42');
+      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+      const setupBefore = localStorage.getItem('ladungsplaner.setup');
+      const loadBefore = localStorage.getItem('ladungsplaner.load');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
+      // demo is shown in the UI…
+      expect((screen.getAllByLabelText('Auftrags-ID')[0] as HTMLInputElement).value).toBe('SO-1001');
+      // …but nothing demo-related was persisted (transient preview)
+      expect(localStorage.getItem('ladungsplaner.setup')).toBe(setupBefore);
+      expect(localStorage.getItem('ladungsplaner.load')).toBe(loadBefore);
+    });
+
+    it('a reload after Demo returns to the pre-demo state, not the demo (QA)', async () => {
+      const { unmount } = render(<App />);
+      const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
+      await userEvent.clear(orderId);
+      await userEvent.type(orderId, 'SO-42');
+      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
+      unmount();
+
+      render(<App />);
+      expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-42');
     });
   });
 });

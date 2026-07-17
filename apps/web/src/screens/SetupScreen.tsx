@@ -60,7 +60,8 @@ export interface OrderState {
 export interface SetupScreenProps {
   initialVehicle?: Vehicle;
   initialOrders?: OrderState[];
-  onCalculate: (load: Load) => void;
+  /** `persist: false` computes a throwaway preview (Demo) that must not overwrite the saved plan. */
+  onCalculate: (load: Load, opts?: { persist?: boolean }) => void;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
 }
@@ -121,7 +122,7 @@ const emptyOrder = (n: number): OrderState => ({
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
 
 /** Build the engine CargoType for a position (used for both preview and the final Load). */
-function toCargo(p: PositionState, orderId: string): CargoType {
+export function toCargo(p: PositionState, orderId: string): CargoType {
   const nestable = p.state === 'verschachtelt' && numOr0(p.stepHeight) > 0;
   return {
     id: p.id,
@@ -160,26 +161,39 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // dropdowns of all the others. Reset clears the draft, never this catalogue.
   const [userPallets, setUserPallets] = useState<DimPreset[]>(() => loadUserPallets());
 
+  // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
+  // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
+  // edit the user makes clears it implicitly and persists as normal.
+  const skipNextSaveRef = useRef(false);
+
   // Persist the working draft on every change so a page refresh does not lose input.
   useEffect(() => {
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
     saveSetup({ vehicle, orders });
   }, [vehicle, orders]);
 
   /** Fill a rich demo plan and compute it right away (build the Load from the demo data directly —
-   *  setState is async, so we must not read it back in this tick). */
+   *  setState is async, so we must not read it back in this tick). Transient: neither the demo setup
+   *  nor its computed plan is persisted, so a reload returns to the user's pre-demo state (QA). */
   const handleDemo = () => {
     const d = demoSetup();
+    skipNextSaveRef.current = true; // don't overwrite the saved draft with the demo
     setVehicle(d.vehicle);
     setOrders(d.orders);
-    // Demo is a self-contained showcase: pin the strategy so it stays deterministic and does not
-    // inherit a strategy chosen on a previous plan (4bj.12). Rear loading makes the two-sided
-    // fork-access position an effective constraint, so the feature is actually visible (4bj.13).
-    onCalculate({
-      vehicle: d.vehicle,
-      cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
-      loadingMode: 'rear',
-      orderGrouping: 'strict',
-    });
+    // Pin the strategy so the showcase is deterministic (4bj.12); rear loading makes the two-sided
+    // fork-access position an effective constraint, so the feature is visible (4bj.13).
+    onCalculate(
+      {
+        vehicle: d.vehicle,
+        cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+        loadingMode: 'rear',
+        orderGrouping: 'strict',
+      },
+      { persist: false },
+    );
   };
 
   const handleReset = () => {

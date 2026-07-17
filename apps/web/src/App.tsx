@@ -30,10 +30,13 @@ function loadPersistedResult(): { load: Load; layout: Layout } | null {
 export function App() {
   // Single page: SetupScreen stays mounted (its state never resets); the Ladeplan result renders
   // below it when a layout has been computed. Both survive a refresh via localStorage.
-  const [result, setResult] = useState<{ load: Load; layout: Layout } | null>(() => loadPersistedResult());
+  // `transient` marks a Demo preview: shown in the UI but never persisted, so a reload returns to
+  // the user's saved plan (QA).
+  const [result, setResult] = useState<{ load: Load; layout: Layout; transient?: boolean } | null>(() => loadPersistedResult());
 
   useEffect(() => {
     try {
+      if (result?.transient) return; // preview: leave the previously saved plan untouched
       if (result) globalThis.localStorage?.setItem(LOAD_STORAGE_KEY, JSON.stringify(result.load));
       else globalThis.localStorage?.removeItem(LOAD_STORAGE_KEY);
     } catch {
@@ -41,7 +44,7 @@ export function App() {
     }
   }, [result]);
 
-  const onCalculate = (load: Load) => {
+  const onCalculate = (load: Load, opts?: { persist?: boolean }) => {
     // Preserve the strategy chosen on the Ladeplan across a Setup recompute (4bj.12): "Berechnen"
     // builds a Load without loadingMode/orderGrouping, so fall back to the current plan's choice.
     // The strategy selectors and Demo pass these fields explicitly, so they win over the fallback.
@@ -53,7 +56,7 @@ export function App() {
     const layout = calculateLayout(next);
     // Domain invariant: never surface a layout with geometry violations.
     if (findGeometryViolations(next, layout).length > 0) return;
-    setResult({ load: next, layout });
+    setResult({ load: next, layout, transient: opts?.persist === false });
   };
 
   // Recompute the current plan under a new loading strategy (ADR 012). Manual edits are intentionally
