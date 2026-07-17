@@ -17,6 +17,7 @@
 | `0.0.5`   | `0.9.0`  | `findGeometryViolations(Load,Layout) → GeometryViolation[]` — проверка отредактированной вручную раскладки (drag штабелей). |
 | `0.0.6`   | `0.9.0`  | Bugfix: per-tier z колонки «парами» достигает истинной высоты штабеля (был сжат до `t·h_д`) → верный вид сбоку и `volumeFillPercent` (qrd.22). |
 | `0.0.7`   | `0.12.0` | Операции ручной правки раскладки: `moveStack`/`rotateStack` (перенесены из UI), `unplaceStack`, `placeStack`, `stackBuffer`; `EditResult` с кодом причины отказа ([ADR 019](adr/019-manual-layout-editing-api.md)). |
+| `0.0.8`   | `0.13.0` | Магнит постановки: `resolveDrop` — ближайшее допустимое место с прижимом вплотную + `blocking` для подсветки ([ADR 020](adr/020-magnet-drop-resolution.md)). `placeStack`/`moveStack` остаются строгими. |
 
 > `latest` в npm может отставать от main: публикует пользователь по запросу (см. onboarding.md §6).
 > Строку добавляем при бампе версии в `packages/engine/package.json` во время merge.
