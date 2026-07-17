@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, type Layout, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../../i18n/LocaleContext';
 import { CrossSection } from './CrossSection';
 
@@ -119,5 +119,59 @@ describe('manual stack rotation (T5)', () => {
     expect(cx).toBeLessThan(rx + rw);
     expect(cy).toBeGreaterThan(ry);
     expect(cy).toBeLessThan(ry + rh);
+  });
+});
+
+// Пять стопок 1200×400. s(x=0,y=0) — дальняя, её загораживает ровно одна: o(x=600,y=500).
+// Саму o загораживают три стопки при x=1300, которые до s не достают (1300 ≥ 1200).
+// Глубины: s=1, o=3 → сортировка по глубине ставит o ПЕРЕД s, и дальняя s закрашивает ближнюю o.
+const depthV = { id: 'v2', name: 'LKW', length: 4000, width: 2400, height: 2000 };
+const depthLoad: Load = {
+  vehicle: depthV,
+  cargo: [
+    {
+      id: 'p',
+      name: 'P',
+      length: 1200,
+      width: 400,
+      height: 1000,
+      quantity: 5,
+      rotation: 'none',
+      stacking: { stackable: false },
+      nesting: { nestable: false },
+      state: 'entschachtelt',
+      orderId: 'SO-1',
+    },
+  ],
+};
+const at = (x: number, y: number): Layout['placements'][number] => ({
+  cargoTypeId: 'p',
+  x,
+  y,
+  z: 0,
+  orientation: 'lwh',
+  tier: 1,
+  state: 'entschachtelt',
+});
+const depthLayout: Layout = {
+  placements: [at(0, 0), at(600, 500), at(1300, 1000), at(1300, 1500), at(1300, 2000)],
+  unplaced: [],
+  metrics: { totalPlaced: 5, usedFloorPositions: 5, floorFillPercent: 0, volumeFillPercent: 0 },
+  contractVersion: '0.12.0',
+};
+
+describe('side view paint order', () => {
+  it('draws far rows before near ones — depth is a count, not an order', () => {
+    const { container } = render(
+      <LocaleProvider>
+        <CrossSection load={depthLoad} layout={depthLayout} view="side" label="Seitenansicht" />
+      </LocaleProvider>,
+    );
+    const svg = container.querySelector('svg[data-cutaway="side"]')!;
+    // первый <rect> каждой группы несёт её x — по нему и опознаём стопку
+    const xs = [...svg.querySelectorAll('g > rect:first-child')].map((r) =>
+      Number(r.getAttribute('x')),
+    );
+    expect(xs).toEqual([0, 600, 1300, 1300, 1300]); // по возрастанию rowY
   });
 });

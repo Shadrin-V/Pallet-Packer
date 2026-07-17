@@ -107,9 +107,13 @@ export function CrossSection({
   const { length, width, height } = load.vehicle;
   const spanY = view === 'top' ? width : height;
   const rects: CutRect[] = view === 'top' ? topRects(load, layout, orderColors) : sideRects(load, layout, height, orderColors);
-  // Side view: draw rear rows (higher depth) first so the front row overlays them.
+  // Side view: draw far rows before near ones, so a nearer stack overlays what it really hides.
+  // Sorting by `depth` would be wrong: "hidden by two" does not mean "further back than hidden by
+  // one" — that is a count, not an order. `rowY` is the order; x breaks ties, for determinism.
   const sortedRects =
-    view === 'side' ? [...rects].sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0)) : rects;
+    view === 'side'
+      ? [...rects].sort((a, b) => (a.rowY ?? 0) - (b.rowY ?? 0) || a.x - b.x)
+      : rects;
   // Uniform ×N label size across all stacks (independent of footprint), in top-view mm units.
   const countFont = width * 0.05;
   const draggable = view === 'top' && !!onMoveStack;
