@@ -475,9 +475,10 @@ function PositionRow({
 
   return (
     <div ref={rootRef} className="px-4 py-2.5">
-      {/* desktop (≥xl, wider than the 1120px content): one line; below: wraps into a card.
-          Tight gaps + shrinkable name/selects keep the single line comfortably inside 1120px. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 xl:flex-nowrap">
+      {/* flex-wrap (no forced nowrap): a normal row still fits one line, but the wider two-sided
+          variant (fork-axis select + info hint) wraps its tail to a second line instead of
+          overflowing and overlapping the length fields (QA). */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <OrderSwatch index={index} width={12} height={26} />
         <Select
           ariaLabel={tt('cargoType.label')}
@@ -494,7 +495,7 @@ function PositionRow({
             ...allPallets.map((pp) => ({ value: pp.key, label: pp.name })),
           ]}
         />
-        <span className="min-w-[5.5rem] flex-1">
+        <span className="min-w-[5.5rem] max-w-[14rem] flex-1">
           <TextField ariaLabel={tt('field.name')} value={p.name} onChange={(name) => onChange({ name })} placeholder={tt('cargoType.label')} />
         </span>
         <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
