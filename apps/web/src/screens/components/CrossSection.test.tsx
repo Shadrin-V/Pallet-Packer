@@ -94,4 +94,23 @@ describe('manual stack rotation (T5)', () => {
     await userEvent.click(document.querySelector('svg rect')!);
     expect(screen.queryByRole('button', { name: rotateName })).not.toBeInTheDocument();
   });
+
+  it('places the rotate handle inside the stack shape so edge stacks stay clickable (QA)', async () => {
+    renderEditable('top');
+    await userEvent.click(screen.getAllByText('×2')[0]);
+    const rect = document.querySelector('rect[stroke-dasharray="6 4"]') as SVGRectElement;
+    const rx = parseFloat(rect.getAttribute('x')!);
+    const ry = parseFloat(rect.getAttribute('y')!);
+    const rw = parseFloat(rect.getAttribute('width')!);
+    const rh = parseFloat(rect.getAttribute('height')!);
+    const handle = screen.getByRole('button', { name: rotateName });
+    const m = handle.getAttribute('transform')!.match(/translate\(([-\d.]+) ([-\d.]+)\)/)!;
+    const cx = parseFloat(m[1]);
+    const cy = parseFloat(m[2]);
+    // handle centre strictly inside the rect — a corner-anchored handle is clipped for edge stacks
+    expect(cx).toBeGreaterThan(rx);
+    expect(cx).toBeLessThan(rx + rw);
+    expect(cy).toBeGreaterThan(ry);
+    expect(cy).toBeLessThan(ry + rh);
+  });
 });

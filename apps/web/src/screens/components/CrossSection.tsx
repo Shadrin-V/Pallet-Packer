@@ -200,8 +200,11 @@ export function CrossSection({
                     vectorEffect="non-scaling-stroke" pointerEvents="none" className="print:hidden"
                   />
                   <RotateHandle
-                    cx={r.x + r.w}
-                    cy={r.y}
+                    // inset by one radius from the top-right corner so the whole handle sits inside
+                    // the stack — a corner-anchored handle is clipped (and unclickable) for stacks at
+                    // the truck edge (QA). Clamp the inset so it never crosses the rect's far side.
+                    cx={r.x + r.w - Math.min(countFont * 0.8, r.w / 2)}
+                    cy={r.y + Math.min(countFont * 0.8, r.h / 2)}
                     size={countFont * 0.8}
                     label={tt('ladeplan.rotateStack')}
                     onRotate={() => onRotateStack?.({ cargoTypeId: r.cargoTypeId, x: r.x, y: r.y })}
