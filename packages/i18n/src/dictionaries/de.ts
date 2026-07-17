@@ -97,7 +97,13 @@ export const de: Dictionary = {
   'stack.formula.notStackable': 'nicht stapelbar → 1',
 
   'action.calculate': 'Berechnen',
-  'action.exportJson': 'Als JSON exportieren',
+  'action.export': 'Export',
+  'action.exportPdf': 'PDF',
+  'action.exportPdfHint':
+    'Öffnet den Druckdialog. Als Ziel «Als PDF speichern» wählen — der Ladeplan wird als A4-Querformat gespeichert.',
+  'action.exportPng': 'PNG',
+  'action.exportJson': 'JSON',
+  'action.exportFailed': 'Export fehlgeschlagen. Bitte erneut versuchen.',
   'action.reset': 'Zurücksetzen',
   'action.demo': 'Demo',
   'setup.resetConfirm': 'Alle Eingaben und den Ladeplan zurücksetzen?',

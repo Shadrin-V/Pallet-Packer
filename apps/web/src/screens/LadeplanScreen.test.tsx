@@ -75,6 +75,47 @@ describe('LadeplanScreen', () => {
   });
 });
 
+// Export (qrd.15): PDF via the print dialog, PNG rasterised client-side, JSON verbatim per contract.
+describe('LadeplanScreen — export', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('offers all three exports', () => {
+    renderLadeplan();
+    for (const name of ['PDF', 'PNG', 'JSON']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+  });
+
+  // The PNG composes exactly the two cutaways. Selecting them by role="img" once swept in the
+  // legend swatches too (square aspect → a metres-tall sheet), hence the explicit marker.
+  it('marks exactly the two projections as cutaways, top before side', () => {
+    const { container } = renderLadeplan();
+    const cutaways = [...container.querySelectorAll('svg[data-cutaway]')];
+    expect(cutaways.map((el) => el.getAttribute('data-cutaway'))).toEqual(['top', 'side']);
+    expect(container.querySelectorAll('svg[role="img"]').length).toBeGreaterThan(cutaways.length);
+  });
+
+  it('PDF opens the print dialog (browser "save as PDF")', async () => {
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    renderLadeplan();
+    await userEvent.click(screen.getByRole('button', { name: 'PDF' }));
+    expect(print).toHaveBeenCalledOnce();
+  });
+
+  it('JSON downloads load + layout under a dated filename', async () => {
+    vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:fake', revokeObjectURL: () => {} });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderLadeplan();
+    await userEvent.click(screen.getByRole('button', { name: 'JSON' }));
+    const anchor = click.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download).toMatch(/^ladungsplaner-lkw-\d{4}-\d{2}-\d{2}\.json$/);
+  });
+});
+
 // Strategy switch changes recompute the layout and discard manual edits, so warn first when edits exist.
 const editable: Load = {
   vehicle: { id: 'v2', name: 'LKW', length: 3000, width: 2000, height: 2000 },

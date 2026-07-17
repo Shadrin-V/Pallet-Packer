@@ -97,7 +97,13 @@ export const ru: Dictionary = {
   'stack.formula.notStackable': 'без штабелирования → 1',
 
   'action.calculate': 'Рассчитать',
-  'action.exportJson': 'Экспорт в JSON',
+  'action.export': 'Экспорт',
+  'action.exportPdf': 'PDF',
+  'action.exportPdfHint':
+    'Откроется диалог печати. Выберите «Сохранить как PDF» — план сохранится листом A4 в альбомной ориентации.',
+  'action.exportPng': 'PNG',
+  'action.exportJson': 'JSON',
+  'action.exportFailed': 'Экспорт не удался. Попробуйте ещё раз.',
   'action.reset': 'Сбросить',
   'action.demo': 'Демо',
   'setup.resetConfirm': 'Сбросить все данные и план загрузки?',

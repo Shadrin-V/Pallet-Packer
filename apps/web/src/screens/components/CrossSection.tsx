@@ -167,6 +167,9 @@ export function CrossSection({
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={label}
+        // Marks this svg as a projection of the plan: the PNG export picks the cutaways by this
+        // attribute. role="img" alone would also match legend swatches and the stack diagram.
+        data-cutaway={view}
         style={{ background: 'var(--paper)', display: 'block', touchAction: draggable ? 'none' : undefined }}
         onPointerMove={draggable ? onMove : undefined}
         onPointerUp={draggable ? onUp : undefined}
