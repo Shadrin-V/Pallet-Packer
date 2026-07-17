@@ -175,3 +175,22 @@ describe('side view paint order', () => {
     expect(xs).toEqual([0, 600, 1300, 1300, 1300]); // по возрастанию rowY
   });
 });
+
+describe('side view dimming (D2)', () => {
+  it('dims a rear stack by its fill, keeping the outline at full strength', () => {
+    const { container } = render(
+      <LocaleProvider>
+        <CrossSection load={depthLoad} layout={depthLayout} view="side" label="Seitenansicht" />
+      </LocaleProvider>,
+    );
+    const svg = container.querySelector('svg[data-cutaway="side"]')!;
+    // дальняя стопка (x=0) идёт первой после сортировки по rowY
+    const rear = svg.querySelectorAll('g')[0];
+    // группа больше не гасится целиком — иначе контур гаснет вместе с заливкой
+    expect(rear.getAttribute('opacity')).toBeNull();
+    const fill = rear.querySelector('rect:first-child')!;
+    const outline = [...rear.querySelectorAll('rect')].at(-1)!;
+    expect(Number(fill.getAttribute('fill-opacity'))).toBeLessThan(0.16);
+    expect(outline.getAttribute('stroke-opacity')).toBeNull(); // контур в полную силу
+  });
+});

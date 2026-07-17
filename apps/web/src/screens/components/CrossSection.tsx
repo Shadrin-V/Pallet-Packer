@@ -196,14 +196,16 @@ export function CrossSection({
         {sortedRects.map((r, i) => {
           const isDragging = drag && drag.sel.x === r.x && drag.sel.y === r.y;
           const tf = isDragging ? `translate(${drag!.dx} ${drag!.dy})` : undefined;
-          // Side view: dim rear rows (depth > 0) so back-row loads read as "behind" the front row.
-          const dim = view === 'side' && (r.depth ?? 0) > 0;
+          // Rear rows: dim the FILL, never the outline. A low rear stack (a quarter-pallet at 864 of
+          // 2650 mm) vanished when the whole group went to 0.4 — and the side view is now the first
+          // thing on the sheet, so it has to stay readable behind the front row.
+          const behind = view === 'side' && (r.depth ?? 0) > 0;
           const isSelected = !!sel && sameStack(sel, { cargoTypeId: r.cargoTypeId, x: r.x, y: r.y });
           return (
-            <g key={i} transform={tf} opacity={dim ? 0.4 : undefined} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
+            <g key={i} transform={tf} onPointerDown={draggable ? onDown(r) : undefined} style={draggable ? { cursor: 'grab' } : undefined}>
               {/* solid tint base + direct-line hatch (prints, unlike a <pattern>) + colour outline */}
-              <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`var(--s${r.series})`} fillOpacity={0.16} />
-              <HatchMarks x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} spacing={180} strokeWidth={1.3} opacity={0.8} />
+              <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`var(--s${r.series})`} fillOpacity={behind ? 0.06 : 0.16} />
+              <HatchMarks x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} spacing={180} strokeWidth={1.3} opacity={behind ? 0.25 : 0.8} />
               <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="none" stroke={`var(--s${r.series})`} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
               {view === 'top' && (r.count ?? 1) > 1 && (
                 <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
