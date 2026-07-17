@@ -5,6 +5,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   findGeometryViolations,
+  orientedDims,
+  placeStack,
+  stackBuffer,
+  unplaceStack,
+  type EngineError,
   type Layout,
   type Load,
   type LoadingMode,
@@ -23,7 +28,8 @@ import { orderBreakdown } from './components/orderBreakdown';
 import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
-import { moveStack, rotateStack, type StackSel } from './components/editLayout';
+import { moveStack, rotateStack, snap, type StackSel } from './components/editLayout';
+import { BufferStrip, type BufferTile } from './components/BufferStrip';
 
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
@@ -77,6 +83,19 @@ function MetaField({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Engine error codes are plain strings on the wire (ADR 006); only known ones have a translation. */
+const EDIT_ERROR_KEYS = [
+  'ERR_EDIT_NO_STACK',
+  'ERR_EDIT_OVERLAP',
+  'ERR_EDIT_OUT_OF_BOUNDS',
+  'ERR_EDIT_FORK_ACCESS',
+  'ERR_EDIT_ROTATION',
+  'ERR_EDIT_NOTHING_TO_PLACE',
+] as const;
+type EditErrorKey = (typeof EDIT_ERROR_KEYS)[number];
+const isEditErrorKey = (code: string): code is EditErrorKey =>
+  (EDIT_ERROR_KEYS as readonly string[]).includes(code);
+
 export function LadeplanScreen({
   load,
   layout,
@@ -92,13 +111,114 @@ export function LadeplanScreen({
   onOrderGroupingChange?: (grouping: OrderGrouping) => void;
 }) {
   const { locale, tt } = useLocale();
+  // An unknown code would be a contract drift; show the raw code rather than an empty red line.
+  const editErrorText = (code: string) => (isEditErrorKey(code) ? tt(code) : code);
   const orderColorMap = orderColors ? new Map(Object.entries(orderColors)) : undefined;
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
-  useEffect(() => setEdited(layout), [layout]);
+  useEffect(() => {
+    setEdited(layout);
+    setEditError(null); // the refusal spoke about the previous layout; this one is fresh
+  }, [layout]);
+  // The engine refuses an impossible edit and says why (ADR 019); we show that reason instead of
+  // leaving the user to guess why a control seems dead (dwc.4).
+  const [editError, setEditError] = useState<EngineError | null>(null);
+  /** Apply an edit: keep the new layout, or keep the old one and show why it was refused.
+   *  The edit runs OUTSIDE the state updater — an updater must stay pure, and this one would
+   *  otherwise set the error state again on every replayed render. */
+  const applyEdit = (edit: (prev: Layout) => { layout: Layout; error?: EngineError }) => {
+    const { layout: next, error } = edit(edited);
+    setEditError(error ?? null);
+    setEdited(next);
+  };
   const onMoveStack = (sel: StackSel, toX: number, toY: number) =>
-    setEdited((prev) => moveStack(load, prev, sel, toX, toY));
-  const onRotateStack = (sel: StackSel) => setEdited((prev) => rotateStack(load, prev, sel));
+    applyEdit((prev) => moveStack(load, prev, sel, toX, toY));
+  const onRotateStack = (sel: StackSel) => applyEdit((prev) => rotateStack(load, prev, sel));
+
+  // ---- buffer (dwc.3): stacks that are not in the hold — unplaced by the packer, or pulled out by
+  // hand. Tiles keep their own yaw orientation, so a stack can be turned in the buffer and only then
+  // dropped in — which is the way out of "no room to rotate in place".
+  // Orientation is held per cargo TYPE, not per tile: the buffer's stacks of one type are
+  // interchangeable, and their positions in the list shift on every edit — an index-keyed
+  // orientation would silently hand a rotation to whichever stack slid into that slot.
+  const [tileOrientation, setTileOrientation] = useState<Record<string, 'lwh' | 'wlh'>>({});
+  const tiles: BufferTile[] = stackBuffer(load, edited).map((b) => ({
+    ...b,
+    orientation: tileOrientation[b.cargoTypeId] ?? 'lwh',
+  }));
+  const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
+
+  const rotateTile = (i: number) =>
+    setTileOrientation((prev) => {
+      const id = tiles[i].cargoTypeId;
+      return { ...prev, [id]: (prev[id] ?? 'lwh') === 'lwh' ? 'wlh' : 'lwh' };
+    });
+
+  /** The top-view cutaway, i.e. the drop target — the same svg the PNG export picks up. */
+  const topSvg = () => sheetRef.current?.querySelector<SVGSVGElement>('svg[data-cutaway="top"]') ?? null;
+
+  /** Client point → hold coordinates (mm), or null if it is not over the top view. */
+  const toHoldMm = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = topSvg();
+    const ctm = svg?.getScreenCTM?.();
+    if (!svg || !ctm || !svg.createSVGPoint) return null;
+    const box = svg.getBoundingClientRect();
+    if (clientX < box.left || clientX > box.right || clientY < box.top || clientY > box.bottom) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  };
+
+  const dropTileAt = (index: number, clientX: number, clientY: number) => {
+    const at = toHoldMm(clientX, clientY);
+    if (!at) return; // released outside the hold — just put the tile back, no complaint
+    const tile = tiles[index];
+    const cargo = load.cargo.find((c) => c.id === tile.cargoTypeId);
+    if (!cargo) return;
+    // The cursor holds the stack by its middle, which is where the user aims it — then the corner is
+    // clamped into the hold: aiming at the far corner means "put it in the corner", not "let it hang
+    // out and be told off". Overlaps are still the engine's to refuse.
+    const [dx, dy] = orientedDims(cargo.length, cargo.width, cargo.height, tile.orientation);
+    const clamp = (v: number, max: number) => Math.min(Math.max(snap(v), 0), Math.max(0, snap(max)));
+    applyEdit((prev) =>
+      placeStack(load, prev, {
+        cargoTypeId: tile.cargoTypeId,
+        x: clamp(at.x - dx / 2, load.vehicle.length - dx),
+        y: clamp(at.y - dy / 2, load.vehicle.width - dy),
+        orientation: tile.orientation,
+        units: tile.units,
+      }),
+    );
+  };
+
+  // A tile is carried with global listeners: the drag starts in the strip (HTML) and ends over the
+  // cutaway (SVG), so no single element sees the whole gesture.
+  useEffect(() => {
+    if (!dragTile) return;
+    const move = (e: PointerEvent) => setDragTile((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
+    const up = (e: PointerEvent) => {
+      dropTileAt(dragTile.index, e.clientX, e.clientY);
+      setDragTile(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  });
+
+  /** A stack dragged out of the hold and dropped on the strip goes back to the buffer. */
+  const bufferRef = useRef<HTMLDivElement>(null);
+  const onDropOutside = (sel: StackSel, clientX: number, clientY: number) => {
+    const box = bufferRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const overBuffer =
+      clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
+    if (overBuffer) applyEdit((prev) => unplaceStack(load, prev, sel));
+  };
   const violations = findGeometryViolations(load, edited).length;
 
   // Any strategy change recomputes from scratch, discarding manual edits. `edited !== layout` holds
@@ -264,7 +384,33 @@ export function LadeplanScreen({
         {/* diagrams — near-full-bleed on print for maximum width */}
         <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} orderColors={orderColorMap} onMoveStack={onMoveStack} onRotateStack={onRotateStack} />
+            <CrossSection
+              load={load}
+              layout={edited}
+              view="top"
+              label={tt('ladeplan.top')}
+              orderColors={orderColorMap}
+              onMoveStack={onMoveStack}
+              onRotateStack={onRotateStack}
+              onDropOutside={onDropOutside}
+            />
+          </div>
+
+          {/* Workbench, not document: the buffer sits with the top view it feeds, and prints nothing. */}
+          <div ref={bufferRef} className="print:hidden">
+            <BufferStrip
+              load={load}
+              tiles={tiles}
+              orderColors={orderColorMap}
+              onRotate={rotateTile}
+              onPickUp={(index, e) => setDragTile({ index, x: e.clientX, y: e.clientY })}
+              dragging={dragTile?.index ?? null}
+            />
+            {editError && (
+              <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">
+                {editErrorText(editError.code)}
+              </p>
+            )}
           </div>
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
@@ -277,6 +423,18 @@ export function LadeplanScreen({
           <Metrics layout={edited} />
         </div>
       </div>
+
+      {/* The carried stack follows the cursor; pointer-events off so the drop lands on what is under it. */}
+      {dragTile && (
+        <div
+          data-testid="drag-ghost"
+          className="pointer-events-none fixed z-30 rounded-ctl border border-brand bg-card px-2 py-1 text-caption font-semibold shadow-pop"
+          style={{ left: dragTile.x + 12, top: dragTile.y + 12 }}
+        >
+          {load.cargo.find((c) => c.id === tiles[dragTile.index]?.cargoTypeId)?.name} ×
+          {tiles[dragTile.index]?.units}
+        </div>
+      )}
     </main>
   );
 }

@@ -87,6 +87,7 @@ export function CrossSection({
   orderColors,
   onMoveStack,
   onRotateStack,
+  onDropOutside,
 }: {
   load: Load;
   layout: Layout;
@@ -98,6 +99,9 @@ export function CrossSection({
   onMoveStack?: (sel: StackSel, toX: number, toY: number) => void;
   /** When provided (top view), a selected stack offers a 90° yaw rotation. */
   onRotateStack?: (sel: StackSel) => void;
+  /** A stack dragged off the cutaway and dropped elsewhere (e.g. onto the buffer strip). Pointer
+   *  capture keeps the events coming here even once the pointer has left this svg. */
+  onDropOutside?: (sel: StackSel, clientX: number, clientY: number) => void;
 }) {
   const tt = useT();
   const { length, width, height } = load.vehicle;
@@ -137,8 +141,19 @@ export function CrossSection({
     const s = toSvg(e);
     setDrag({ ...drag, dx: s.x - drag.startX, dy: s.y - drag.startY });
   };
-  const onUp = () => {
+  const onUp = (e: ReactPointerEvent) => {
     if (!drag) return;
+    // Dropped outside the hold? Hand it to whoever owns that space (the buffer strip) rather than
+    // clamping it back onto the floor.
+    const box = svgRef.current?.getBoundingClientRect();
+    const outside =
+      !!box && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom);
+    if (outside && onDropOutside) {
+      onDropOutside(drag.sel, e.clientX, e.clientY);
+      setSel(null);
+      setDrag(null);
+      return;
+    }
     // A press that barely travelled is a click: select the stack (revealing the rotate action)
     // instead of moving it. Beyond the slop it is a drag → drop it at the pointer.
     if (Math.hypot(drag.dx, drag.dy) < CLICK_SLOP_MM) {
@@ -151,7 +166,7 @@ export function CrossSection({
   };
 
   return (
-    <figure className="m-0">
+    <figure className="m-0 select-none">
       <figcaption className="mb-1 text-label uppercase font-semibold text-faint">{label}</figcaption>
       <svg
         ref={svgRef}

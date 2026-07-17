@@ -27,6 +27,13 @@ export const de: Dictionary = {
   'setup.demo.overloadHint': 'Mehr Ladung als hineinpasst — nicht platzierte Paletten und Gabelzugang von 2 Seiten.',
   'setup.demoLoaded': 'Demo {n}/{total}: {name} —',
   'setup.demoNext': 'Nochmal klicken für die nächste Demo.',
+  'buffer.title': 'Puffer',
+  'buffer.hint':
+    'Nicht platzierte Stapel. Einen Stapel in den Laderaum ziehen, um ihn zu setzen — oder einen Stapel aus dem Laderaum hierher ziehen, um Platz zu schaffen (z. B. zum Drehen).',
+  'buffer.count': '{n} nicht platziert',
+  'buffer.empty': 'Alles platziert — der Puffer ist leer.',
+  'buffer.rotate': 'Stapel im Puffer drehen',
+  'buffer.dropHint': 'Zum Setzen in den Laderaum ziehen',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
@@ -137,4 +144,13 @@ export const de: Dictionary = {
   ERR_INVALID_ROTATION: 'Ungültiger Drehmodus.',
   ERR_EMPTY_LOAD: 'Die Ladeliste ist leer.',
   ERR_UNKNOWN_VEHICLE: 'Fahrzeug wurde im Bestand nicht gefunden.',
+
+  ERR_EDIT_NO_STACK: 'Dieser Stapel wurde nicht gefunden.',
+  ERR_EDIT_OVERLAP: 'Dort steht bereits ein Stapel.',
+  ERR_EDIT_OUT_OF_BOUNDS: 'Dort ragt der Stapel aus dem Laderaum.',
+  ERR_EDIT_FORK_ACCESS:
+    'Diese Ausrichtung dreht die Gabelzufahrt von der Ladetür weg (nur 2 Seiten zugänglich).',
+  ERR_EDIT_ROTATION:
+    'Dieser Stapel lässt sich hier nicht drehen. Kein Platz? In den Puffer ziehen, dort drehen und zurücksetzen.',
+  ERR_EDIT_NOTHING_TO_PLACE: 'Von dieser Ladungsart ist nichts mehr übrig.',
 };
