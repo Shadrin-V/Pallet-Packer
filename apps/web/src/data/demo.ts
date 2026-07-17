@@ -28,6 +28,7 @@ export function demoSetup(): { vehicle: Vehicle; orders: OrderState[] } {
   const v = VEHICLE_PRESETS[0]; // LKW Standard
   const vehicle: Vehicle = { id: v.key, name: v.name, length: v.length, width: v.width, height: v.height };
 
+  // colorIndex assigned by position here (stable palette slots for the demo, 4bj QA #2).
   const orders: OrderState[] = [
     {
       key: uid(),
@@ -65,7 +66,7 @@ export function demoSetup(): { vehicle: Vehicle; orders: OrderState[] } {
       // rotation forbidden + deliberately more than fits → shows "nicht platziert"
       positions: [pos({ name: 'EPAL 3', length: 1000, width: 1200, height: 144, quantity: 216, rotation: 'none' })],
     },
-  ];
+  ].map((o, i) => ({ ...o, colorIndex: i }));
 
   return { vehicle, orders };
 }

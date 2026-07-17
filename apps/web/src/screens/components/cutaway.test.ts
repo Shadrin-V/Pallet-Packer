@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { calculateLayout, type Load } from '@shadrin-v/engine';
 import { topRects, sideRects, orderIndexMap } from './cutaway';
+import { orderColorToken } from '../../lib/orderColor';
 
 // 2×2×2 m hold, 1×1×1 m boxes → 8 placed (2×2 floor × 2 tiers).
 const V = { id: 'v1', name: 'LKW', length: 2000, width: 2000, height: 2000 };
@@ -71,5 +72,30 @@ describe('crossSection geometry', () => {
   it('orderIndexMap assigns palette indices by first appearance', () => {
     const m = orderIndexMap(load);
     expect(m.get('SO-1')).toBe(0);
+  });
+});
+
+describe('stable order colours override appearance order (QA #2)', () => {
+  const twoOrders: Load = {
+    vehicle: V,
+    cargo: [
+      { id: 'a', name: 'A', length: 1000, width: 1000, height: 1000, quantity: 4, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+      { id: 'b', name: 'B', length: 1000, width: 1000, height: 1000, quantity: 4, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-2' },
+    ],
+  };
+  const l = calculateLayout(twoOrders);
+  // swap the palette slots relative to appearance order (SO-1→slot1, SO-2→slot0)
+  const colors = new Map([['SO-1', 1], ['SO-2', 0]]);
+
+  it('topRects colours by the provided map, not first appearance', () => {
+    const rects = topRects(twoOrders, l, colors);
+    expect(rects.find((r) => r.cargoTypeId === 'a')!.series).toBe(orderColorToken(1).series);
+    expect(rects.find((r) => r.cargoTypeId === 'b')!.series).toBe(orderColorToken(0).series);
+  });
+
+  it('sideRects colours by the provided map too', () => {
+    const rects = sideRects(twoOrders, l, V.height, colors);
+    expect(rects.find((r) => r.cargoTypeId === 'a')!.series).toBe(orderColorToken(1).series);
+    expect(rects.find((r) => r.cargoTypeId === 'b')!.series).toBe(orderColorToken(0).series);
   });
 });

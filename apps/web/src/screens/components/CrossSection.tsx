@@ -84,6 +84,7 @@ export function CrossSection({
   layout,
   view,
   label,
+  orderColors,
   onMoveStack,
   onRotateStack,
 }: {
@@ -91,6 +92,8 @@ export function CrossSection({
   layout: Layout;
   view: 'top' | 'side';
   label: string;
+  /** Stable orderId→palette slot so stack colours match the Setup screen after reorder (QA #2). */
+  orderColors?: Map<string, number>;
   /** When provided (top view), stacks are draggable; called with the drop target in mm. */
   onMoveStack?: (sel: StackSel, toX: number, toY: number) => void;
   /** When provided (top view), a selected stack offers a 90° yaw rotation. */
@@ -99,7 +102,7 @@ export function CrossSection({
   const tt = useT();
   const { length, width, height } = load.vehicle;
   const spanY = view === 'top' ? width : height;
-  const rects: CutRect[] = view === 'top' ? topRects(load, layout) : sideRects(load, layout, height);
+  const rects: CutRect[] = view === 'top' ? topRects(load, layout, orderColors) : sideRects(load, layout, height, orderColors);
   // Side view: draw rear rows (higher depth) first so the front row overlays them.
   const sortedRects =
     view === 'side' ? [...rects].sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0)) : rects;
@@ -200,8 +203,11 @@ export function CrossSection({
                     vectorEffect="non-scaling-stroke" pointerEvents="none" className="print:hidden"
                   />
                   <RotateHandle
-                    cx={r.x + r.w}
-                    cy={r.y}
+                    // inset by one radius from the top-right corner so the whole handle sits inside
+                    // the stack — a corner-anchored handle is clipped (and unclickable) for stacks at
+                    // the truck edge (QA). Clamp the inset so it never crosses the rect's far side.
+                    cx={r.x + r.w - Math.min(countFont * 0.8, r.w / 2)}
+                    cy={r.y + Math.min(countFont * 0.8, r.h / 2)}
                     size={countFont * 0.8}
                     label={tt('ladeplan.rotateStack')}
                     onRotate={() => onRotateStack?.({ cargoTypeId: r.cargoTypeId, x: r.x, y: r.y })}

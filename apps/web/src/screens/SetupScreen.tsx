@@ -54,13 +54,18 @@ export interface PositionState {
 export interface OrderState {
   key: string;
   orderId: string;
+  /** Stable palette slot (0-based), assigned at creation and never renumbered — so an order keeps
+   *  its colour + hatch when the list is reordered, on both Setup and the Ladeplan (QA). */
+  colorIndex: number;
   positions: PositionState[];
 }
 
 export interface SetupScreenProps {
   initialVehicle?: Vehicle;
   initialOrders?: OrderState[];
-  onCalculate: (load: Load) => void;
+  /** `persist: false` computes a throwaway preview (Demo) that must not overwrite the saved plan.
+   *  `orderColors` maps orderId → stable palette slot so plan colours match Setup after reorder. */
+  onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => void;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
 }
@@ -78,7 +83,11 @@ function loadSetup(): PersistedSetup | null {
     const raw = globalThis.localStorage?.getItem(SETUP_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSetup;
-    if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) return parsed;
+    if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) {
+      // Backfill colorIndex for drafts saved before stable colours existed (by array position).
+      const orders = parsed.orders.map((o, i) => ({ ...o, colorIndex: o.colorIndex ?? i }));
+      return { ...parsed, orders };
+    }
   } catch {
     /* corrupt / unavailable — ignore */
   }
@@ -115,13 +124,19 @@ const emptyPosition = (): PositionState => ({
 const emptyOrder = (n: number): OrderState => ({
   key: uid(),
   orderId: `SO-${n}`,
+  colorIndex: n - 1, // 1-based n → 0-based palette slot; addOrder passes os.length + 1
   positions: [emptyPosition()],
 });
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
 
+/** orderId → stable palette slot, sent with every computed plan so the Ladeplan colours an order the
+ *  same as Setup regardless of list order (QA #2). */
+const buildOrderColors = (os: OrderState[]): Record<string, number> =>
+  Object.fromEntries(os.map((o) => [o.orderId, o.colorIndex]));
+
 /** Build the engine CargoType for a position (used for both preview and the final Load). */
-function toCargo(p: PositionState, orderId: string): CargoType {
+export function toCargo(p: PositionState, orderId: string): CargoType {
   const nestable = p.state === 'verschachtelt' && numOr0(p.stepHeight) > 0;
   return {
     id: p.id,
@@ -160,26 +175,39 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // dropdowns of all the others. Reset clears the draft, never this catalogue.
   const [userPallets, setUserPallets] = useState<DimPreset[]>(() => loadUserPallets());
 
+  // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
+  // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
+  // edit the user makes clears it implicitly and persists as normal.
+  const skipNextSaveRef = useRef(false);
+
   // Persist the working draft on every change so a page refresh does not lose input.
   useEffect(() => {
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
     saveSetup({ vehicle, orders });
   }, [vehicle, orders]);
 
   /** Fill a rich demo plan and compute it right away (build the Load from the demo data directly —
-   *  setState is async, so we must not read it back in this tick). */
+   *  setState is async, so we must not read it back in this tick). Transient: neither the demo setup
+   *  nor its computed plan is persisted, so a reload returns to the user's pre-demo state (QA). */
   const handleDemo = () => {
     const d = demoSetup();
+    skipNextSaveRef.current = true; // don't overwrite the saved draft with the demo
     setVehicle(d.vehicle);
     setOrders(d.orders);
-    // Demo is a self-contained showcase: pin the strategy so it stays deterministic and does not
-    // inherit a strategy chosen on a previous plan (4bj.12). Rear loading makes the two-sided
-    // fork-access position an effective constraint, so the feature is actually visible (4bj.13).
-    onCalculate({
-      vehicle: d.vehicle,
-      cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
-      loadingMode: 'rear',
-      orderGrouping: 'strict',
-    });
+    // Pin the strategy so the showcase is deterministic (4bj.12); rear loading makes the two-sided
+    // fork-access position an effective constraint, so the feature is visible (4bj.13).
+    onCalculate(
+      {
+        vehicle: d.vehicle,
+        cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+        loadingMode: 'rear',
+        orderGrouping: 'strict',
+      },
+      { persist: false, orderColors: buildOrderColors(d.orders) },
+    );
   };
 
   const handleReset = () => {
@@ -230,7 +258,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   const handleCalculate = () => {
     if (anyInvalid) return;
     const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
-    onCalculate({ vehicle, cargo });
+    onCalculate({ vehicle, cargo }, { orderColors: buildOrderColors(orders) });
   };
 
   return (
@@ -273,7 +301,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
           <OrderCard
             key={o.key}
             order={o}
-            index={oi}
+            index={o.colorIndex}
             vehicle={vehicle}
             userPallets={userPallets}
             onSavePreset={(p) => setUserPallets(addUserPallet(p))}
@@ -475,9 +503,10 @@ function PositionRow({
 
   return (
     <div ref={rootRef} className="px-4 py-2.5">
-      {/* desktop (≥xl, wider than the 1120px content): one line; below: wraps into a card.
-          Tight gaps + shrinkable name/selects keep the single line comfortably inside 1120px. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 xl:flex-nowrap">
+      {/* flex-wrap (no forced nowrap): a normal row still fits one line, but the wider two-sided
+          variant (fork-axis select + info hint) wraps its tail to a second line instead of
+          overflowing and overlapping the length fields (QA). */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <OrderSwatch index={index} width={12} height={26} />
         <Select
           ariaLabel={tt('cargoType.label')}
@@ -494,7 +523,7 @@ function PositionRow({
             ...allPallets.map((pp) => ({ value: pp.key, label: pp.name })),
           ]}
         />
-        <span className="min-w-[5.5rem] flex-1">
+        <span className="min-w-[5.5rem] max-w-[14rem] flex-1">
           <TextField ariaLabel={tt('field.name')} value={p.name} onChange={(name) => onChange({ name })} placeholder={tt('cargoType.label')} />
         </span>
         <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
@@ -541,6 +570,7 @@ function PositionRow({
             <InfoHint
               ariaLabel={tt('cargoType.orientation.twoSided')}
               text={tt('cargoType.orientation.twoSidedHint')}
+              align="right"
             />
           </>
         )}

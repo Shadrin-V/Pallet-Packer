@@ -43,16 +43,20 @@ export function LadeplanScreen({
   load,
   layout,
   onBack,
+  orderColors,
   onLoadingModeChange,
   onOrderGroupingChange,
 }: {
   load: Load;
   layout: Layout;
   onBack?: () => void;
+  /** Stable orderId→palette slot from Setup, so plan colours survive a reorder and match Setup (QA #2). */
+  orderColors?: Record<string, number>;
   onLoadingModeChange?: (mode: LoadingMode) => void;
   onOrderGroupingChange?: (grouping: OrderGrouping) => void;
 }) {
   const { locale, tt } = useLocale();
+  const orderColorMap = orderColors ? new Map(Object.entries(orderColors)) : undefined;
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
   useEffect(() => setEdited(layout), [layout]);
@@ -140,16 +144,16 @@ export function LadeplanScreen({
         {/* diagrams — near-full-bleed on print for maximum width */}
         <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} onMoveStack={onMoveStack} onRotateStack={onRotateStack} />
+            <CrossSection load={load} layout={edited} view="top" label={tt('ladeplan.top')} orderColors={orderColorMap} onMoveStack={onMoveStack} onRotateStack={onRotateStack} />
           </div>
           <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} />
+            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
           </div>
         </div>
 
         {/* foot: legend (prominent) + compact metrics */}
         <div className="flex flex-col gap-4 border-t border-line px-6 py-4 print:gap-2 print:py-2" style={{ breakInside: 'avoid' }}>
-          <Legend load={load} layout={edited} label={tt('ladeplan.legend')} />
+          <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} />
           <Metrics layout={edited} />
         </div>
       </div>
