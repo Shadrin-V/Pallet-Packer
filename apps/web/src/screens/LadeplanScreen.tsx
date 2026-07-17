@@ -2,7 +2,7 @@
 // palette per docs/design/design-system.md. Brand head + meta band + figures + top/side cutaways +
 // per-order legend + compact metrics. Full-width sheet; A4 landscape print (theme.css).
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   findGeometryViolations,
   type Layout,
@@ -19,6 +19,10 @@ import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
 import { Metrics } from './components/Metrics';
 import { orderIndexMap } from './components/cutaway';
+import { orderBreakdown } from './components/orderBreakdown';
+import { fillTemplate } from './components/stackFormula';
+import { orderColorToken } from '../lib/orderColor';
+import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
 import { moveStack, rotateStack, type StackSel } from './components/editLayout';
 
 function Figure({ value, label }: { value: string; label: string }) {
@@ -82,6 +86,51 @@ export function LadeplanScreen({
   const orderIds = [...orderIndexMap(load).keys()].filter(Boolean);
   const m = edited.metrics;
 
+  // Export (qrd.15) — always of `edited`, i.e. exactly what is on screen. PDF reuses the tuned A4
+  // print sheet via the browser dialog; PNG recomposes the live cutaways off the sheet.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  // Single source for the summary figures: the meta band renders these, and the PNG carries the
+  // same objects — the exported sheet cannot disagree with the screen it depicts.
+  const figures = [
+    { label: tt('ladeplan.fig.pallets'), value: grp(m.totalPlaced) },
+    { label: tt('ladeplan.fig.positions'), value: String(m.usedFloorPositions) },
+    { label: tt('ladeplan.fig.load'), value: `${Math.round(m.floorFillPercent)} %` },
+  ];
+  const handleExportPng = async () => {
+    const captions = [tt('ladeplan.top'), tt('ladeplan.side')];
+    // Cutaways only — `role="img"` alone would also drag in legend swatches and stack diagrams.
+    const svgs = [...(sheetRef.current?.querySelectorAll<SVGSVGElement>('svg[data-cutaway]') ?? [])];
+    try {
+      await exportPlanPng(v.name, {
+        title: v.name,
+        meta: [
+          `${tt('ladeplan.vehicleInner')}: ${dims}`,
+          ...(orderIds.length ? [`${tt('ladeplan.orders')}: ${orderIds.join(' · ')}`] : []),
+        ],
+        figures,
+        legend: orderBreakdown(load, edited, orderColorMap).map((o) => ({
+          // Unplaced units must travel with the image: an exported plan that silently omits them
+          // reads as "everything fits" to whoever receives the PNG.
+          label: `${o.orderId} — ${o.items
+            .map(
+              (it) =>
+                `${it.name} ×${it.placed}` +
+                (it.unplaced > 0
+                  ? ` (${fillTemplate(tt('ladeplan.notPlaced'), { n: it.unplaced })})`
+                  : ''),
+            )
+            .join(', ')}`,
+          color: orderColorToken(o.colorIndex).colorVar,
+        })),
+        sections: svgs.map((svg, i) => ({ caption: captions[i] ?? '', svg })),
+      });
+    } catch (err) {
+      // Keep a trace: without it a prod report of "export does nothing" is undiagnosable.
+      console.error('plan export failed', err);
+      globalThis.alert(tt('action.exportFailed'));
+    }
+  };
+
   return (
     <main
       data-violations={violations}
@@ -113,12 +162,34 @@ export function LadeplanScreen({
             {tt('action.back')}
           </Button>
         )}
+        {/* Export group. PDF deliberately routes through the same print dialog as "Drucken" — the
+            A4 sheet IS the report; the hint tells the user to pick "save as PDF" there. */}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-caption font-semibold text-muted">{tt('action.export')}</span>
+          <Button variant="secondary" onClick={() => window.print()}>
+            {tt('action.exportPdf')}
+          </Button>
+          {/* aria-label must differ from the PDF button's own name, else the two are indistinguishable. */}
+          <InfoHint
+            ariaLabel={`${tt('action.export')} ${tt('action.exportPdf')}`}
+            text={tt('action.exportPdfHint')}
+          />
+          <Button variant="secondary" onClick={handleExportPng}>
+            {tt('action.exportPng')}
+          </Button>
+          <Button variant="secondary" onClick={() => exportPlanJson(load, edited)}>
+            {tt('action.exportJson')}
+          </Button>
+        </span>
         <Button variant="primary" onClick={() => window.print()}>
           {tt('action.print')}
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-card bg-card shadow-card print:rounded-none print:shadow-none">
+      <div
+        ref={sheetRef}
+        className="overflow-hidden rounded-card bg-card shadow-card print:rounded-none print:shadow-none"
+      >
         {/* brand head */}
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-5 print:py-2">
           <BrandMark />
@@ -135,9 +206,9 @@ export function LadeplanScreen({
             <MetaField label={tt('ladeplan.orders')} value={orderIds.join(' · ')} />
           )}
           <div className="ml-auto flex items-end gap-6">
-            <Figure value={grp(m.totalPlaced)} label={tt('ladeplan.fig.pallets')} />
-            <Figure value={String(m.usedFloorPositions)} label={tt('ladeplan.fig.positions')} />
-            <Figure value={`${Math.round(m.floorFillPercent)} %`} label={tt('ladeplan.fig.load')} />
+            {figures.map((f) => (
+              <Figure key={f.label} value={f.value} label={f.label} />
+            ))}
           </div>
         </div>
 

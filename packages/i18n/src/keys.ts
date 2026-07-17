@@ -101,7 +101,12 @@ export const TRANSLATION_KEYS = [
 
   // Actions
   'action.calculate',
+  'action.export',
+  'action.exportPdf',
+  'action.exportPdfHint',
+  'action.exportPng',
   'action.exportJson',
+  'action.exportFailed',
   'action.reset',
   'action.demo',
   'setup.resetConfirm',
