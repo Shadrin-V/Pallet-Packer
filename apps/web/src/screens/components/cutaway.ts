@@ -68,11 +68,14 @@ export function topRects(load: Load, layout: Layout, colors?: Map<string, number
   return [...byPos.values()];
 }
 
+/** Half-open interval overlap (touching edges do not overlap) — the engine's rule, edit.ts. */
+const overlaps1d = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 && b0 < a1;
+
 /**
  * Side view (Seitenansicht): one silhouette bar per floor stack (grouped by x,y), its height = that
- * stack's top (max z+dz). Stacks that share an x (rows across the width) overlap in the projection;
- * `depth` ranks them front→back so the renderer can dim the rear rows (depth > 0) and draw them
- * behind the front row — showing back-row loads instead of hiding them.
+ * stack's top (max z+dz). Stacks whose x INTERVALS overlap hide one another in the projection;
+ * `depth` counts how many stand in front of this one, so the renderer can dim what is genuinely
+ * behind something — and leave alone what merely shares a row with it.
  */
 export function sideRects(load: Load, layout: Layout, vehicleHeight: number, colors?: Map<string, number>): CutRect[] {
   const info = cargoInfoMap(load, colors);
@@ -87,17 +90,13 @@ export function sideRects(load: Load, layout: Layout, vehicleHeight: number, col
     if (!cur || top > cur.top) byPos.set(key, { x: p.x, y: p.y, top, w: dx, series: c.series, cargoTypeId: p.cargoTypeId });
   }
   const stacks = [...byPos.values()];
-  // depth = rank of this stack's y among the stacks sharing its x.
-  // Convention: the side view is taken from the BOTTOM edge of the top view (the viewer stands at
-  // y = width looking towards y = 0). So the row with the LARGEST y is nearest the viewer → depth 0
-  // (drawn last, full opacity); smaller y = further back → higher depth (drawn first, dimmed).
-  const ysByX = new Map<number, number[]>();
-  for (const s of stacks) {
-    const arr = ysByX.get(s.x) ?? [];
-    arr.push(s.y);
-    ysByX.set(s.x, arr);
-  }
-  for (const arr of ysByX.values()) arr.sort((a, b) => b - a);
+  // Depth = how many stacks actually hide this one: they overlap it IN THE PROJECTION (by the x
+  // interval — not by an equal x, which is what the side view collapses) and stand nearer the viewer.
+  // Convention: the viewer is at y = width looking towards y = 0, so a LARGER y is nearer.
+  // depth 0 therefore means "nothing is in front of this stack" — an isolated stack in a rear row is
+  // no longer dimmed for company it does not keep.
+  const hiddenBy = (s: (typeof stacks)[number]) =>
+    stacks.filter((o) => o !== s && o.y > s.y && overlaps1d(s.x, s.x + s.w, o.x, o.x + o.w)).length;
   return stacks.map((s) => ({
     x: s.x,
     y: vehicleHeight - s.top,
@@ -105,7 +104,7 @@ export function sideRects(load: Load, layout: Layout, vehicleHeight: number, col
     h: s.top,
     series: s.series,
     cargoTypeId: s.cargoTypeId,
-    depth: ysByX.get(s.x)!.indexOf(s.y),
+    depth: hiddenBy(s),
     rowY: s.y,
   }));
 }

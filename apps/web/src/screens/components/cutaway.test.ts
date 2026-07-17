@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLayout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, type Layout, type Load } from '@shadrin-v/engine';
 import { topRects, sideRects, orderIndexMap } from './cutaway';
 import { orderColorToken } from '../../lib/orderColor';
 
@@ -97,5 +97,68 @@ describe('stable order colours override appearance order (QA #2)', () => {
     const rects = sideRects(twoOrders, l, V.height, colors);
     expect(rects.find((r) => r.cargoTypeId === 'a')!.series).toBe(orderColorToken(1).series);
     expect(rects.find((r) => r.cargoTypeId === 'b')!.series).toBe(orderColorToken(0).series);
+  });
+});
+
+// Стопки в РАЗНЫХ рядах, чьи x не совпадают, но проекции на бок перекрываются. Раскладка собрана
+// руками: упаковщик такую расстановку на однородном грузе не даёт, а sideRects — чистая функция
+// от Layout, так что это честный юнит-тест её правила.
+const mixedV = { id: 'v2', name: 'LKW', length: 4000, width: 2400, height: 2000 };
+const mixed: Load = {
+  vehicle: mixedV,
+  cargo: ['a', 'b'].map((id) => ({
+    id,
+    name: id.toUpperCase(),
+    length: 1200,
+    width: 800,
+    height: 1000,
+    quantity: 1,
+    rotation: 'none' as const,
+    stacking: { stackable: false },
+    nesting: { nestable: false },
+    state: 'entschachtelt' as const,
+    orderId: 'SO-1',
+  })),
+};
+const mixedLayout = (placements: Layout['placements']): Layout => ({
+  placements,
+  unplaced: [],
+  metrics: {
+    totalPlaced: placements.length,
+    usedFloorPositions: placements.length,
+    floorFillPercent: 0,
+    volumeFillPercent: 0,
+  },
+  contractVersion: '0.12.0',
+});
+const at = (cargoTypeId: string, x: number, y: number): Layout['placements'][number] => ({
+  cargoTypeId,
+  x,
+  y,
+  z: 0,
+  orientation: 'lwh',
+  tier: 1,
+  state: 'entschachtelt',
+});
+
+describe('side view depth ranks by projection overlap, not by equal x', () => {
+  it('ranks the rear stack behind the near one even when their x differ', () => {
+    // a: x 0…1200 в дальнем ряду (y=0); b: x 600…1800 в ближнем (y=1600). Перекрываются по длине.
+    const rects = sideRects(mixed, mixedLayout([at('a', 0, 0), at('b', 600, 1600)]), mixedV.height);
+    const rear = rects.find((r) => r.rowY === 0)!;
+    const near = rects.find((r) => r.rowY === 1600)!;
+    expect({ rearDepth: rear.depth, nearDepth: near.depth }).toEqual({ rearDepth: 1, nearDepth: 0 });
+  });
+
+  it('does not dim a rear stack that nothing actually hides', () => {
+    // Одиночная стопка в дальнем ряду и стопка в ближнем, но ДАЛЕКО по длине (не перекрываются).
+    const rects = sideRects(mixed, mixedLayout([at('a', 0, 0), at('b', 2500, 1600)]), mixedV.height);
+    expect(rects.map((r) => r.depth)).toEqual([0, 0]);
+  });
+
+  it('is deterministic for the same input', () => {
+    const build = () =>
+      sideRects(mixed, mixedLayout([at('a', 0, 0), at('b', 600, 1600)]), mixedV.height);
+    expect(build()).toEqual(build());
   });
 });
