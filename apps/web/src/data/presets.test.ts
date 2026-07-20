@@ -50,6 +50,19 @@ describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)
     expect(computedM3).toBeLessThanOrEqual(100);
   });
 
+  it.each([
+    { name: 'LKW Standard', length: 13600 },
+    { name: 'LKW Hochplane', length: 13600 },
+    { name: 'LKW Mega (Hochvolumen)', length: 13600 },
+    { name: 'LKW Mega (Niederflur)', length: 13600 },
+    { name: 'Wechselbrücke', length: 7150 },
+    { name: 'Kühlkoffer (Frigo)', length: 13300 },
+  ])('$name length is pinned exactly (not just via volume tolerance)', ({ name, length }) => {
+    const p = VEHICLE_PRESETS.find((v) => v.name === name);
+    expect(p).toBeDefined();
+    expect(p!.length).toBe(length);
+  });
+
   it('ships the five confirmed pallet presets', () => {
     expect(PALLET_PRESETS.map((p) => p.name)).toEqual([
       'EPAL 1',
