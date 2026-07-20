@@ -1,6 +1,15 @@
 // Shared API DTOs — the JSON contract between apps/web (DataProvider consumer) and apps/server.
 // Domain types (Vehicle, Load, Layout) come from @shadrin-v/engine and are re-exported for convenience.
-import type { Vehicle, Load, Layout } from '@shadrin-v/engine';
+import type {
+  Vehicle,
+  Load,
+  Layout,
+  NestingState,
+  NestingMode,
+  RotationRule,
+  ForkAccess,
+  ForkAxis,
+} from '@shadrin-v/engine';
 
 /**
  * Provenance of a cargo position's dimensions:
@@ -63,5 +72,45 @@ export interface ApiError {
   code: string;
   details?: Record<string, unknown>;
 }
+
+/** Packing rules of an article — always local: ERPNext does not know them and never overwrites them. */
+export interface ArticleRules {
+  state: NestingState;
+  nestingMode: NestingMode;
+  rotation: RotationRule;
+  maxNested?: number;
+  maxTiers?: number;
+  allowUnpairedTop?: boolean;
+  forkAccess?: ForkAccess;
+  forkAxis?: ForkAxis;
+}
+
+/** 'erp' — constructive fields come from ERPNext and are read-only; 'local' — entered in the app. */
+export const ARTICLE_SOURCES = ['erp', 'local'] as const;
+export type ArticleSource = (typeof ARTICLE_SOURCES)[number];
+
+/**
+ * A catalogue article. Constructive fields (dimensions + both nesting increments) are physical
+ * properties of the pallet: once ERPNext supplied them they are locked in the UI. `undefined`
+ * means "not filled in yet" — the user may enter it by hand, no error (spec Q5).
+ */
+export interface Article {
+  itemCode: string;
+  name: string;
+  length?: number;
+  width?: number;
+  height?: number;
+  /** Nesting increment when nesting pairwise = thickness of the top deck board. */
+  nestStepPairwise?: number;
+  /** Nesting increment when nesting one-into-one (sequential). */
+  nestStepSequential?: number;
+  rules: ArticleRules;
+  source: ArticleSource;
+  syncedAt?: string;
+  updatedAt: string;
+}
+
+/** What the client sends to PUT /api/articles/:itemCode — the server stamps source/updatedAt. */
+export type ArticleInput = Omit<Article, 'source' | 'syncedAt' | 'updatedAt'>;
 
 export type { Vehicle, Load, Layout };
