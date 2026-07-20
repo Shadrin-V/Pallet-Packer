@@ -34,6 +34,37 @@ describe('article repo', () => {
     db.close();
   });
 
+  it('lets the user correct a nesting increment more than once on an ERP-sourced article', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'ABB101', name: 'Palette ERP', length: 800, width: 600, height: 144 }, { now: NOW });
+    // ERP never supplies the increments, so they must stay editable no matter how many times
+    // the user changes their mind — the lock only ever applies to dimensions.
+    upsertArticle(
+      db,
+      { itemCode: 'ABB101', name: 'Palette ERP', length: 800, width: 600, height: 144, nestStepPairwise: 22, rules: { ...RULES } },
+      { now: '2026-07-20T11:00:00.000Z' },
+    );
+    const corrected = upsertArticle(
+      db,
+      { itemCode: 'ABB101', name: 'Palette ERP', length: 800, width: 600, height: 144, nestStepPairwise: 25, rules: { ...RULES } },
+      { now: '2026-07-20T12:00:00.000Z' },
+    );
+    expect(corrected.nestStepPairwise).toBe(25);
+    db.close();
+  });
+
+  it('lets the user rename an ERP-sourced article', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'ABB101', name: 'Palette ERP', length: 800, width: 600, height: 144 }, { now: NOW });
+    const renamed = upsertArticle(
+      db,
+      { itemCode: 'ABB101', name: 'Meine Palette', length: 800, width: 600, height: 144, rules: { ...RULES } },
+      { now: '2026-07-20T11:00:00.000Z' },
+    );
+    expect(renamed.name).toBe('Meine Palette');
+    db.close();
+  });
+
   it('an ERP upsert overwrites constructive fields but never the local rules', () => {
     const db = openDb(':memory:');
     upsertArticle(db, { itemCode: 'X1', name: 'local', length: 100, width: 100, height: 100, rules: { ...RULES, maxTiers: 3 } }, { now: NOW });

@@ -75,8 +75,10 @@ function write(db: Database.Database, a: Article): Article {
 }
 
 /**
- * Local write from the app. A constructive field that ERPNext already filled is locked: the stored
- * value wins (spec Q5). Empty ones accept the user's value. Rules are always taken from the input.
+ * Local write from the app. A dimension that ERPNext already filled is locked: the stored value
+ * wins (spec Q5). Empty ones accept the user's value. Nesting increments are never supplied by
+ * ERPNext (see `ErpArticleFields`), so they are always locally editable regardless of source, and
+ * so is the name — it is not a constructive field. Rules are always taken from the input.
  */
 export function upsertArticle(db: Database.Database, input: ArticleInput, opts: { now: string }): Article {
   const prev = getArticle(db, input.itemCode);
@@ -85,12 +87,12 @@ export function upsertArticle(db: Database.Database, input: ArticleInput, opts: 
     locked && stored !== undefined ? stored : incoming;
   return write(db, {
     itemCode: input.itemCode,
-    name: locked && prev ? prev.name : input.name,
+    name: input.name,
     length: keep(prev?.length, input.length),
     width: keep(prev?.width, input.width),
     height: keep(prev?.height, input.height),
-    nestStepPairwise: keep(prev?.nestStepPairwise, input.nestStepPairwise),
-    nestStepSequential: keep(prev?.nestStepSequential, input.nestStepSequential),
+    nestStepPairwise: input.nestStepPairwise,
+    nestStepSequential: input.nestStepSequential,
     rules: input.rules,
     source: prev?.source ?? 'local',
     syncedAt: prev?.syncedAt,
