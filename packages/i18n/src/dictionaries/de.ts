@@ -40,6 +40,7 @@ export const de: Dictionary = {
   'article.save': 'Artikel in die Datenbank speichern',
   'article.update': 'Artikel aktualisieren',
   'article.lockedHint': 'Konstruktionsmaß aus ERPNext — dort ändern',
+  'article.saveError': 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',

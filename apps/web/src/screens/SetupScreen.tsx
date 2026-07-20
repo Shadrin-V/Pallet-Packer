@@ -486,7 +486,7 @@ function OrderCard({
   onOrderIdChange: (v: string) => void;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
-  onSaveArticle: (p: PositionState) => void;
+  onSaveArticle: (p: PositionState) => Promise<void>;
 }) {
   // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
   const [openId, setOpenId] = useState<string | null>(null);
@@ -586,8 +586,20 @@ function PositionRow({
   open: boolean;
   onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
-  onSaveArticle: () => void;
+  onSaveArticle: () => Promise<void>;
 }) {
+  // Task 8 review fix: a failed save must be visible and must never escape as an unhandled
+  // rejection. This is the panel that owns the save button, so it owns the message too — cleared
+  // on the next successful save, never shown after one.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const handleSaveArticle = async () => {
+    try {
+      await onSaveArticle();
+      setSaveError(null);
+    } catch {
+      setSaveError(tt('article.saveError'));
+    }
+  };
   const dimsPresent = dimsComplete(p);
   const invalid = stepInvalid(p.state, activeStep(p), p.height);
   let preview: StackPreview | null = null;
@@ -767,9 +779,10 @@ function PositionRow({
               once the row is bound to an existing article (Task 8). */}
           {dimsPresent && p.name.trim() !== '' && (
             <div>
-              <Button variant="ghost" onClick={onSaveArticle}>
+              <Button variant="ghost" onClick={handleSaveArticle}>
                 {tt(p.articleCode ? 'article.update' : 'article.save')}
               </Button>
+              {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
             </div>
           )}
 

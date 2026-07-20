@@ -40,6 +40,7 @@ export const ru: Dictionary = {
   'article.save': 'Сохранить артикул в базу',
   'article.update': 'Обновить артикул',
   'article.lockedHint': 'Конструктивный размер из ERPNext — меняется там',
+  'article.saveError': 'Не удалось сохранить. Попробуйте ещё раз.',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',

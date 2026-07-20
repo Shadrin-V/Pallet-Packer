@@ -41,6 +41,7 @@ export const TRANSLATION_KEYS = [
   'article.save',
   'article.update',
   'article.lockedHint',
+  'article.saveError',
 
   // Ladeplan / result screen
   'ladeplan.title',

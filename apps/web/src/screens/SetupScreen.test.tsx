@@ -430,4 +430,95 @@ describe('SetupScreen article combobox', () => {
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.cargo[0].name).toBe('Sonderkiste');
   });
+
+  // Finding 1: a rejected upsertArticle used to escape as an unhandled rejection with no user
+  // feedback — the button looked like it worked. The call site that owns the panel's UI state must
+  // catch it and show a message there.
+  it('shows a localized error next to the save button when saving fails, with no unhandled rejection', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (err: unknown) => rejections.push(err);
+    process.on('unhandledRejection', onRejection);
+    try {
+      const upsertArticle = vi.fn(async () => {
+        throw new Error('network down');
+      });
+      renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+      await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+      await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+      await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+      await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+      await userEvent.click(screen.getByRole('button', { name: 'details' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+      expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+      // give a straggling unhandled rejection a tick to surface before asserting none did
+      await new Promise((r) => setTimeout(r, 0));
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
+  });
+
+  it('clears a stale save error once a later save succeeds, and a successful save shows no message', async () => {
+    const upsertArticle = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({} as Article);
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    const saveButton = () => screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' });
+    await userEvent.click(saveButton());
+    expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+
+    await userEvent.click(saveButton());
+    expect(screen.queryByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).not.toBeInTheDocument();
+  });
+
+  // Finding 2: the feature's headline promise ("save an article, see it offered as a suggestion in
+  // another row") had no coverage at any layer once the preset tests were deleted. A stateful fake
+  // DataProvider stands in for the server catalogue: upsertArticle stores, searchArticles reads back.
+  it('a saved article is offered as a suggestion in a different row (headline promise)', async () => {
+    const catalogue: Article[] = [];
+    const dp: DataProvider = {
+      searchArticles: async (query: string) => {
+        const needle = query.trim().toLowerCase();
+        return catalogue.filter(
+          (a) => a.itemCode.toLowerCase().includes(needle) || a.name.toLowerCase().includes(needle),
+        );
+      },
+      upsertArticle: async (a) => {
+        const saved: Article = { ...a, source: 'local', erpFields: [], updatedAt: 'x' };
+        catalogue.push(saved);
+        return saved;
+      },
+    } as unknown as DataProvider;
+
+    render(
+      <LocaleProvider initial="de">
+        <DataProviderProvider value={dp}>
+          <SetupScreen onCalculate={() => {}} />
+        </DataProviderProvider>
+      </LocaleProvider>,
+    );
+
+    // save an article on the first position row
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-42');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    // add a second position row and look the saved article up there
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
+    const secondCombobox = screen.getAllByRole('combobox', { name: 'Artikel' })[1];
+    await userEvent.type(secondCombobox, 'NEU-42');
+
+    expect(await screen.findByRole('option', { name: /NEU-42/ })).toBeInTheDocument();
+  });
 });
