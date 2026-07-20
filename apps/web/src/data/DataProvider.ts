@@ -8,6 +8,8 @@ import type {
   LoadingPlan,
   LoadingPlanInput,
   LoadingPlanSummary,
+  Article,
+  ArticleInput,
 } from '@shadrin-v/contracts';
 
 export interface DataProvider {
@@ -18,4 +20,6 @@ export interface DataProvider {
   getLoadingPlan(id: string): Promise<LoadingPlan>;
   importOrder(erpOrderId: string): Promise<OrderZone>;
   searchOrders(query: string): Promise<OrderRef[]>;
+  searchArticles(query: string): Promise<Article[]>;
+  upsertArticle(a: ArticleInput): Promise<Article>;
 }

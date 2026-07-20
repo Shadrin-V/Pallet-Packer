@@ -6,6 +6,8 @@ import type {
   LoadingPlan,
   LoadingPlanInput,
   LoadingPlanSummary,
+  Article,
+  ArticleInput,
 } from '@shadrin-v/contracts';
 import type { DataProvider } from './DataProvider';
 
@@ -52,5 +54,11 @@ export class HttpDataProvider implements DataProvider {
   }
   searchOrders(query: string) {
     return this.req<OrderRef[]>(`/api/orders?q=${encodeURIComponent(query)}`);
+  }
+  searchArticles(query: string) {
+    return this.req<Article[]>(`/api/articles?q=${encodeURIComponent(query)}`);
+  }
+  upsertArticle(a: ArticleInput) {
+    return this.req<Article>(`/api/articles/${encodeURIComponent(a.itemCode)}`, this.json('PUT', a));
   }
 }
