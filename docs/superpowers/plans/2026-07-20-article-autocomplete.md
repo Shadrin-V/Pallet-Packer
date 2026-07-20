@@ -790,7 +790,8 @@ git commit -m "feat(web): article search/upsert on the DataProvider seam, wire t
 **Interfaces:**
 - Consumes: `useOptionalDataProvider` (Task 5), `PALLET_PRESETS` (`apps/web/src/data/presets.ts:24`), `Article` (Task 1).
 - Produces:
-  - `interface ArticleSuggestion { itemCode?: string; name: string; length?: number; width?: number; height?: number; nestStepPairwise?: number; nestStepSequential?: number; rules?: Partial<ArticleRules>; origin: 'erp' | 'local' | 'standard' }`
+  - `interface ArticleSuggestion { itemCode?: string; name: string; length?: number; width?: number; height?: number; nestStepPairwise?: number; nestStepSequential?: number; rules?: Partial<ArticleRules>; erpFields: readonly ArticleConstructiveField[]; origin: 'erp' | 'local' | 'standard' }`
+  - `erpFields` — перечень полей, которые реально прислал ERPNext (Task 2). Именно он, а не `origin`, определяет запертые поля: артикул с `source: 'erp'` может иметь пустой `erpFields`, и тогда не заперто ничего.
   - `<ArticleCombobox value onChange onPick ariaLabel className />`, где `onPick: (s: ArticleSuggestion) => void`.
 
 Новые ключи локалей: `article.label`, `article.source.erp`, `article.source.local`, `article.source.standard`, `article.noMatches`.
@@ -926,7 +927,7 @@ Expected: FAIL — `Cannot find module './ArticleCombobox'`.
 // come from the server catalogue via the DataProvider seam, plus the built-in pallet presets as a
 // static fallback that works offline and outside a provider.
 import { useEffect, useId, useRef, useState } from 'react';
-import type { Article, ArticleRules } from '@shadrin-v/contracts';
+import type { Article, ArticleRules, ArticleConstructiveField } from '@shadrin-v/contracts';
 import { useOptionalDataProvider } from '../../data/DataProviderContext';
 import { PALLET_PRESETS } from '../../data/presets';
 import { useT } from '../../i18n/LocaleContext';
@@ -940,6 +941,8 @@ export interface ArticleSuggestion {
   nestStepPairwise?: number;
   nestStepSequential?: number;
   rules?: Partial<ArticleRules>;
+  /** Constructive fields ERPNext actually supplied — these and only these are locked in the form. */
+  erpFields: readonly ArticleConstructiveField[];
   /** 'standard' = built-in EPAL preset: no article code, never saved to the catalogue. */
   origin: 'erp' | 'local' | 'standard';
 }
@@ -954,6 +957,7 @@ function builtinMatches(q: string): ArticleSuggestion[] {
     length: p.length,
     width: p.width,
     height: p.height,
+    erpFields: [],
     origin: 'standard' as const,
   }));
 }
@@ -968,6 +972,7 @@ function toSuggestion(a: Article): ArticleSuggestion {
     nestStepPairwise: a.nestStepPairwise,
     nestStepSequential: a.nestStepSequential,
     rules: a.rules,
+    erpFields: a.erpFields,
     origin: a.source,
   };
 }
@@ -1257,7 +1262,8 @@ git commit -m "fix(web): one constructive nesting step per mode — switching mo
 **Interfaces:**
 - Consumes: `ArticleCombobox`, `ArticleSuggestion` (Task 6); `activeStep` (Task 7); `useOptionalDataProvider` (Task 5).
 - Produces: `PositionState.articleCode?: string`, `PositionState.locked?: LockedFields`, где
-  `type LockedFields = Partial<Record<'length' | 'width' | 'height' | 'nestStepPairwise' | 'nestStepSequential', true>>`.
+  `type LockedFields = Partial<Record<ArticleConstructiveField, true>>` (`ArticleConstructiveField` = `'length' | 'width' | 'height'`, из `@shadrin-v/contracts`, Task 2).
+- Прирост вложения не запирается: ERPNext его не присылает, поэтому он всегда локально редактируем.
 
 Новые ключи локалей: `article.save`, `article.update`, `article.lockedHint`.
 
@@ -1289,6 +1295,7 @@ const ERP_ARTICLE: Article = {
   nestStepPairwise: 22,
   rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly', maxTiers: 5 },
   source: 'erp',
+  erpFields: ['length', 'width', 'height'],
   updatedAt: 'x',
 };
 
@@ -1322,8 +1329,11 @@ describe('SetupScreen article combobox', () => {
     expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
   });
 
-  it('dimensions that came from ERP are read-only, empty ones stay editable', async () => {
-    renderSetupWithCatalogue({ searchArticles: async () => [{ ...ERP_ARTICLE, height: undefined }] } as Partial<DataProvider>);
+  it('dimensions that came from ERP are read-only, ones ERPNext never supplied stay editable', async () => {
+    // ERPNext supplied length+width only; height is blank over there, so it must stay editable
+    renderSetupWithCatalogue({
+      searchArticles: async () => [{ ...ERP_ARTICLE, height: undefined, erpFields: ['length', 'width'] }],
+    } as Partial<DataProvider>);
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
     await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
     expect(screen.getAllByLabelText('Länge')[1]).toHaveAttribute('readonly');
@@ -1383,8 +1393,8 @@ import { useOptionalDataProvider } from '../data/DataProviderContext';
 и рядом с типом:
 
 ```ts
-export type LockedField = 'length' | 'width' | 'height' | 'nestStepPairwise' | 'nestStepSequential';
-export type LockedFields = Partial<Record<LockedField, true>>;
+import type { ArticleConstructiveField } from '@shadrin-v/contracts';
+export type LockedFields = Partial<Record<ArticleConstructiveField, true>>;
 ```
 
 3. Удали состояние `userPallets` (строка 176) и все пропсы `userPallets` / `onSavePreset` / `onDeletePreset` в цепочке `SetupScreen → OrderCard → PositionRow` (строки 332-333, 378-379, 392-394, 463-464, 493-494, 503-505).
@@ -1394,12 +1404,10 @@ export type LockedFields = Partial<Record<LockedField, true>>;
 ```ts
 /** Apply a picked suggestion to a position: name, constructive fields, rules; quantity untouched. */
 export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
+  // Locked = exactly what ERPNext supplied (Task 2 provenance). Never inferred from "value present":
+  // a value the user typed into a field ERPNext left blank must stay editable.
   const locked: LockedFields = {};
-  if (s.origin === 'erp') {
-    for (const f of ['length', 'width', 'height', 'nestStepPairwise', 'nestStepSequential'] as LockedField[]) {
-      if (s[f] !== undefined) locked[f] = true;
-    }
-  }
+  for (const f of s.erpFields) locked[f] = true;
   const r = s.rules ?? {};
   return {
     articleCode: s.itemCode,
@@ -1447,7 +1455,7 @@ export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
         <span className="w-24"><Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} /></span>
 ```
 
-Поле прироста (Task 7, шаг 6) получает `readOnly={!!p.locked?.[activeStepField(p)]}` и рядом `<InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />`, когда поле заперто.
+Поле прироста вложения (Task 7, шаг 6) остаётся редактируемым всегда — ERPNext приростов не присылает. Рядом с каждым запертым габаритом ставится `<InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />`.
 
 7. Кнопка сохранения (заменяет блок 686-712 целиком):
 
