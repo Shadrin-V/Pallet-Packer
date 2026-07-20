@@ -82,6 +82,54 @@ describe('article repo', () => {
     db.close();
   });
 
+  it('lets the user correct a locally-filled dimension that ERPNext left blank, more than once', () => {
+    const db = openDb(':memory:');
+    // ERPNext supplies length only; height is genuinely absent over there (ErpArticleFields.height is optional).
+    upsertFromErp(db, { itemCode: 'H1', name: 'Palette', length: 800 }, { now: NOW });
+    const filled = upsertArticle(
+      db,
+      { itemCode: 'H1', name: 'Palette', length: 800, width: 600, height: 500, rules: { ...RULES } },
+      { now: '2026-07-20T11:00:00.000Z' },
+    );
+    expect(filled.height).toBe(500); // empty field accepts the user's value
+    const corrected = upsertArticle(
+      db,
+      { itemCode: 'H1', name: 'Palette', length: 800, width: 600, height: 550, rules: { ...RULES } },
+      { now: '2026-07-20T12:00:00.000Z' },
+    );
+    expect(corrected.height).toBe(550); // a field ERPNext never supplied must stay editable indefinitely
+    expect(corrected.length).toBe(800); // meanwhile the ERP-supplied field stays locked throughout
+    db.close();
+  });
+
+  it('keeps an ERP-supplied dimension locked even when a sibling field is user-editable', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'H2', name: 'Palette', length: 800 }, { now: NOW });
+    const saved = upsertArticle(
+      db,
+      { itemCode: 'H2', name: 'Palette', length: 999, width: 600, height: 500, rules: { ...RULES } },
+      { now: '2026-07-20T11:00:00.000Z' },
+    );
+    expect(saved.length).toBe(800); // ERP supplied it: locked, the local 999 is discarded
+    expect(saved.height).toBe(500); // ERP never supplied it: accepted
+    db.close();
+  });
+
+  it('a later ERP write that omits a previously-supplied field keeps it locked and does not wipe its value', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'H3', name: 'Palette', length: 800, width: 600, height: 144 }, { now: NOW });
+    // second sync only re-sends the name (e.g. ERPNext dropped the custom fields from this payload)
+    const synced = upsertFromErp(db, { itemCode: 'H3', name: 'Palette v2' }, { now: '2026-07-20T11:00:00.000Z' });
+    expect(synced.length).toBe(800); // omission must not wipe the stored value
+    const attempt = upsertArticle(
+      db,
+      { itemCode: 'H3', name: 'Palette v2', length: 999, width: 600, height: 144, rules: { ...RULES } },
+      { now: '2026-07-20T12:00:00.000Z' },
+    );
+    expect(attempt.length).toBe(800); // omission must not un-record it either: still locked
+    db.close();
+  });
+
   it('search ranks exact code first, then code prefix, then name match; case-insensitive', () => {
     const db = openDb(':memory:');
     const mk = (itemCode: string, name: string) =>

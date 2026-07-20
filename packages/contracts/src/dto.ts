@@ -85,14 +85,23 @@ export interface ArticleRules {
   forkAxis?: ForkAxis;
 }
 
-/** 'erp' — constructive fields come from ERPNext and are read-only; 'local' — entered in the app. */
+/**
+ * 'erp' — this article has been synced from ERPNext at least once; 'local' — created in the app
+ * and never synced. This is provenance of the *record*, not of any individual field: an 'erp'
+ * article can still have dimensions the user is free to edit (see `Article` below) — whether a
+ * given constructive field is locked is decided per field on the server, not by this flag alone.
+ */
 export const ARTICLE_SOURCES = ['erp', 'local'] as const;
 export type ArticleSource = (typeof ARTICLE_SOURCES)[number];
 
 /**
- * A catalogue article. Dimensions (length, width, height) are locked in the UI once ERPNext
- * fills them; nesting increments and name remain locally editable. `undefined` means "not
- * filled in yet" — the user may enter it by hand, no error.
+ * A catalogue article. A constructive field (length, width, height) is locked in the UI only when
+ * ERPNext actually supplied a value for *that field* on this article — never inferred from
+ * `source` or from the field merely being non-empty. A field ERPNext has left blank accepts the
+ * user's value with no error and stays editable indefinitely, including after being filled once;
+ * correcting it a second time must not be silently discarded. Nesting increments and `name` are
+ * never supplied by ERPNext, so they are always locally editable regardless of `source`.
+ * `undefined` means "not filled in yet" — the user may enter it by hand, no error.
  */
 export interface Article {
   itemCode: string;

@@ -40,7 +40,8 @@ export function migrate(db: Database.Database): void {
       rules_json           TEXT NOT NULL DEFAULT '{}',
       source               TEXT NOT NULL DEFAULT 'local',
       synced_at            TEXT,
-      updated_at           TEXT NOT NULL
+      updated_at           TEXT NOT NULL,
+      erp_fields_json      TEXT NOT NULL DEFAULT '[]'
     );
   `);
 }

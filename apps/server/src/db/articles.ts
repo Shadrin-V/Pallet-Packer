@@ -10,6 +10,10 @@ export interface ErpArticleFields {
   height?: number;
 }
 
+/** The constructive (dimension) fields ERPNext can supply — the only ones eligible for a lock. */
+const CONSTRUCTIVE_FIELDS = ['length', 'width', 'height'] as const;
+type ConstructiveField = (typeof CONSTRUCTIVE_FIELDS)[number];
+
 interface Row {
   item_code: string;
   name: string;
@@ -22,7 +26,15 @@ interface Row {
   source: string;
   synced_at: string | null;
   updated_at: string;
+  /** JSON array of ConstructiveField names ERPNext actually supplied — the field-level lock set. */
+  erp_fields_json: string;
 }
+
+/** Row-level input to `write`: the public Article plus the internal per-field lock set. */
+type WriteInput = Article & { erpFields: ConstructiveField[] };
+
+const erpFieldsOf = (row: Row | undefined): ConstructiveField[] =>
+  row ? (JSON.parse(row.erp_fields_json) as ConstructiveField[]) : [];
 
 const num = (v: number | null): number | undefined => (v === null ? undefined : v);
 const orNull = (v: number | undefined): number | null => (v === undefined ? null : v);
@@ -43,21 +55,26 @@ function toArticle(r: Row): Article {
   };
 }
 
+function getRow(db: Database.Database, itemCode: string): Row | undefined {
+  return db.prepare('SELECT * FROM article WHERE item_code = ?').get(itemCode) as Row | undefined;
+}
+
 export function getArticle(db: Database.Database, itemCode: string): Article | undefined {
-  const row = db.prepare('SELECT * FROM article WHERE item_code = ?').get(itemCode) as Row | undefined;
+  const row = getRow(db, itemCode);
   return row ? toArticle(row) : undefined;
 }
 
-function write(db: Database.Database, a: Article): Article {
+function write(db: Database.Database, a: WriteInput): Article {
   db.prepare(
     `INSERT INTO article (item_code, name, length, width, height, nest_step_pairwise,
-                          nest_step_sequential, rules_json, source, synced_at, updated_at)
+                          nest_step_sequential, rules_json, source, synced_at, updated_at, erp_fields_json)
      VALUES (@item_code, @name, @length, @width, @height, @nest_step_pairwise,
-             @nest_step_sequential, @rules_json, @source, @synced_at, @updated_at)
+             @nest_step_sequential, @rules_json, @source, @synced_at, @updated_at, @erp_fields_json)
      ON CONFLICT(item_code) DO UPDATE SET
        name = @name, length = @length, width = @width, height = @height,
        nest_step_pairwise = @nest_step_pairwise, nest_step_sequential = @nest_step_sequential,
-       rules_json = @rules_json, source = @source, synced_at = @synced_at, updated_at = @updated_at`,
+       rules_json = @rules_json, source = @source, synced_at = @synced_at, updated_at = @updated_at,
+       erp_fields_json = @erp_fields_json`,
   ).run({
     item_code: a.itemCode,
     name: a.name,
@@ -70,43 +87,56 @@ function write(db: Database.Database, a: Article): Article {
     source: a.source,
     synced_at: a.syncedAt ?? null,
     updated_at: a.updatedAt,
+    erp_fields_json: JSON.stringify(a.erpFields),
   });
-  return a;
+  const { erpFields: _erpFields, ...article } = a;
+  return article;
 }
 
 /**
- * Local write from the app. A dimension that ERPNext already filled is locked: the stored value
- * wins (spec Q5). Empty ones accept the user's value. Nesting increments are never supplied by
- * ERPNext (see `ErpArticleFields`), so they are always locally editable regardless of source, and
- * so is the name — it is not a constructive field. Rules are always taken from the input.
+ * Local write from the app. A dimension is locked only if ERPNext actually supplied it for this
+ * article — tracked field-by-field in `erp_fields_json`, not inferred from `source`. A dimension
+ * ERPNext left blank accepts the user's value and stays editable indefinitely, even after being
+ * filled once (spec: "пустое поле принимает значение пользователя без ошибки — и остаётся
+ * редактируемым дальше"). Nesting increments are never supplied by ERPNext (see
+ * `ErpArticleFields`), so they are always locally editable regardless of source, and so is the
+ * name — it is not a constructive field. Rules are always taken from the input.
  */
 export function upsertArticle(db: Database.Database, input: ArticleInput, opts: { now: string }): Article {
-  const prev = getArticle(db, input.itemCode);
-  const locked = prev?.source === 'erp';
-  const keep = (stored: number | undefined, incoming: number | undefined): number | undefined =>
-    locked && stored !== undefined ? stored : incoming;
+  const prevRow = getRow(db, input.itemCode);
+  const prev = prevRow ? toArticle(prevRow) : undefined;
+  const locked = new Set(erpFieldsOf(prevRow));
+  const keep = (field: ConstructiveField, stored: number | undefined, incoming: number | undefined): number | undefined =>
+    locked.has(field) ? stored : incoming;
   return write(db, {
     itemCode: input.itemCode,
     name: input.name,
-    length: keep(prev?.length, input.length),
-    width: keep(prev?.width, input.width),
-    height: keep(prev?.height, input.height),
+    length: keep('length', prev?.length, input.length),
+    width: keep('width', prev?.width, input.width),
+    height: keep('height', prev?.height, input.height),
     nestStepPairwise: input.nestStepPairwise,
     nestStepSequential: input.nestStepSequential,
     rules: input.rules,
     source: prev?.source ?? 'local',
     syncedAt: prev?.syncedAt,
     updatedAt: opts.now,
+    erpFields: [...locked],
   });
 }
 
 /**
- * Write from ERPNext (order import today, the sync button after LKWkalk-k06). ERPNext owns the
- * constructive fields; an absent value means "not filled in over there" and must not wipe ours.
- * Rules stay whatever the user configured locally.
+ * Write from ERPNext (order import today, the sync button after LKWkalk-k06). ERPNext owns
+ * whichever constructive fields it actually sends; an absent value means "not filled in over
+ * there" and must not wipe ours. The set of fields ERPNext has ever supplied for this article is
+ * recorded and only ever grows by union — a later sync that omits a field neither un-records it
+ * (it stays locked) nor wipes its previously stored value. Rules stay whatever the user
+ * configured locally.
  */
 export function upsertFromErp(db: Database.Database, erp: ErpArticleFields, opts: { now: string }): Article {
-  const prev = getArticle(db, erp.itemCode);
+  const prevRow = getRow(db, erp.itemCode);
+  const prev = prevRow ? toArticle(prevRow) : undefined;
+  const supplied = CONSTRUCTIVE_FIELDS.filter((f) => erp[f] !== undefined);
+  const erpFields = [...new Set([...erpFieldsOf(prevRow), ...supplied])];
   const take = (incoming: number | undefined, stored: number | undefined): number | undefined =>
     incoming ?? stored;
   return write(db, {
@@ -121,6 +151,7 @@ export function upsertFromErp(db: Database.Database, erp: ErpArticleFields, opts
     source: 'erp',
     syncedAt: opts.now,
     updatedAt: opts.now,
+    erpFields,
   });
 }
 
