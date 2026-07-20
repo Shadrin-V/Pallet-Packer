@@ -1,5 +1,12 @@
 import type Database from 'better-sqlite3';
-import type { Article, ArticleInput, ArticleRules, ArticleSource } from '@shadrin-v/contracts';
+import {
+  ARTICLE_CONSTRUCTIVE_FIELDS as CONSTRUCTIVE_FIELDS,
+  type Article,
+  type ArticleConstructiveField as ConstructiveField,
+  type ArticleInput,
+  type ArticleRules,
+  type ArticleSource,
+} from '@shadrin-v/contracts';
 
 /** The subset ERPNext can supply. Rules are never part of it — ERPNext does not model them. */
 export interface ErpArticleFields {
@@ -9,10 +16,6 @@ export interface ErpArticleFields {
   width?: number;
   height?: number;
 }
-
-/** The constructive (dimension) fields ERPNext can supply — the only ones eligible for a lock. */
-const CONSTRUCTIVE_FIELDS = ['length', 'width', 'height'] as const;
-type ConstructiveField = (typeof CONSTRUCTIVE_FIELDS)[number];
 
 interface Row {
   item_code: string;
@@ -29,9 +32,6 @@ interface Row {
   /** JSON array of ConstructiveField names ERPNext actually supplied — the field-level lock set. */
   erp_fields_json: string;
 }
-
-/** Row-level input to `write`: the public Article plus the internal per-field lock set. */
-type WriteInput = Article & { erpFields: ConstructiveField[] };
 
 const erpFieldsOf = (row: Row | undefined): ConstructiveField[] =>
   row ? (JSON.parse(row.erp_fields_json) as ConstructiveField[]) : [];
@@ -52,6 +52,9 @@ function toArticle(r: Row): Article {
     source: r.source as ArticleSource,
     syncedAt: r.synced_at ?? undefined,
     updatedAt: r.updated_at,
+    // A row written before erp_fields_json existed falls back to the column DEFAULT ('[]') rather
+    // than to JS `undefined` — the NOT NULL DEFAULT guarantees r.erp_fields_json is always valid JSON.
+    erpFields: erpFieldsOf(r),
   };
 }
 
@@ -64,7 +67,7 @@ export function getArticle(db: Database.Database, itemCode: string): Article | u
   return row ? toArticle(row) : undefined;
 }
 
-function write(db: Database.Database, a: WriteInput): Article {
+function write(db: Database.Database, a: Article): Article {
   db.prepare(
     `INSERT INTO article (item_code, name, length, width, height, nest_step_pairwise,
                           nest_step_sequential, rules_json, source, synced_at, updated_at, erp_fields_json)
@@ -89,8 +92,7 @@ function write(db: Database.Database, a: WriteInput): Article {
     updated_at: a.updatedAt,
     erp_fields_json: JSON.stringify(a.erpFields),
   });
-  const { erpFields: _erpFields, ...article } = a;
-  return article;
+  return a;
 }
 
 /**

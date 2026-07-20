@@ -94,6 +94,10 @@ export interface ArticleRules {
 export const ARTICLE_SOURCES = ['erp', 'local'] as const;
 export type ArticleSource = (typeof ARTICLE_SOURCES)[number];
 
+/** The constructive (dimension) fields ERPNext is able to supply for an article. */
+export const ARTICLE_CONSTRUCTIVE_FIELDS = ['length', 'width', 'height'] as const;
+export type ArticleConstructiveField = (typeof ARTICLE_CONSTRUCTIVE_FIELDS)[number];
+
 /**
  * A catalogue article. A constructive field (length, width, height) is locked in the UI only when
  * ERPNext actually supplied a value for *that field* on this article — never inferred from
@@ -117,9 +121,17 @@ export interface Article {
   source: ArticleSource;
   syncedAt?: string;
   updatedAt: string;
+  /**
+   * Which constructive fields ERPNext actually supplied for this article — these and only these
+   * are locked against local edits; a field absent from this list is always user-editable, even
+   * on an ERP-sourced article. The server decides this list; the client must never re-derive it
+   * from `source` plus "value is present" (that inference is wrong: see the `Article` doc above).
+   * Always present, defaulting to an empty array for articles ERPNext has never touched.
+   */
+  erpFields: readonly ArticleConstructiveField[];
 }
 
-/** What the client sends to PUT /api/articles/:itemCode — the server stamps source/updatedAt. */
-export type ArticleInput = Omit<Article, 'source' | 'syncedAt' | 'updatedAt'>;
+/** What the client sends to PUT /api/articles/:itemCode — the server stamps source/syncedAt/updatedAt/erpFields. */
+export type ArticleInput = Omit<Article, 'source' | 'syncedAt' | 'updatedAt' | 'erpFields'>;
 
 export type { Vehicle, Load, Layout };

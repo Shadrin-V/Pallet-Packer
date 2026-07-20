@@ -149,4 +149,31 @@ describe('article repo', () => {
     expect(searchArticles(db, '', 5)).toHaveLength(5);
     db.close();
   });
+
+  it('reports the ERP-supplied field list on getArticle and searchArticles for an ERP-sourced article', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'ERP1', name: 'Palette', length: 800, width: 600 }, { now: NOW });
+    expect(getArticle(db, 'ERP1')?.erpFields).toEqual(['length', 'width']);
+    expect(searchArticles(db, 'ERP1')[0].erpFields).toEqual(['length', 'width']);
+    db.close();
+  });
+
+  it('reports an empty erpFields list for a purely local article', () => {
+    const db = openDb(':memory:');
+    upsertArticle(db, { itemCode: 'LOC1', name: 'Palette', length: 800, rules: { ...RULES } }, { now: NOW });
+    expect(getArticle(db, 'LOC1')?.erpFields).toEqual([]);
+    expect(searchArticles(db, 'LOC1')[0].erpFields).toEqual([]);
+    db.close();
+  });
+
+  it('maps a row written before erp_fields_json existed (falling back to the column DEFAULT) to an empty list', () => {
+    const db = openDb(':memory:');
+    // Simulate a pre-migration row: insert without erp_fields_json, relying on the schema DEFAULT '[]'.
+    db.prepare(
+      `INSERT INTO article (item_code, name, rules_json, source, updated_at)
+       VALUES ('OLD1', 'Alte Palette', '{}', 'local', @updated_at)`,
+    ).run({ updated_at: NOW });
+    expect(getArticle(db, 'OLD1')?.erpFields).toEqual([]);
+    db.close();
+  });
 });
