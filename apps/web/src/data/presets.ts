@@ -1,5 +1,7 @@
-// Reference presets — mirror docs/qrd-17-preset-data.md (confirmed data). Integer mm.
-// On divergence, update qrd-17 / spec.md Appendix A too.
+// Reference presets — the four confirmed cargo holds mirror
+// docs/lkw-presets-logist-2026-07-20.md (logist's scheme, sighted 2026-07-20; supersedes the older
+// qrd-17-preset-data.md placeholder for vehicles). Integer mm.
+// On divergence, update spec.md Appendix A too.
 
 export interface DimPreset {
   key: string;
@@ -9,15 +11,30 @@ export interface DimPreset {
   height: number;
 }
 
-/** Cargo-hold presets (internal mm). LKW Standard is qrd-17-confirmed; the others are common EU
- *  reference sizes (Mega/Frigo/Wechselbrücke) — users can always pick "Eigene Maße" for a custom
- *  hold. Keep LKW Standard first (default). */
+/** Cargo-hold presets (internal mm). The first four are the logist-confirmed variants 1-4 from
+ *  docs/lkw-presets-logist-2026-07-20.md — width is 2450 on every one of them (the scheme's own
+ *  figure; the previous 2430/2440/2480 in this file were wrong and are corrected here, since a
+ *  20-30mm difference on a ~2450mm hold is the line between two 1200mm pallets fitting across the
+ *  width or not). Variant 5 (Autozug / road train) is deliberately NOT included — it is two
+ *  separate cargo compartments with a physical gap between them, and the engine models exactly one
+ *  compartment (Vehicle = one set of internal dims); see LKWkalk-p3p for the multi-compartment
+ *  follow-up. `lkw-standard` keeps its key but its height moves from 2650 (wrongly labelled
+ *  "Standard") to 2450 (the logist's actual "Стандартный тент"); the 2650 variant now has its own
+ *  entry below ("Hochplane" — raised tarp). This is safe for saved data: a Vehicle is persisted by
+ *  value (full length/width/height), never re-resolved from its preset key, so existing saved
+ *  plans and localStorage drafts keep the numbers they were created with regardless of this table.
+ *  `lkw-extrahoch` (2800) is dropped — no variant on the logist's scheme has that height, and
+ *  nothing else in the codebase anchors that key. Wechselbrücke/Frigo aren't on the logist's scheme
+ *  at all; kept as common EU reference sizes for "Eigene Maße"-adjacent presets, with Frigo's width
+ *  corrected to the same 2450 (2440 was the same class of error as the vehicle bodies above).
+ *  Keep the standard tent first (default; SetupScreen reads VEHICLE_PRESETS[0]). */
 export const VEHICLE_PRESETS: DimPreset[] = [
-  { key: 'lkw-standard', name: 'LKW Standard', length: 13600, width: 2430, height: 2650 },
-  { key: 'lkw-extrahoch', name: 'LKW Extra-hoch', length: 13600, width: 2480, height: 2800 },
-  { key: 'lkw-mega', name: 'LKW Mega (Hochvolumen)', length: 13600, width: 2480, height: 3000 },
+  { key: 'lkw-standard', name: 'LKW Standard', length: 13600, width: 2450, height: 2450 },
+  { key: 'lkw-hochplane', name: 'LKW Hochplane', length: 13600, width: 2450, height: 2650 },
+  { key: 'lkw-mega', name: 'LKW Mega (Hochvolumen)', length: 13600, width: 2450, height: 3000 },
+  { key: 'lkw-mega-niederflur', name: 'LKW Mega (Niederflur)', length: 13600, width: 2450, height: 2950 },
   { key: 'wechselbruecke', name: 'Wechselbrücke', length: 7150, width: 2450, height: 2700 },
-  { key: 'frigo', name: 'Kühlkoffer (Frigo)', length: 13300, width: 2440, height: 2500 },
+  { key: 'frigo', name: 'Kühlkoffer (Frigo)', length: 13300, width: 2450, height: 2500 },
 ];
 
 /** Euro-pallet presets (mm), placed entschachtelt by default. */

@@ -5,6 +5,13 @@
 > снять пометки PLACEHOLDER.
 
 ## Кузова (внутренние, мм) — подтверждено
+
+> Superseded 2026-07-20 by the logist's scheme (`LKWkalk-07l`):
+> [docs/lkw-presets-logist-2026-07-20.md](lkw-presets-logist-2026-07-20.md). The row below is the
+> data this doc originally shipped with — the logist doc is now the source of truth for vehicle
+> presets (width is 2450 across the board, not 2430; "LKW Standard" is now the 2450mm-high variant,
+> the old 2650 row lives on as "LKW Hochplane").
+
 | Пресет       | Длина | Ширина | Высота |
 |--------------|-------|--------|--------|
 | LKW Standard | 13600 | 2430   | 2650   |
