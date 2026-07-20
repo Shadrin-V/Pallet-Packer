@@ -34,6 +34,11 @@ export const ru: Dictionary = {
   'warehouse.empty': 'Всё размещено — склад пуст.',
   'warehouse.rotate': 'Повернуть стопку на складе',
   'warehouse.dropHint': 'Перетащите в кузов, чтобы поставить',
+  'article.label': 'Артикул',
+  'article.source.erp': 'ERP',
+  'article.source.local': 'локально',
+  'article.source.standard': 'стандарт',
+  'article.noMatches': 'Совпадений нет — введите размеры',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',

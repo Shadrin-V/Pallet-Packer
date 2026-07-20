@@ -35,6 +35,11 @@ export const TRANSLATION_KEYS = [
   'warehouse.empty',
   'warehouse.rotate',
   'warehouse.dropHint',
+  'article.label',
+  'article.source.erp',
+  'article.source.local',
+  'article.source.standard',
+  'article.noMatches',
 
   // Ladeplan / result screen
   'ladeplan.title',

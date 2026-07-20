@@ -34,6 +34,11 @@ export const de: Dictionary = {
   'warehouse.empty': 'Alles platziert — das Lager ist leer.',
   'warehouse.rotate': 'Stapel im Lager drehen',
   'warehouse.dropHint': 'Zum Setzen in den Laderaum ziehen',
+  'article.label': 'Artikel',
+  'article.source.erp': 'ERP',
+  'article.source.local': 'lokal',
+  'article.source.standard': 'Standard',
+  'article.noMatches': 'Keine Treffer — Maße bitte eingeben',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
