@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { openDb } from './schema';
 
 describe('sqlite schema', () => {
-  it('creates vehicle + loading_plan tables (in-memory)', () => {
+  it('creates vehicle + loading_plan + article tables (in-memory)', () => {
     const db = openDb(':memory:');
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all()
       .map((r) => (r as { name: string }).name);
-    expect(tables).toEqual(expect.arrayContaining(['loading_plan', 'vehicle']));
+    expect(tables).toEqual(expect.arrayContaining(['article', 'loading_plan', 'vehicle']));
     db.close();
   });
 

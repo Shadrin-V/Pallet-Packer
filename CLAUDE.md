@@ -71,7 +71,7 @@
 - Алгоритм упаковки: **2.5D** — 2D shelf-упаковка по полу + вертикальный расчёт вложения; шов — чистая функция `packFloor` ([ADR 003](docs/adr/003-2p5d-computation-model.md), [ADR 004](docs/adr/004-packer-interface-shelf-heuristic.md), [ADR 017](docs/adr/017-dense-floor-heuristic.md)). Порядок списка `cargo` = приоритет заявки, упаковщик его не переупорядочивает.
 - Основной режим: **«Размести заявку»** (список типов + количества), `fill` покрывает «сколько влезет» ([ADR 005](docs/adr/005-order-fulfillment-mode.md)).
 - Состояние: **Verschachtelt/Entschachtelt** на уровне типа поддона.
-- Хранение справочников: **пресеты + IndexedDB браузера** + JSON импорт/экспорт ([ADR 007](docs/adr/007-browser-local-storage.md)).
+- Хранение справочников: **пресеты + IndexedDB браузера** + JSON импорт/экспорт ([ADR 007](docs/adr/007-browser-local-storage.md)); каталог артикулов — отдельно, в SQLite на `apps/server`, ERPNext — источник истины для конструктивных полей (`docs/superpowers/specs/2026-07-20-article-autocomplete-design.md`).
 - Визуализация: **вид сверху + вид сбоку**; экспорт PDF/PNG/JSON.
 - i18n: локали **de, ru** (en — позже); движок возвращает коды ошибок ([ADR 006](docs/adr/006-i18n-de-ru-error-codes.md)).
 - Где выполняется расчёт: **в браузере** (движок-пакет вызывается из Lovable); REST/MCP — поверх того же ядра позже ([ADR 001](docs/adr/001-headless-ts-engine-in-browser.md)).

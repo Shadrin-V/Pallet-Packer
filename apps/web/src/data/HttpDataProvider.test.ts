@@ -47,4 +47,23 @@ describe('HttpDataProvider', () => {
     await dp.searchOrders('pal');
     expect(fetchMock).toHaveBeenCalledWith('https://host/api/orders?q=pal', expect.anything());
   });
+
+  it('GET /api/articles?q= → searchArticles', async () => {
+    const articles = [{ itemCode: 'ABB101', name: 'Palette', rules: {}, source: 'local', updatedAt: 'x' }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(articles), { status: 200 }));
+    const dp = new HttpDataProvider('', fetchMock);
+    await expect(dp.searchArticles('abb 1')).resolves.toEqual(articles);
+    expect(fetchMock).toHaveBeenCalledWith('/api/articles?q=abb%201', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('PUT /api/articles/:itemCode encodes the code and sends the body', async () => {
+    const a = { itemCode: 'A/1', name: 'n', rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' } };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(a), { status: 200 }));
+    const dp = new HttpDataProvider('', fetchMock);
+    await dp.upsertArticle(a as never);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/articles/A%2F1',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify(a) }),
+    );
+  });
 });

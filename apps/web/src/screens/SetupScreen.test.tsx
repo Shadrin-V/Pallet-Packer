@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { SetupScreen } from './SetupScreen';
+import { DataProviderProvider } from '../data/DataProviderContext';
+import type { DataProvider } from '../data/DataProvider';
+import type { Article, ArticleInput } from '@shadrin-v/contracts';
 
 function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
   return render(
@@ -11,6 +14,36 @@ function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
       <SetupScreen onCalculate={onCalculate} onReset={onReset} />
     </LocaleProvider>,
   );
+}
+
+const ERP_ARTICLE: Article = {
+  itemCode: 'ABB101',
+  name: 'Einwegpalette 600x800',
+  length: 800,
+  width: 600,
+  height: 144,
+  nestStepPairwise: 22,
+  rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly', maxTiers: 5 },
+  source: 'erp',
+  erpFields: ['length', 'width', 'height'],
+  updatedAt: 'x',
+};
+
+function renderSetupWithCatalogue(dpOverrides: Partial<DataProvider> = {}) {
+  // Full Article shape (not a loose cast): saveArticle's caller now binds the row to whatever this
+  // resolves with (Finding 1), so a fixture missing e.g. `erpFields` would crash that code path.
+  const upsertArticle = vi.fn(
+    async (a: ArticleInput) => ({ ...a, source: 'local' as const, erpFields: [], updatedAt: 'x' }) satisfies Article,
+  );
+  const dp = { searchArticles: async () => [ERP_ARTICLE], upsertArticle, ...dpOverrides } as unknown as DataProvider;
+  render(
+    <LocaleProvider initial="de">
+      <DataProviderProvider value={dp}>
+        <SetupScreen onCalculate={() => {}} />
+      </DataProviderProvider>
+    </LocaleProvider>,
+  );
+  return { upsertArticle };
 }
 
 describe('SetupScreen', () => {
@@ -87,6 +120,27 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
 
+  it('keeps a separate constructive step per nesting mode (pairwise ≠ sequential)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    // switch the row to verschachtelt → the nesting panel with the step field appears
+    const STEP = 'Höhenzuwachs je Palette (Δh)';
+    await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    await userEvent.type(screen.getByLabelText(STEP), '22'); // pairwise is the default mode
+    await userEvent.selectOptions(screen.getByLabelText('Verschachtelungsmodus'), 'sequential');
+    // the sequential step is its own field and starts empty, it does not inherit 22
+    expect((screen.getByLabelText(STEP) as HTMLInputElement).value).toBe('');
+    await userEvent.type(screen.getByLabelText(STEP), '30');
+    await userEvent.selectOptions(screen.getByLabelText('Verschachtelungsmodus'), 'pairwise');
+    expect((screen.getByLabelText(STEP) as HTMLInputElement).value).toBe('22');
+
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    // the engine still receives a single stepHeight — the one matching the selected mode
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
+  });
+
   it('auto-expands details on Ver and defaults the nesting mode to pairwise (E5/E9)', async () => {
     renderSetup(() => {});
     // no details click: switching to Ver opens the panel by itself (E9)
@@ -101,14 +155,15 @@ describe('SetupScreen', () => {
     renderSetup(() => {});
     await userEvent.click(screen.getByRole('button', { name: 'Ver' })); // auto-opens details
     expect(screen.getByLabelText('Verschachtelungsmodus')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Ladungsart')).toHaveLength(1);
+    // Ladungsart (preset select) is gone (rgv.8) — the article combobox is the row's identity control.
+    expect(screen.getAllByRole('combobox', { name: 'Artikel' })).toHaveLength(1);
 
     await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
 
     // panel collapsed…
     expect(screen.queryByLabelText('Verschachtelungsmodus')).not.toBeInTheDocument();
     // …and the click-outside handler did not swallow the button: a position was actually added
-    expect(screen.getAllByLabelText('Ladungsart')).toHaveLength(2);
+    expect(screen.getAllByRole('combobox', { name: 'Artikel' })).toHaveLength(2);
   });
 
   it('reveals the Stapelbar hint tooltip on demand (E1)', async () => {
@@ -120,70 +175,18 @@ describe('SetupScreen', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Ebenen/);
   });
 
-  it('applies an EPAL pallet preset to the position dimensions', async () => {
+  it('applies an EPAL pallet preset to the position dimensions (built-in suggestion, no provider needed)', async () => {
+    // The built-in PALLET_PRESETS still surface through the combobox as 'standard' suggestions —
+    // this works even with no DataProvider in the tree (renderSetup has none), same guarantee the
+    // old Ladungsart select gave.
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
-    await userEvent.selectOptions(screen.getByLabelText('Ladungsart'), 'epal2');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'EPAL 2');
+    await userEvent.click(await screen.findByRole('option', { name: /EPAL 2/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
-  });
-
-  describe('user pallet presets (T4)', () => {
-    /** Type custom dimensions into the first position row and open its details panel. */
-    async function fillCustomDims(l = '1150', w = '750', h = '200') {
-      await userEvent.type(screen.getAllByLabelText('Länge')[1], l);
-      await userEvent.type(screen.getAllByLabelText('Breite')[1], w);
-      await userEvent.type(screen.getAllByLabelText('Höhe')[1], h);
-      await userEvent.click(screen.getAllByRole('button', { name: 'details' })[0]);
-    }
-
-    it('saves custom dimensions as a preset and offers it in every Ladungsart dropdown', async () => {
-      renderSetup(() => {});
-      await fillCustomDims();
-      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
-
-      // named after the position name fallback L×W×H, and visible in a *second* row's dropdown too
-      await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
-      const options = (screen.getAllByLabelText('Ladungsart')[1] as HTMLSelectElement).options;
-      expect([...options].map((o) => o.text)).toContain('1150×750×200');
-    });
-
-    it('applies a saved preset to another position and persists it across a remount', async () => {
-      const onCalculate = vi.fn();
-      const { unmount } = renderSetup(onCalculate);
-      await fillCustomDims();
-      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
-      unmount();
-
-      renderSetup(onCalculate);
-      const select = screen.getAllByLabelText('Ladungsart')[0] as HTMLSelectElement;
-      const userOption = [...select.options].find((o) => o.text === '1150×750×200');
-      expect(userOption).toBeDefined();
-      await userEvent.selectOptions(select, userOption!.value);
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
-      expect(onCalculate.mock.calls[0][0].cargo[0]).toMatchObject({ length: 1150, width: 750, height: 200 });
-    });
-
-    it('deletes the selected user preset', async () => {
-      renderSetup(() => {});
-      await fillCustomDims();
-      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
-      // saved → the row now matches a user preset: delete is offered, save is not
-      expect(screen.queryByRole('button', { name: 'Als Preset speichern' })).not.toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Preset löschen' }));
-
-      const options = (screen.getAllByLabelText('Ladungsart')[0] as HTMLSelectElement).options;
-      expect([...options].map((o) => o.text)).not.toContain('1150×750×200');
-    });
-
-    it('does not offer saving dimensions that already match a built-in preset', async () => {
-      renderSetup(() => {});
-      await userEvent.selectOptions(screen.getByLabelText('Ladungsart'), 'epal2');
-      await userEvent.click(screen.getByRole('button', { name: 'details' }));
-      expect(screen.queryByRole('button', { name: 'Als Preset speichern' })).not.toBeInTheDocument();
-    });
   });
 
   it('persists the setup across a remount (no reset on refresh, #4)', async () => {
@@ -196,6 +199,83 @@ describe('SetupScreen', () => {
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-99');
   });
 
+  it('migrates a draft saved before the two constructive steps existed (legacy stepHeight)', async () => {
+    // A draft persisted by an older build: one PositionState.stepHeight, no nestStepPairwise/Sequential.
+    const legacyPosition = {
+      id: 'p1',
+      name: 'EPAL 1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      quantity: 10,
+      state: 'verschachtelt',
+      rotation: 'yawOnly',
+      forkAxis: 'length',
+      stepHeight: 22,
+      nestingMode: 'pairwise',
+      maxNested: '',
+      allowUnpairedTop: false,
+      maxTiers: '',
+    };
+    globalThis.localStorage.setItem(
+      'ladungsplaner.setup',
+      JSON.stringify({
+        vehicle: { id: 'v1', name: 'LKW Standard', length: 13600, width: 2480, height: 2700 },
+        orders: [{ key: 'o1', orderId: 'SO-1', colorIndex: 0, positions: [legacyPosition] }],
+      }),
+    );
+
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    // the legacy number reappears in the field the current mode (pairwise) reads from — not lost
+    expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
+  });
+
+  // Finding 4: the migration above only ever exercised nestingMode 'pairwise'. The same legacy
+  // draft can equally have been left in 'sequential' mode; the migration must route stepHeight
+  // into nestStepSequential in that case, not silently drop it.
+  it('migrates a draft saved before the two constructive steps existed (legacy stepHeight, sequential mode)', async () => {
+    const legacyPosition = {
+      id: 'p1',
+      name: 'EPAL 1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      quantity: 10,
+      state: 'verschachtelt',
+      rotation: 'yawOnly',
+      forkAxis: 'length',
+      stepHeight: 30,
+      nestingMode: 'sequential',
+      maxNested: '',
+      allowUnpairedTop: false,
+      maxTiers: '',
+    };
+    globalThis.localStorage.setItem(
+      'ladungsplaner.setup',
+      JSON.stringify({
+        vehicle: { id: 'v1', name: 'LKW Standard', length: 13600, width: 2480, height: 2700 },
+        orders: [{ key: 'o1', orderId: 'SO-1', colorIndex: 0, positions: [legacyPosition] }],
+      }),
+    );
+
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('30');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 30, nestingMode: 'sequential' });
+  });
+
   it('Demo fills a multi-order plan and computes it immediately (T3)', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
@@ -204,7 +284,7 @@ describe('SetupScreen', () => {
     // form filled: 4 demo orders, several positions
     const orderIds = (screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value);
     expect(orderIds).toEqual(['SO-1001', 'SO-1002', 'SO-1003', 'SO-1004']);
-    expect(screen.getAllByLabelText('Ladungsart').length).toBeGreaterThan(4);
+    expect(screen.getAllByRole('combobox', { name: 'Artikel' }).length).toBeGreaterThan(4);
 
     // and computed straight away, exercising the whole feature set
     expect(onCalculate).toHaveBeenCalledTimes(1);
@@ -340,5 +420,262 @@ describe('SetupScreen', () => {
     const load = onCalculate.mock.calls[0][0] as Load;
     const orderIds = [...new Set(load.cargo.map((c) => c.orderId))];
     expect(orderIds).toEqual(['SO-1', 'SO-2']);
+  });
+});
+
+describe('SetupScreen article combobox', () => {
+  it('has no preset dropdown and no separate name field any more (rgv.8)', () => {
+    renderSetup(() => {});
+    expect(screen.queryByLabelText('Ladungsart')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Artikel' })).toBeInTheDocument();
+  });
+
+  it('picking an article fills dimensions, both steps and the rules', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+    expect((screen.getAllByLabelText('Länge')[1] as HTMLInputElement).value).toBe('800');
+    expect((screen.getAllByLabelText('Höhe')[1] as HTMLInputElement).value).toBe('144');
+    // rules came along: the row switched to verschachtelt and carries the pairwise step
+    expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
+  });
+
+  it('dimensions that came from ERP are read-only, ones ERPNext never supplied stay editable', async () => {
+    // ERPNext supplied length+width only; height is blank over there, so it must stay editable
+    renderSetupWithCatalogue({
+      searchArticles: async () => [{ ...ERP_ARTICLE, height: undefined, erpFields: ['length', 'width'] }],
+    } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+    expect(screen.getAllByLabelText('Länge')[1]).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Höhe')[1]).not.toHaveAttribute('readonly');
+  });
+
+  // Finding 2: the inverse of the read-only test above. The whole branch is about not freezing a
+  // user's own value, but nothing pinned that typing over a *picked* ERP article releases the
+  // fields it locked. Production code already does this (ArticleCombobox's onChange clears
+  // articleCode + locked) — this test only makes sure it stays true.
+  it('typing over a picked ERP article clears the binding and every lock (inverse of the read-only test)', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+    // sanity: picking ABB101 did lock length/width/height (erpFields on the fixture)
+    expect(screen.getAllByLabelText('Länge')[1]).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Breite')[1]).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Höhe')[1]).toHaveAttribute('readonly');
+    // the row is bound, so the panel button already reads "update"
+    expect(screen.getByRole('button', { name: 'Artikel aktualisieren' })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), ' X');
+
+    expect(screen.getAllByLabelText('Länge')[1]).not.toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Breite')[1]).not.toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Höhe')[1]).not.toHaveAttribute('readonly');
+    // unbound: the button falls back to "save", not "update"
+    expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
+  });
+
+  it('saves a typed-in article to the catalogue', async () => {
+    const { upsertArticle } = renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+    expect(upsertArticle).toHaveBeenCalledWith(
+      expect.objectContaining({ itemCode: 'NEU-1', length: 1200, width: 800, height: 144 }),
+    );
+  });
+
+  // Finding 1: a successful save used to discard the Article the server returned, so the row's
+  // articleCode was never set and the button kept reading "save" instead of "update" — a spec
+  // deviation (§ "Кнопка «Сохранить артикул в базу»"). The row must bind to the save response.
+  it('binds the row to the saved article: the button flips from "save" to "update" (Finding 1)', async () => {
+    const savedArticle: Article = {
+      itemCode: 'NEU-1',
+      name: 'NEU-1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+      source: 'local',
+      updatedAt: 'x',
+      erpFields: [],
+    };
+    const upsertArticle = vi.fn(async () => savedArticle);
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    expect(await screen.findByRole('button', { name: 'Artikel aktualisieren' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Artikel in die Datenbank speichern' })).not.toBeInTheDocument();
+  });
+
+  it('does NOT flip the button label when the save rejects (Finding 1, negative case)', async () => {
+    const upsertArticle = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Artikel aktualisieren' })).not.toBeInTheDocument();
+  });
+
+  // Finding 3: подсказка у запертого поля называет артикул («меняется в ERPNext, артикул такой-то»).
+  it('the locked-field hint names the bound article (Finding 3)', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Artikel' })[0]);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('ABB101');
+  });
+
+  // Finding 3: «активна при введённом артикуле и заполненных габаритах» — present, disabled, not
+  // conditionally hidden.
+  it('the save button is always present in the details panel, disabled until article + dimensions are complete (Finding 3)', async () => {
+    renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    const saveButton = () => screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' });
+    expect(saveButton()).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    expect(saveButton()).toBeDisabled(); // dimensions still missing
+
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    expect(saveButton()).toBeDisabled(); // height still missing
+
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    expect(saveButton()).toBeEnabled();
+  });
+
+  it('a row without a picked article still computes (free text, manual dimensions)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'Sonderkiste');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '500');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].name).toBe('Sonderkiste');
+  });
+
+  // Finding 1: a rejected upsertArticle used to escape as an unhandled rejection with no user
+  // feedback — the button looked like it worked. The call site that owns the panel's UI state must
+  // catch it and show a message there.
+  it('shows a localized error next to the save button when saving fails, with no unhandled rejection', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (err: unknown) => rejections.push(err);
+    process.on('unhandledRejection', onRejection);
+    try {
+      const upsertArticle = vi.fn(async () => {
+        throw new Error('network down');
+      });
+      renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+      await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+      await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+      await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+      await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+      await userEvent.click(screen.getByRole('button', { name: 'details' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+      expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+      // give a straggling unhandled rejection a tick to surface before asserting none did
+      await new Promise((r) => setTimeout(r, 0));
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
+  });
+
+  it('clears a stale save error once a later save succeeds, and a successful save shows no message', async () => {
+    const savedArticle: Article = {
+      itemCode: 'NEU-1',
+      name: 'NEU-1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+      source: 'local',
+      updatedAt: 'x',
+      erpFields: [],
+    };
+    const upsertArticle = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(savedArticle);
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    const saveButton = () => screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' });
+    await userEvent.click(saveButton());
+    expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+
+    await userEvent.click(saveButton());
+    expect(screen.queryByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).not.toBeInTheDocument();
+  });
+
+  // Finding 2: the feature's headline promise ("save an article, see it offered as a suggestion in
+  // another row") had no coverage at any layer once the preset tests were deleted. A stateful fake
+  // DataProvider stands in for the server catalogue: upsertArticle stores, searchArticles reads back.
+  it('a saved article is offered as a suggestion in a different row (headline promise)', async () => {
+    const catalogue: Article[] = [];
+    const dp: DataProvider = {
+      searchArticles: async (query: string) => {
+        const needle = query.trim().toLowerCase();
+        return catalogue.filter(
+          (a) => a.itemCode.toLowerCase().includes(needle) || a.name.toLowerCase().includes(needle),
+        );
+      },
+      upsertArticle: async (a) => {
+        const saved: Article = { ...a, source: 'local', erpFields: [], updatedAt: 'x' };
+        catalogue.push(saved);
+        return saved;
+      },
+    } as unknown as DataProvider;
+
+    render(
+      <LocaleProvider initial="de">
+        <DataProviderProvider value={dp}>
+          <SetupScreen onCalculate={() => {}} />
+        </DataProviderProvider>
+      </LocaleProvider>,
+    );
+
+    // save an article on the first position row
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-42');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    // add a second position row and look the saved article up there
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
+    const secondCombobox = screen.getAllByRole('combobox', { name: 'Artikel' })[1];
+    await userEvent.type(secondCombobox, 'NEU-42');
+
+    expect(await screen.findByRole('option', { name: /NEU-42/ })).toBeInTheDocument();
   });
 });

@@ -1,6 +1,15 @@
 // Shared API DTOs — the JSON contract between apps/web (DataProvider consumer) and apps/server.
 // Domain types (Vehicle, Load, Layout) come from @shadrin-v/engine and are re-exported for convenience.
-import type { Vehicle, Load, Layout } from '@shadrin-v/engine';
+import type {
+  Vehicle,
+  Load,
+  Layout,
+  NestingState,
+  NestingMode,
+  RotationRule,
+  ForkAccess,
+  ForkAxis,
+} from '@shadrin-v/engine';
 
 /**
  * Provenance of a cargo position's dimensions:
@@ -63,5 +72,66 @@ export interface ApiError {
   code: string;
   details?: Record<string, unknown>;
 }
+
+/** Packing rules of an article — always local: ERPNext does not know them and never overwrites them. */
+export interface ArticleRules {
+  state: NestingState;
+  nestingMode: NestingMode;
+  rotation: RotationRule;
+  maxNested?: number;
+  maxTiers?: number;
+  allowUnpairedTop?: boolean;
+  forkAccess?: ForkAccess;
+  forkAxis?: ForkAxis;
+}
+
+/**
+ * 'erp' — this article has been synced from ERPNext at least once; 'local' — created in the app
+ * and never synced. This is provenance of the *record*, not of any individual field: an 'erp'
+ * article can still have dimensions the user is free to edit (see `Article` below) — whether a
+ * given constructive field is locked is decided per field on the server, not by this flag alone.
+ */
+export const ARTICLE_SOURCES = ['erp', 'local'] as const;
+export type ArticleSource = (typeof ARTICLE_SOURCES)[number];
+
+/** The constructive (dimension) fields ERPNext is able to supply for an article. */
+export const ARTICLE_CONSTRUCTIVE_FIELDS = ['length', 'width', 'height'] as const;
+export type ArticleConstructiveField = (typeof ARTICLE_CONSTRUCTIVE_FIELDS)[number];
+
+/**
+ * A catalogue article. A constructive field (length, width, height) is locked in the UI only when
+ * ERPNext actually supplied a value for *that field* on this article — never inferred from
+ * `source` or from the field merely being non-empty. A field ERPNext has left blank accepts the
+ * user's value with no error and stays editable indefinitely, including after being filled once;
+ * correcting it a second time must not be silently discarded. Nesting increments and `name` are
+ * never supplied by ERPNext, so they are always locally editable regardless of `source`.
+ * `undefined` means "not filled in yet" — the user may enter it by hand, no error.
+ */
+export interface Article {
+  itemCode: string;
+  name: string;
+  length?: number;
+  width?: number;
+  height?: number;
+  /** Nesting increment when nesting pairwise = thickness of the top deck board. */
+  nestStepPairwise?: number;
+  /** Nesting increment when nesting one-into-one (sequential). */
+  nestStepSequential?: number;
+  rules: ArticleRules;
+  source: ArticleSource;
+  syncedAt?: string;
+  updatedAt: string;
+  /**
+   * Which constructive fields ERPNext actually supplied for this article — these and only these
+   * are locked against local edits; a field absent from this list is always user-editable, even
+   * on an ERP-sourced article. The server decides this list; the client must never re-derive it
+   * from `source` plus "value is present" (that inference is wrong: see the `Article` doc above).
+   * Always present, defaulting to an empty array for articles ERPNext has never touched.
+   */
+  erpFields: readonly ArticleConstructiveField[];
+}
+
+/** What the client sends to PUT /api/articles/:itemCode — the server stamps source/syncedAt/updatedAt/erpFields. */
+export type ArticleInput = Omit<Article, 'source' | 'syncedAt' | 'updatedAt' | 'erpFields'>;
 
 export type { Vehicle, Load, Layout };

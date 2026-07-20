@@ -5,6 +5,7 @@ import { ENGINE_CONTRACT_VERSION } from '@shadrin-v/engine';
 import { vehiclesRoutes } from './routes/vehicles';
 import { plansRoutes } from './routes/plans';
 import { ordersRoutes } from './routes/orders';
+import { articlesRoutes } from './routes/articles';
 import type { OrderSource } from './erpnext/adapter';
 
 export interface BuildAppOptions {
@@ -21,8 +22,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   if (opts.db) {
     vehiclesRoutes(app, opts.db);
     plansRoutes(app, opts.db);
+    articlesRoutes(app, opts.db);
   }
-  ordersRoutes(app, opts.erpnext);
+  ordersRoutes(app, opts.erpnext, opts.db);
 
   if (opts.staticDir) {
     app.register(fastifyStatic, { root: opts.staticDir });

@@ -46,6 +46,7 @@ export function Measure({
   ariaLabel,
   invalid = false,
   align = 'right',
+  readOnly = false,
 }: {
   value: number | '';
   onChange: (v: number | '') => void;
@@ -54,19 +55,22 @@ export function Measure({
   invalid?: boolean;
   /** Text alignment of the number; quantity reads better left-aligned (no cramped right edge). */
   align?: 'left' | 'center' | 'right';
+  /** A constructive field ERPNext supplied for the bound article (Task 8) — locked against edits. */
+  readOnly?: boolean;
 }) {
   const alignCls = align === 'left' ? 'text-left' : align === 'center' ? 'text-center' : 'text-right';
   return (
     <span
       className={`inline-flex items-center rounded-ctl border bg-card ${
         invalid ? 'border-danger' : 'border-line-strong focus-within:border-brand'
-      }`}
+      } ${readOnly ? 'opacity-70' : ''}`}
     >
       <input
         type="number"
         inputMode="numeric"
         aria-label={ariaLabel}
         aria-invalid={invalid || undefined}
+        readOnly={readOnly}
         className={`no-spin w-full min-w-0 bg-transparent px-1.5 py-1.5 text-value tabular-nums outline-none ${alignCls}`}
         value={value}
         onChange={(e) => {

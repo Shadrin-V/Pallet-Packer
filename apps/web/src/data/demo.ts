@@ -15,7 +15,8 @@ const pos = (p: PosSeed): PositionState => ({
   id: uid(),
   state: 'entschachtelt',
   rotation: 'yawOnly',
-  stepHeight: '',
+  nestStepPairwise: '',
+  nestStepSequential: '',
   nestingMode: 'pairwise',
   maxNested: '',
   allowUnpairedTop: false,
@@ -44,16 +45,16 @@ export function demoSetup(): { vehicle: Vehicle; orders: OrderState[] } {
       orderId: 'SO-1001',
       positions: [
         // verschachtelt · pairwise · single pallet allowed on top
-        pos({ name: 'EPAL 1', length: 1200, width: 800, height: 144, quantity: 186, state: 'verschachtelt', nestingMode: 'pairwise', stepHeight: 22, allowUnpairedTop: true }),
+        pos({ name: 'EPAL 1', length: 1200, width: 800, height: 144, quantity: 186, state: 'verschachtelt', nestingMode: 'pairwise', nestStepPairwise: 22, allowUnpairedTop: true }),
         // verschachtelt · sequential · capped by maxNested
-        pos({ name: 'EPAL 2', length: 1200, width: 1000, height: 162, quantity: 100, state: 'verschachtelt', nestingMode: 'sequential', stepHeight: 30, maxNested: 25 }),
+        pos({ name: 'EPAL 2', length: 1200, width: 1000, height: 162, quantity: 100, state: 'verschachtelt', nestingMode: 'sequential', nestStepSequential: 30, maxNested: 25 }),
       ],
     },
     {
       key: uid(),
       orderId: 'SO-1002',
       positions: [
-        pos({ name: 'EPAL 6', length: 800, width: 600, height: 144, quantity: 160, state: 'verschachtelt', nestingMode: 'pairwise', stepHeight: 20, maxNested: 20 }),
+        pos({ name: 'EPAL 6', length: 800, width: 600, height: 144, quantity: 160, state: 'verschachtelt', nestingMode: 'pairwise', nestStepPairwise: 20, maxNested: 20 }),
         // entschachtelt · capped by maxTiers
         pos({ name: 'Viertelpalette', length: 600, width: 400, height: 144, quantity: 96, maxTiers: 6 }),
       ],
@@ -91,7 +92,7 @@ function nestingSetup(): { vehicle: Vehicle; orders: OrderState[] } {
         orderId: 'SO-2001',
         positions: [
           // pairwise, uncapped, single pallet allowed on top → tallest nested stack
-          pos({ name: 'EPAL 1 (verschachtelt)', length: 1200, width: 800, height: 144, quantity: 120, state: 'verschachtelt', nestingMode: 'pairwise', stepHeight: 22, allowUnpairedTop: true }),
+          pos({ name: 'EPAL 1 (verschachtelt)', length: 1200, width: 800, height: 144, quantity: 120, state: 'verschachtelt', nestingMode: 'pairwise', nestStepPairwise: 22, allowUnpairedTop: true }),
           // the same pallet NOT nested and capped at 4 tiers → the contrast Ver ↔ Ent
           pos({ name: 'EPAL 1 (entschachtelt)', length: 1200, width: 800, height: 144, quantity: 24, maxTiers: 4 }),
         ],
@@ -101,7 +102,7 @@ function nestingSetup(): { vehicle: Vehicle; orders: OrderState[] } {
         orderId: 'SO-2002',
         positions: [
           // sequential nesting, capped by maxNested → formula shows min(raw, cap)
-          pos({ name: 'EPAL 2', length: 1200, width: 1000, height: 162, quantity: 60, state: 'verschachtelt', nestingMode: 'sequential', stepHeight: 30, maxNested: 12 }),
+          pos({ name: 'EPAL 2', length: 1200, width: 1000, height: 162, quantity: 60, state: 'verschachtelt', nestingMode: 'sequential', nestStepSequential: 30, maxNested: 12 }),
           // a tall box that only stacks two high — stacking limit, not nesting
           pos({ name: 'Gitterbox', length: 1200, width: 800, height: 970, quantity: 16, maxTiers: 2 }),
         ],
