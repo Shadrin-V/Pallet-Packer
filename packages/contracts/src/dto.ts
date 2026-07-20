@@ -90,9 +90,9 @@ export const ARTICLE_SOURCES = ['erp', 'local'] as const;
 export type ArticleSource = (typeof ARTICLE_SOURCES)[number];
 
 /**
- * A catalogue article. Constructive fields (dimensions + both nesting increments) are physical
- * properties of the pallet: once ERPNext supplied them they are locked in the UI. `undefined`
- * means "not filled in yet" — the user may enter it by hand, no error (spec Q5).
+ * A catalogue article. Dimensions (length, width, height) are locked in the UI once ERPNext
+ * fills them; nesting increments and name remain locally editable. `undefined` means "not
+ * filled in yet" — the user may enter it by hand, no error.
  */
 export interface Article {
   itemCode: string;
