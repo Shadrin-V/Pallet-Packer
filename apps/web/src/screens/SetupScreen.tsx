@@ -44,7 +44,10 @@ export interface PositionState {
   rotation: RotationRule;
   forkAccess?: ForkAccess; // forklift access (ADR 018); undefined = all4
   forkAxis?: ForkAxis; // fork-entry axis for a two-sided pallet; default 'length'
-  stepHeight: Num; // nesting step: Δh (sequential) or h_д (pairwise)
+  /** Constructive nesting increments (spec Q6): pairwise = top deck board thickness, sequential =
+   *  the one-into-one increment. Both are physical properties, both come from the article. */
+  nestStepPairwise: Num;
+  nestStepSequential: Num;
   nestingMode: NestingMode;
   maxNested: Num; // nesting cap
   allowUnpairedTop: boolean; // pairwise only
@@ -85,7 +88,19 @@ function loadSetup(): PersistedSetup | null {
     const parsed = JSON.parse(raw) as PersistedSetup;
     if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) {
       // Backfill colorIndex for drafts saved before stable colours existed (by array position).
-      const orders = parsed.orders.map((o, i) => ({ ...o, colorIndex: o.colorIndex ?? i }));
+      // Drafts saved before the two constructive steps existed carry a single `stepHeight`.
+      const orders = parsed.orders.map((o, i) => ({
+        ...o,
+        colorIndex: o.colorIndex ?? i,
+        positions: o.positions.map((p) => {
+          const legacy = (p as PositionState & { stepHeight?: Num }).stepHeight;
+          if (legacy === undefined) return p;
+          const { stepHeight: _drop, ...rest } = p as PositionState & { stepHeight?: Num };
+          return p.nestingMode === 'sequential'
+            ? { ...rest, nestStepSequential: legacy, nestStepPairwise: '' as Num }
+            : { ...rest, nestStepPairwise: legacy, nestStepSequential: '' as Num };
+        }),
+      }));
       return { ...parsed, orders };
     }
   } catch {
@@ -114,7 +129,8 @@ const emptyPosition = (): PositionState => ({
   state: 'entschachtelt',
   rotation: 'yawOnly',
   forkAxis: 'length',
-  stepHeight: '',
+  nestStepPairwise: '',
+  nestStepSequential: '',
   nestingMode: 'pairwise',
   maxNested: '',
   allowUnpairedTop: false,
@@ -130,6 +146,16 @@ const emptyOrder = (n: number): OrderState => ({
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
 
+/** The increment that belongs to the position's current nesting mode. */
+export function activeStep(p: PositionState): Num {
+  return p.nestingMode === 'pairwise' ? p.nestStepPairwise : p.nestStepSequential;
+}
+
+/** Which PositionState field the single on-screen step input writes to. */
+function activeStepField(p: PositionState): 'nestStepPairwise' | 'nestStepSequential' {
+  return p.nestingMode === 'pairwise' ? 'nestStepPairwise' : 'nestStepSequential';
+}
+
 /** orderId → stable palette slot, sent with every computed plan so the Ladeplan colours an order the
  *  same as Setup regardless of list order (QA #2). */
 const buildOrderColors = (os: OrderState[]): Record<string, number> =>
@@ -137,7 +163,8 @@ const buildOrderColors = (os: OrderState[]): Record<string, number> =>
 
 /** Build the engine CargoType for a position (used for both preview and the final Load). */
 export function toCargo(p: PositionState, orderId: string): CargoType {
-  const nestable = p.state === 'verschachtelt' && numOr0(p.stepHeight) > 0;
+  const step = numOr0(activeStep(p));
+  const nestable = p.state === 'verschachtelt' && step > 0;
   return {
     id: p.id,
     name: p.name || p.id,
@@ -153,7 +180,7 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
     nesting: nestable
       ? {
           nestable: true,
-          stepHeight: numOr0(p.stepHeight),
+          stepHeight: step,
           nestingMode: p.nestingMode,
           ...(numOr0(p.maxNested) > 0 ? { maxNested: numOr0(p.maxNested) } : {}),
           ...(p.nestingMode === 'pairwise' ? { allowUnpairedTop: p.allowUnpairedTop } : {}),
@@ -262,7 +289,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
 
   // A nestable position with an invalid Δh/h_д blocks calculation (ERR_INVALID_NESTING otherwise).
   const anyInvalid = orders.some((o) =>
-    o.positions.some((p) => stepInvalid(p.state, p.stepHeight, p.height)),
+    o.positions.some((p) => stepInvalid(p.state, activeStep(p), p.height)),
   );
 
   const handleCalculate = () => {
@@ -514,7 +541,7 @@ function PositionRow({
   const currentPreset = allPallets.find(
     (pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height,
   );
-  const invalid = stepInvalid(p.state, p.stepHeight, p.height);
+  const invalid = stepInvalid(p.state, activeStep(p), p.height);
   let preview: StackPreview | null = null;
   if (dimsPresent && !invalid) {
     try {
@@ -661,8 +688,8 @@ function PositionRow({
                   <span className="w-24">
                     <Measure
                       ariaLabel={tt('cargoType.nesting.stepHeightSeq')}
-                      value={p.stepHeight}
-                      onChange={(stepHeight) => onChange({ stepHeight })}
+                      value={activeStep(p)}
+                      onChange={(v) => onChange({ [activeStepField(p)]: v })}
                       invalid={invalid}
                     />
                   </span>

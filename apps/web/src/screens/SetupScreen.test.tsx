@@ -87,6 +87,27 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
 
+  it('keeps a separate constructive step per nesting mode (pairwise ≠ sequential)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    // switch the row to verschachtelt → the nesting panel with the step field appears
+    const STEP = 'Höhenzuwachs je Palette (Δh)';
+    await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
+    await userEvent.type(screen.getByLabelText(STEP), '22'); // pairwise is the default mode
+    await userEvent.selectOptions(screen.getByLabelText('Verschachtelungsmodus'), 'sequential');
+    // the sequential step is its own field and starts empty, it does not inherit 22
+    expect((screen.getByLabelText(STEP) as HTMLInputElement).value).toBe('');
+    await userEvent.type(screen.getByLabelText(STEP), '30');
+    await userEvent.selectOptions(screen.getByLabelText('Verschachtelungsmodus'), 'pairwise');
+    expect((screen.getByLabelText(STEP) as HTMLInputElement).value).toBe('22');
+
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    // the engine still receives a single stepHeight — the one matching the selected mode
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
+  });
+
   it('auto-expands details on Ver and defaults the nesting mode to pairwise (E5/E9)', async () => {
     renderSetup(() => {});
     // no details click: switching to Ver opens the panel by itself (E9)
@@ -194,6 +215,44 @@ describe('SetupScreen', () => {
     unmount();
     renderSetup(() => {});
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-99');
+  });
+
+  it('migrates a draft saved before the two constructive steps existed (legacy stepHeight)', async () => {
+    // A draft persisted by an older build: one PositionState.stepHeight, no nestStepPairwise/Sequential.
+    const legacyPosition = {
+      id: 'p1',
+      name: 'EPAL 1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      quantity: 10,
+      state: 'verschachtelt',
+      rotation: 'yawOnly',
+      forkAxis: 'length',
+      stepHeight: 22,
+      nestingMode: 'pairwise',
+      maxNested: '',
+      allowUnpairedTop: false,
+      maxTiers: '',
+    };
+    globalThis.localStorage.setItem(
+      'ladungsplaner.setup',
+      JSON.stringify({
+        vehicle: { id: 'v1', name: 'LKW Standard', length: 13600, width: 2480, height: 2700 },
+        orders: [{ key: 'o1', orderId: 'SO-1', colorIndex: 0, positions: [legacyPosition] }],
+      }),
+    );
+
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    // the legacy number reappears in the field the current mode (pairwise) reads from — not lost
+    expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
 
   it('Demo fills a multi-order plan and computes it immediately (T3)', async () => {
