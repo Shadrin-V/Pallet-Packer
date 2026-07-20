@@ -96,4 +96,37 @@ describe('REST routes', () => {
     expect(res.json().map((a: { itemCode: string }) => a.itemCode)).toEqual(['REAL']);
     await app.close();
   });
+
+  it('client cannot set article provenance (source, syncedAt, updatedAt, erpFields) over HTTP', async () => {
+    const app = buildApp({ db: openDb(':memory:') });
+    const bogusUpdatedAt = '1970-01-01T00:00:00.000Z';
+    const bogusSyncedAt = '1999-12-31T23:59:59.999Z';
+    // Legitimate payload with hostile server-owned fields mixed in
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/articles/HOSTILE',
+      payload: {
+        itemCode: 'HOSTILE',
+        name: 'Malicious Box',
+        length: 500,
+        width: 400,
+        height: 300,
+        nestStepPairwise: 10,
+        rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+        // Hostile values that client should never be able to set
+        source: 'erp',
+        syncedAt: bogusSyncedAt,
+        updatedAt: bogusUpdatedAt,
+        erpFields: ['length', 'width', 'height'],
+      },
+    });
+    expect(put.statusCode).toBe(200);
+    const response = put.json();
+    // Server owns these four fields; client cannot override them
+    expect(response).toMatchObject({ itemCode: 'HOSTILE', source: 'local' });
+    expect(response.erpFields).toEqual([]);
+    expect(response.syncedAt).toBeUndefined();
+    expect(response.updatedAt).not.toBe(bogusUpdatedAt); // Must be current server time, not 1970
+    await app.close();
+  });
 });
