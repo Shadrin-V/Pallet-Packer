@@ -39,7 +39,7 @@ export const de: Dictionary = {
   'article.noMatches': 'Keine Treffer — Maße bitte eingeben',
   'article.save': 'Artikel in die Datenbank speichern',
   'article.update': 'Artikel aktualisieren',
-  'article.lockedHint': 'Konstruktionsmaß aus ERPNext — dort ändern',
+  'article.lockedHint': 'Wird in ERPNext geändert, Artikel {code}',
   'article.saveError': 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
 
   'ladeplan.title': 'Ladeplan',

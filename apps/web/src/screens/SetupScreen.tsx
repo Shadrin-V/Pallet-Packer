@@ -30,7 +30,7 @@ import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { ArticleCombobox, type ArticleSuggestion } from './components/ArticleCombobox';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
-import type { ArticleConstructiveField } from '@shadrin-v/contracts';
+import type { Article, ArticleConstructiveField } from '@shadrin-v/contracts';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
@@ -204,12 +204,17 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
   };
 }
 
+/** Locked = exactly the constructive fields ERPNext supplied (Task 2 provenance). Never inferred
+ *  from "value present": a value the user typed into a field ERPNext left blank must stay
+ *  editable. Shared by picking a suggestion and by binding a row to the article a save returned. */
+export function lockedFieldsFrom(fields: readonly ArticleConstructiveField[]): LockedFields {
+  const locked: LockedFields = {};
+  for (const f of fields) locked[f] = true;
+  return locked;
+}
+
 /** Apply a picked suggestion to a position: name, constructive fields, rules; quantity untouched. */
 export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
-  // Locked = exactly what ERPNext supplied (Task 2 provenance). Never inferred from "value present":
-  // a value the user typed into a field ERPNext left blank must stay editable.
-  const locked: LockedFields = {};
-  for (const f of s.erpFields) locked[f] = true;
   const r = s.rules ?? {};
   return {
     articleCode: s.itemCode,
@@ -227,7 +232,7 @@ export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
     ...(r.maxNested !== undefined ? { maxNested: r.maxNested } : {}),
     ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
     ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
-    locked,
+    locked: lockedFieldsFrom(s.erpFields),
   };
 }
 
@@ -327,12 +332,15 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
     });
 
-  // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a provider.
-  const saveArticle = async (p: PositionState) => {
-    if (!dp) return;
+  // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
+  // provider. Returns the saved Article so the caller (PositionRow) can bind the row to it —
+  // otherwise the row stays unbound after a successful save and the button never flips to
+  // "update" (Finding 1).
+  const saveArticle = async (p: PositionState): Promise<Article | undefined> => {
+    if (!dp) return undefined;
     const itemCode = (p.articleCode ?? p.name).trim();
-    if (!itemCode || !dimsComplete(p)) return;
-    await dp.upsertArticle({
+    if (!itemCode || !dimsComplete(p)) return undefined;
+    return dp.upsertArticle({
       itemCode,
       name: p.name.trim(),
       length: numOr0(p.length),
@@ -486,7 +494,7 @@ function OrderCard({
   onOrderIdChange: (v: string) => void;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
-  onSaveArticle: (p: PositionState) => Promise<void>;
+  onSaveArticle: (p: PositionState) => Promise<Article | undefined>;
 }) {
   // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
   const [openId, setOpenId] = useState<string | null>(null);
@@ -586,7 +594,7 @@ function PositionRow({
   open: boolean;
   onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
-  onSaveArticle: () => Promise<void>;
+  onSaveArticle: () => Promise<Article | undefined>;
 }) {
   // Task 8 review fix: a failed save must be visible and must never escape as an unhandled
   // rejection. This is the panel that owns the save button, so it owns the message too — cleared
@@ -594,14 +602,22 @@ function PositionRow({
   const [saveError, setSaveError] = useState<string | null>(null);
   const handleSaveArticle = async () => {
     try {
-      await onSaveArticle();
+      const saved = await onSaveArticle();
       setSaveError(null);
+      // Finding 1: bind the row to what the server actually stored — otherwise articleCode stays
+      // unset and the button keeps reading "save" instead of flipping to "update".
+      if (saved) onChange({ articleCode: saved.itemCode, locked: lockedFieldsFrom(saved.erpFields) });
     } catch {
       setSaveError(tt('article.saveError'));
     }
   };
   const dimsPresent = dimsComplete(p);
   const invalid = stepInvalid(p.state, activeStep(p), p.height);
+  // Finding 3: the hint names the article the field is locked by, not just "somewhere in ERPNext".
+  const lockedHint = fillTemplate(tt('article.lockedHint'), { code: p.articleCode ?? '' });
+  // Finding 3: "активна при введённом артикуле и заполненных габаритах" — the save button is always
+  // present in the details panel, disabled (not hidden) until both conditions hold.
+  const saveDisabled = (p.articleCode ?? p.name).trim() === '' || !dimsPresent;
   let preview: StackPreview | null = null;
   if (dimsPresent && !invalid) {
     try {
@@ -654,15 +670,15 @@ function PositionRow({
         </span>
         <span className="inline-flex w-24 items-center gap-1">
           <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
-          {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />}
+          {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
         </span>
         <span className="inline-flex w-24 items-center gap-1">
           <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} />
-          {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />}
+          {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
         </span>
         <span className="inline-flex w-24 items-center gap-1">
           <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
-          {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />}
+          {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
         </span>
         <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
         <Segmented
@@ -776,15 +792,15 @@ function PositionRow({
 
           {/* Save the row's dimensions/rules to the article catalogue — in the details panel, the
               row itself is already at its width limit (long RU labels). Label switches to "update"
-              once the row is bound to an existing article (Task 8). */}
-          {dimsPresent && p.name.trim() !== '' && (
-            <div>
-              <Button variant="ghost" onClick={handleSaveArticle}>
-                {tt(p.articleCode ? 'article.update' : 'article.save')}
-              </Button>
-              {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
-            </div>
-          )}
+              once the row is bound to an existing article (Task 8). Finding 3: always present,
+              disabled (not hidden) until an article and full dimensions are entered — the panel's
+              layout doesn't jump as the user fills the row in. */}
+          <div>
+            <Button variant="ghost" onClick={handleSaveArticle} disabled={saveDisabled}>
+              {tt(p.articleCode ? 'article.update' : 'article.save')}
+            </Button>
+            {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
+          </div>
 
           {/* validation hint + live formula */}
           {p.state === 'verschachtelt' && (

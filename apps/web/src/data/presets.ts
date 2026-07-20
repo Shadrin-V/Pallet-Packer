@@ -28,7 +28,3 @@ export const PALLET_PRESETS: DimPreset[] = [
   { key: 'epal6', name: 'EPAL 6', length: 800, width: 600, height: 144 },
   { key: 'quarter', name: 'Viertelpalette', length: 600, width: 400, height: 144 },
 ];
-
-export function palletByKey(key: string): DimPreset | undefined {
-  return PALLET_PRESETS.find((p) => p.key === key);
-}

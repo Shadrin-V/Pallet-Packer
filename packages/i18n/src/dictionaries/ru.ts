@@ -39,7 +39,7 @@ export const ru: Dictionary = {
   'article.noMatches': 'Совпадений нет — введите размеры',
   'article.save': 'Сохранить артикул в базу',
   'article.update': 'Обновить артикул',
-  'article.lockedHint': 'Конструктивный размер из ERPNext — меняется там',
+  'article.lockedHint': 'Меняется в ERPNext, артикул {code}',
   'article.saveError': 'Не удалось сохранить. Попробуйте ещё раз.',
 
   'ladeplan.title': 'План загрузки',

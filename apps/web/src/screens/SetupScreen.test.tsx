@@ -6,7 +6,7 @@ import { LocaleProvider } from '../i18n/LocaleContext';
 import { SetupScreen } from './SetupScreen';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
-import type { Article } from '@shadrin-v/contracts';
+import type { Article, ArticleInput } from '@shadrin-v/contracts';
 
 function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
   return render(
@@ -30,7 +30,11 @@ const ERP_ARTICLE: Article = {
 };
 
 function renderSetupWithCatalogue(dpOverrides: Partial<DataProvider> = {}) {
-  const upsertArticle = vi.fn(async (a: unknown) => a as Article);
+  // Full Article shape (not a loose cast): saveArticle's caller now binds the row to whatever this
+  // resolves with (Finding 1), so a fixture missing e.g. `erpFields` would crash that code path.
+  const upsertArticle = vi.fn(
+    async (a: ArticleInput) => ({ ...a, source: 'local' as const, erpFields: [], updatedAt: 'x' }) satisfies Article,
+  );
   const dp = { searchArticles: async () => [ERP_ARTICLE], upsertArticle, ...dpOverrides } as unknown as DataProvider;
   render(
     <LocaleProvider initial="de">
@@ -233,6 +237,45 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
 
+  // Finding 4: the migration above only ever exercised nestingMode 'pairwise'. The same legacy
+  // draft can equally have been left in 'sequential' mode; the migration must route stepHeight
+  // into nestStepSequential in that case, not silently drop it.
+  it('migrates a draft saved before the two constructive steps existed (legacy stepHeight, sequential mode)', async () => {
+    const legacyPosition = {
+      id: 'p1',
+      name: 'EPAL 1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      quantity: 10,
+      state: 'verschachtelt',
+      rotation: 'yawOnly',
+      forkAxis: 'length',
+      stepHeight: 30,
+      nestingMode: 'sequential',
+      maxNested: '',
+      allowUnpairedTop: false,
+      maxTiers: '',
+    };
+    globalThis.localStorage.setItem(
+      'ladungsplaner.setup',
+      JSON.stringify({
+        vehicle: { id: 'v1', name: 'LKW Standard', length: 13600, width: 2480, height: 2700 },
+        orders: [{ key: 'o1', orderId: 'SO-1', colorIndex: 0, positions: [legacyPosition] }],
+      }),
+    );
+
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('30');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 30, nestingMode: 'sequential' });
+  });
+
   it('Demo fills a multi-order plan and computes it immediately (T3)', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
@@ -408,6 +451,30 @@ describe('SetupScreen article combobox', () => {
     expect(screen.getAllByLabelText('Höhe')[1]).not.toHaveAttribute('readonly');
   });
 
+  // Finding 2: the inverse of the read-only test above. The whole branch is about not freezing a
+  // user's own value, but nothing pinned that typing over a *picked* ERP article releases the
+  // fields it locked. Production code already does this (ArticleCombobox's onChange clears
+  // articleCode + locked) — this test only makes sure it stays true.
+  it('typing over a picked ERP article clears the binding and every lock (inverse of the read-only test)', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+    // sanity: picking ABB101 did lock length/width/height (erpFields on the fixture)
+    expect(screen.getAllByLabelText('Länge')[1]).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Breite')[1]).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Höhe')[1]).toHaveAttribute('readonly');
+    // the row is bound, so the panel button already reads "update"
+    expect(screen.getByRole('button', { name: 'Artikel aktualisieren' })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), ' X');
+
+    expect(screen.getAllByLabelText('Länge')[1]).not.toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Breite')[1]).not.toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Höhe')[1]).not.toHaveAttribute('readonly');
+    // unbound: the button falls back to "save", not "update"
+    expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
+  });
+
   it('saves a typed-in article to the catalogue', async () => {
     const { upsertArticle } = renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
@@ -419,6 +486,85 @@ describe('SetupScreen article combobox', () => {
     expect(upsertArticle).toHaveBeenCalledWith(
       expect.objectContaining({ itemCode: 'NEU-1', length: 1200, width: 800, height: 144 }),
     );
+  });
+
+  // Finding 1: a successful save used to discard the Article the server returned, so the row's
+  // articleCode was never set and the button kept reading "save" instead of "update" — a spec
+  // deviation (§ "Кнопка «Сохранить артикул в базу»"). The row must bind to the save response.
+  it('binds the row to the saved article: the button flips from "save" to "update" (Finding 1)', async () => {
+    const savedArticle: Article = {
+      itemCode: 'NEU-1',
+      name: 'NEU-1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+      source: 'local',
+      updatedAt: 'x',
+      erpFields: [],
+    };
+    const upsertArticle = vi.fn(async () => savedArticle);
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    expect(await screen.findByRole('button', { name: 'Artikel aktualisieren' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Artikel in die Datenbank speichern' })).not.toBeInTheDocument();
+  });
+
+  it('does NOT flip the button label when the save rejects (Finding 1, negative case)', async () => {
+    const upsertArticle = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Artikel aktualisieren' })).not.toBeInTheDocument();
+  });
+
+  // Finding 3: подсказка у запертого поля называет артикул («меняется в ERPNext, артикул такой-то»).
+  it('the locked-field hint names the bound article (Finding 3)', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Artikel' })[0]);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('ABB101');
+  });
+
+  // Finding 3: «активна при введённом артикуле и заполненных габаритах» — present, disabled, not
+  // conditionally hidden.
+  it('the save button is always present in the details panel, disabled until article + dimensions are complete (Finding 3)', async () => {
+    renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    const saveButton = () => screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' });
+    expect(saveButton()).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    expect(saveButton()).toBeDisabled(); // dimensions still missing
+
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    expect(saveButton()).toBeDisabled(); // height still missing
+
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    expect(saveButton()).toBeEnabled();
   });
 
   it('a row without a picked article still computes (free text, manual dimensions)', async () => {
@@ -460,10 +606,21 @@ describe('SetupScreen article combobox', () => {
   });
 
   it('clears a stale save error once a later save succeeds, and a successful save shows no message', async () => {
+    const savedArticle: Article = {
+      itemCode: 'NEU-1',
+      name: 'NEU-1',
+      length: 1200,
+      width: 800,
+      height: 144,
+      rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+      source: 'local',
+      updatedAt: 'x',
+      erpFields: [],
+    };
     const upsertArticle = vi
       .fn()
       .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce({} as Article);
+      .mockResolvedValueOnce(savedArticle);
     renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
