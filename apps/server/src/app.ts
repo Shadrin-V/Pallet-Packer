@@ -24,7 +24,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     plansRoutes(app, opts.db);
     articlesRoutes(app, opts.db);
   }
-  ordersRoutes(app, opts.erpnext);
+  ordersRoutes(app, opts.erpnext, opts.db);
 
   if (opts.staticDir) {
     app.register(fastifyStatic, { root: opts.staticDir });
