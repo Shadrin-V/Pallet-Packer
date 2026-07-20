@@ -60,4 +60,40 @@ describe('REST routes', () => {
     expect(res.json()).toMatchObject({ code: 'ERR_NOT_FOUND' });
     await app.close();
   });
+
+  it('PUT then GET /api/articles searches the catalogue', async () => {
+    const app = buildApp({ db: openDb(':memory:') });
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/articles/ABB101',
+      payload: {
+        itemCode: 'ABB101',
+        name: 'Einwegpalette',
+        length: 800,
+        width: 600,
+        height: 144,
+        nestStepPairwise: 22,
+        rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+      },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json()).toMatchObject({ itemCode: 'ABB101', source: 'local' });
+
+    const res = await app.inject({ method: 'GET', url: '/api/articles?q=abb' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().map((a: { itemCode: string }) => a.itemCode)).toEqual(['ABB101']);
+    await app.close();
+  });
+
+  it('the path param wins over the body itemCode (no smuggling a different article)', async () => {
+    const app = buildApp({ db: openDb(':memory:') });
+    await app.inject({
+      method: 'PUT',
+      url: '/api/articles/REAL',
+      payload: { itemCode: 'FAKE', name: 'n', rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' } },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/articles?q=' });
+    expect(res.json().map((a: { itemCode: string }) => a.itemCode)).toEqual(['REAL']);
+    await app.close();
+  });
 });
