@@ -26,12 +26,18 @@ import { OrderSwatch } from '../lib/swatch';
 import { orderColorToken } from '../lib/orderColor';
 import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
-import { VEHICLE_PRESETS, PALLET_PRESETS, type DimPreset } from '../data/presets';
-import { loadUserPallets, addUserPallet, removeUserPallet, isUserPreset } from '../data/userPresets';
+import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
+import { ArticleCombobox, type ArticleSuggestion } from './components/ArticleCombobox';
+import { useOptionalDataProvider } from '../data/DataProviderContext';
+import type { ArticleConstructiveField } from '@shadrin-v/contracts';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
+
+/** Which constructive fields are read-only because ERPNext supplied them for the bound article
+ *  (Task 2 provenance) — never inferred from "value present", only from `ArticleSuggestion.erpFields`. */
+export type LockedFields = Partial<Record<ArticleConstructiveField, true>>;
 
 export interface PositionState {
   id: string;
@@ -52,6 +58,10 @@ export interface PositionState {
   maxNested: Num; // nesting cap
   allowUnpairedTop: boolean; // pairwise only
   maxTiers: Num; // stacking cap
+  /** Catalogue article this row is bound to; undefined = free text, not saved anywhere. */
+  articleCode?: string;
+  /** Constructive fields ERPNext already filled — read-only in the form (spec Q5). */
+  locked?: LockedFields;
 }
 
 export interface OrderState {
@@ -146,6 +156,9 @@ const emptyOrder = (n: number): OrderState => ({
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
 
+const dimsComplete = (p: PositionState): boolean =>
+  numOr0(p.length) > 0 && numOr0(p.width) > 0 && numOr0(p.height) > 0;
+
 /** The increment that belongs to the position's current nesting mode. */
 export function activeStep(p: PositionState): Num {
   return p.nestingMode === 'pairwise' ? p.nestStepPairwise : p.nestStepSequential;
@@ -191,6 +204,33 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
   };
 }
 
+/** Apply a picked suggestion to a position: name, constructive fields, rules; quantity untouched. */
+export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
+  // Locked = exactly what ERPNext supplied (Task 2 provenance). Never inferred from "value present":
+  // a value the user typed into a field ERPNext left blank must stay editable.
+  const locked: LockedFields = {};
+  for (const f of s.erpFields) locked[f] = true;
+  const r = s.rules ?? {};
+  return {
+    articleCode: s.itemCode,
+    name: s.name,
+    length: s.length ?? '',
+    width: s.width ?? '',
+    height: s.height ?? '',
+    nestStepPairwise: s.nestStepPairwise ?? '',
+    nestStepSequential: s.nestStepSequential ?? '',
+    ...(r.state ? { state: r.state } : {}),
+    ...(r.nestingMode ? { nestingMode: r.nestingMode } : {}),
+    ...(r.rotation ? { rotation: r.rotation } : {}),
+    ...(r.forkAccess ? { forkAccess: r.forkAccess } : {}),
+    ...(r.forkAxis ? { forkAxis: r.forkAxis } : {}),
+    ...(r.maxNested !== undefined ? { maxNested: r.maxNested } : {}),
+    ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
+    ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
+    locked,
+  };
+}
+
 // ---- component ------------------------------------------------------------
 export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onReset }: SetupScreenProps) {
   const tt = useT();
@@ -198,9 +238,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   const defaultVehicle = (): Vehicle => ({ id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height });
   const [vehicle, setVehicle] = useState<Vehicle>(() => initialVehicle ?? loadSetup()?.vehicle ?? defaultVehicle());
   const [orders, setOrders] = useState<OrderState[]>(() => initialOrders ?? loadSetup()?.orders ?? [emptyOrder(1)]);
-  // User pallet catalogue (T4): kept at screen level so a preset saved in one row shows up in the
-  // dropdowns of all the others. Reset clears the draft, never this catalogue.
-  const [userPallets, setUserPallets] = useState<DimPreset[]>(() => loadUserPallets());
+  // Article catalogue (Task 8): saving a row's article goes through the DataProvider seam, so it
+  // must tolerate rendering outside a provider (existing tests do this).
+  const dp = useOptionalDataProvider();
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -287,6 +327,32 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
     });
 
+  // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a provider.
+  const saveArticle = async (p: PositionState) => {
+    if (!dp) return;
+    const itemCode = (p.articleCode ?? p.name).trim();
+    if (!itemCode || !dimsComplete(p)) return;
+    await dp.upsertArticle({
+      itemCode,
+      name: p.name.trim(),
+      length: numOr0(p.length),
+      width: numOr0(p.width),
+      height: numOr0(p.height),
+      ...(numOr0(p.nestStepPairwise) > 0 ? { nestStepPairwise: numOr0(p.nestStepPairwise) } : {}),
+      ...(numOr0(p.nestStepSequential) > 0 ? { nestStepSequential: numOr0(p.nestStepSequential) } : {}),
+      rules: {
+        state: p.state,
+        nestingMode: p.nestingMode,
+        rotation: p.rotation,
+        ...(p.forkAccess ? { forkAccess: p.forkAccess } : {}),
+        ...(p.forkAxis ? { forkAxis: p.forkAxis } : {}),
+        ...(numOr0(p.maxNested) > 0 ? { maxNested: numOr0(p.maxNested) } : {}),
+        ...(numOr0(p.maxTiers) > 0 ? { maxTiers: numOr0(p.maxTiers) } : {}),
+        ...(p.nestingMode === 'pairwise' ? { allowUnpairedTop: p.allowUnpairedTop } : {}),
+      },
+    });
+  };
+
   // A nestable position with an invalid Δh/h_д blocks calculation (ERR_INVALID_NESTING otherwise).
   const anyInvalid = orders.some((o) =>
     o.positions.some((p) => stepInvalid(p.state, activeStep(p), p.height)),
@@ -355,9 +421,6 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             order={o}
             index={o.colorIndex}
             vehicle={vehicle}
-            userPallets={userPallets}
-            onSavePreset={(p) => setUserPallets(addUserPallet(p))}
-            onDeletePreset={(key) => setUserPallets(removeUserPallet(key))}
             tt={tt}
             reorderable={orders.length > 1}
             canMoveUp={oi > 0}
@@ -366,6 +429,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
             onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
             onAddPosition={() => addPosition(o.key)}
+            onSaveArticle={saveArticle}
           />
         ))}
       </div>
@@ -401,9 +465,6 @@ function OrderCard({
   order,
   index,
   vehicle,
-  userPallets,
-  onSavePreset,
-  onDeletePreset,
   tt,
   reorderable,
   canMoveUp,
@@ -412,13 +473,11 @@ function OrderCard({
   onOrderIdChange,
   onPositionChange,
   onAddPosition,
+  onSaveArticle,
 }: {
   order: OrderState;
   index: number;
   vehicle: Vehicle;
-  userPallets: DimPreset[];
-  onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
-  onDeletePreset: (key: string) => void;
   tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
   reorderable: boolean;
   canMoveUp: boolean;
@@ -427,6 +486,7 @@ function OrderCard({
   onOrderIdChange: (v: string) => void;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
+  onSaveArticle: (p: PositionState) => void;
 }) {
   // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
   const [openId, setOpenId] = useState<string | null>(null);
@@ -471,8 +531,7 @@ function OrderCard({
           with anything — the per-field aria-labels carry the meaning there. */}
       <div className="hidden xl:flex items-center gap-1.5 border-b border-line bg-sub px-4 pb-1 pt-2 text-label uppercase tracking-wide text-faint">
         <span className="w-3 shrink-0" />
-        <span className="w-36 shrink-0">{tt('cargoType.label')}</span>
-        <span className="w-32 shrink-0">{tt('field.name')}</span>
+        <span className="w-64 shrink-0">{tt('article.label')}</span>
         <span className="w-24">{tt('field.length')}</span>
         <span className="w-24">{tt('field.width')}</span>
         <span className="w-24">{tt('field.height')}</span>
@@ -486,13 +545,11 @@ function OrderCard({
             position={p}
             index={index}
             vehicle={vehicle}
-            userPallets={userPallets}
-            onSavePreset={onSavePreset}
-            onDeletePreset={onDeletePreset}
             tt={tt}
             open={openId === p.id}
             onSetOpen={(o) => setOpenId(o ? p.id : null)}
             onChange={(patch) => onPositionChange(p.id, patch)}
+            onSaveArticle={() => onSaveArticle(p)}
           />
         ))}
       </div>
@@ -516,31 +573,22 @@ function PositionRow({
   position: p,
   index,
   vehicle,
-  userPallets,
-  onSavePreset,
-  onDeletePreset,
   tt,
   open,
   onSetOpen,
   onChange,
+  onSaveArticle,
 }: {
   position: PositionState;
   index: number;
   vehicle: Vehicle;
-  userPallets: DimPreset[];
-  onSavePreset: (p: Omit<DimPreset, 'key'>) => void;
-  onDeletePreset: (key: string) => void;
   tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
   open: boolean;
   onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
+  onSaveArticle: () => void;
 }) {
-  const dimsPresent = numOr0(p.length) > 0 && numOr0(p.width) > 0 && numOr0(p.height) > 0;
-  // Built-ins and the user catalogue behave alike: a preset is "selected" when its dimensions match.
-  const allPallets = [...PALLET_PRESETS, ...userPallets];
-  const currentPreset = allPallets.find(
-    (pp) => pp.length === p.length && pp.width === p.width && pp.height === p.height,
-  );
+  const dimsPresent = dimsComplete(p);
   const invalid = stepInvalid(p.state, activeStep(p), p.height);
   let preview: StackPreview | null = null;
   if (dimsPresent && !invalid) {
@@ -573,33 +621,37 @@ function PositionRow({
           overflowing and overlapping the length fields (QA). */}
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <OrderSwatch index={index} width={12} height={26} />
-        <Select
-          // fixed width so the column headings above the rows line up with the fields (rgv.6)
-          className="w-36 shrink-0"
-          ariaLabel={tt('cargoType.label')}
-          value={currentPreset?.key ?? 'custom'}
-          onChange={(key) => {
-            // Picking another article collapses the nesting-rules panel (E16).
-            onSetOpen(false);
-            const preset = allPallets.find((pp) => pp.key === key);
-            if (preset)
-              onChange({ name: p.name || preset.name, length: preset.length, width: preset.width, height: preset.height });
-          }}
-          options={[
-            { value: 'custom', label: tt('setup.vehiclePreset.custom') },
-            ...allPallets.map((pp) => ({ value: pp.key, label: pp.name })),
-          ]}
-        />
-        {/* Fixed width (was min/max + flex-1): a flexible column here shifted every heading above
-            the numeric fields out of line with them (rgv.6). Kept narrow on purpose — measured in a
-            real browser, the row spends ~1026 of the 1036 px the card offers, so a wider name column
-            wraps every row's "Stapel N" chip onto a second line and doubles the form's height. */}
-        <span className="w-32 shrink-0">
-          <TextField ariaLabel={tt('field.name')} value={p.name} onChange={(name) => onChange({ name })} placeholder={tt('cargoType.label')} />
+        {/* Article combobox replaces the old preset select + separate name field (Task 8, closes
+            rgv.8): one control both names the row and, when a suggestion is picked, fills its
+            dimensions/rules and locks the fields ERPNext actually supplied. */}
+        <span className="w-64 shrink-0">
+          <ArticleCombobox
+            ariaLabel={tt('article.label')}
+            value={p.name}
+            onChange={(name) => onChange({ name, articleCode: undefined, locked: {} })}
+            onPick={(s) => {
+              const patch = applySuggestion(s);
+              // Picking another article collapses the nesting panel (E16) — unless the article's
+              // own rules are verschachtelt, in which case it auto-expands, same as toggling the
+              // Segmented control by hand (E9).
+              onSetOpen(patch.state === 'verschachtelt');
+              onChange(patch);
+            }}
+            className="w-full"
+          />
         </span>
-        <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} /></span>
-        <span className="w-24"><Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} /></span>
-        <span className="w-24"><Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} /></span>
+        <span className="inline-flex w-24 items-center gap-1">
+          <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
+          {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />}
+        </span>
+        <span className="inline-flex w-24 items-center gap-1">
+          <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} />
+          {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />}
+        </span>
+        <span className="inline-flex w-24 items-center gap-1">
+          <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
+          {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={tt('article.lockedHint')} />}
+        </span>
         <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
         <Segmented
           ariaLabel={tt('cargoType.nesting.label')}
@@ -710,29 +762,13 @@ function PositionRow({
             )}
           </div>
 
-          {/* pallet catalogue actions — in the details panel, the row itself is already at its
-              width limit (long RU labels). Name comes from the article field, fallback L×W×H. */}
-          {dimsPresent && !currentPreset && (
+          {/* Save the row's dimensions/rules to the article catalogue — in the details panel, the
+              row itself is already at its width limit (long RU labels). Label switches to "update"
+              once the row is bound to an existing article (Task 8). */}
+          {dimsPresent && p.name.trim() !== '' && (
             <div>
-              <Button
-                variant="ghost"
-                onClick={() =>
-                  onSavePreset({
-                    name: p.name || `${numOr0(p.length)}×${numOr0(p.width)}×${numOr0(p.height)}`,
-                    length: numOr0(p.length),
-                    width: numOr0(p.width),
-                    height: numOr0(p.height),
-                  })
-                }
-              >
-                {tt('setup.savePreset')}
-              </Button>
-            </div>
-          )}
-          {currentPreset && isUserPreset(currentPreset.key) && (
-            <div>
-              <Button variant="ghost" onClick={() => onDeletePreset(currentPreset.key)}>
-                {tt('setup.deletePreset')}
+              <Button variant="ghost" onClick={onSaveArticle}>
+                {tt(p.articleCode ? 'article.update' : 'article.save')}
               </Button>
             </div>
           )}

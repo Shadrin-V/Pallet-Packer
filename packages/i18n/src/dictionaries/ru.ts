@@ -17,8 +17,6 @@ export const ru: Dictionary = {
   'setup.stack': 'Стопка',
   'setup.vehiclePreset.custom': 'Свои размеры',
   'setup.emptyOrders': 'Заказов пока нет. Добавьте заказ.',
-  'setup.savePreset': 'Сохранить как пресет',
-  'setup.deletePreset': 'Удалить пресет',
   'setup.demo.mixed': 'Смешанные заказы',
   'setup.demo.mixedHint': '4 заказа, 7 типов груза, оба режима вложения, 2-сторонний поддон.',
   'setup.demo.nesting': 'Вложение и штабели',
@@ -39,6 +37,9 @@ export const ru: Dictionary = {
   'article.source.local': 'локально',
   'article.source.standard': 'стандарт',
   'article.noMatches': 'Совпадений нет — введите размеры',
+  'article.save': 'Сохранить артикул в базу',
+  'article.update': 'Обновить артикул',
+  'article.lockedHint': 'Конструктивный размер из ERPNext — меняется там',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',

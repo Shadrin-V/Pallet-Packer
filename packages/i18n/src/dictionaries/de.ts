@@ -17,8 +17,6 @@ export const de: Dictionary = {
   'setup.stack': 'Stapel',
   'setup.vehiclePreset.custom': 'Eigene Maße',
   'setup.emptyOrders': 'Noch keine Aufträge. Fügen Sie einen Auftrag hinzu.',
-  'setup.savePreset': 'Als Preset speichern',
-  'setup.deletePreset': 'Preset löschen',
   'setup.demo.mixed': 'Gemischte Aufträge',
   'setup.demo.mixedHint': '4 Aufträge, 7 Ladungsarten, beide Verschachtelungsmodi, 2-seitige Palette.',
   'setup.demo.nesting': 'Verschachtelung und Stapel',
@@ -39,6 +37,9 @@ export const de: Dictionary = {
   'article.source.local': 'lokal',
   'article.source.standard': 'Standard',
   'article.noMatches': 'Keine Treffer — Maße bitte eingeben',
+  'article.save': 'Artikel in die Datenbank speichern',
+  'article.update': 'Artikel aktualisieren',
+  'article.lockedHint': 'Konstruktionsmaß aus ERPNext — dort ändern',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',

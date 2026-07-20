@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { SetupScreen } from './SetupScreen';
+import { DataProviderProvider } from '../data/DataProviderContext';
+import type { DataProvider } from '../data/DataProvider';
+import type { Article } from '@shadrin-v/contracts';
 
 function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
   return render(
@@ -11,6 +14,32 @@ function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
       <SetupScreen onCalculate={onCalculate} onReset={onReset} />
     </LocaleProvider>,
   );
+}
+
+const ERP_ARTICLE: Article = {
+  itemCode: 'ABB101',
+  name: 'Einwegpalette 600x800',
+  length: 800,
+  width: 600,
+  height: 144,
+  nestStepPairwise: 22,
+  rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly', maxTiers: 5 },
+  source: 'erp',
+  erpFields: ['length', 'width', 'height'],
+  updatedAt: 'x',
+};
+
+function renderSetupWithCatalogue(dpOverrides: Partial<DataProvider> = {}) {
+  const upsertArticle = vi.fn(async (a: unknown) => a as Article);
+  const dp = { searchArticles: async () => [ERP_ARTICLE], upsertArticle, ...dpOverrides } as unknown as DataProvider;
+  render(
+    <LocaleProvider initial="de">
+      <DataProviderProvider value={dp}>
+        <SetupScreen onCalculate={() => {}} />
+      </DataProviderProvider>
+    </LocaleProvider>,
+  );
+  return { upsertArticle };
 }
 
 describe('SetupScreen', () => {
@@ -122,14 +151,15 @@ describe('SetupScreen', () => {
     renderSetup(() => {});
     await userEvent.click(screen.getByRole('button', { name: 'Ver' })); // auto-opens details
     expect(screen.getByLabelText('Verschachtelungsmodus')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Ladungsart')).toHaveLength(1);
+    // Ladungsart (preset select) is gone (rgv.8) — the article combobox is the row's identity control.
+    expect(screen.getAllByRole('combobox', { name: 'Artikel' })).toHaveLength(1);
 
     await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
 
     // panel collapsed…
     expect(screen.queryByLabelText('Verschachtelungsmodus')).not.toBeInTheDocument();
     // …and the click-outside handler did not swallow the button: a position was actually added
-    expect(screen.getAllByLabelText('Ladungsart')).toHaveLength(2);
+    expect(screen.getAllByRole('combobox', { name: 'Artikel' })).toHaveLength(2);
   });
 
   it('reveals the Stapelbar hint tooltip on demand (E1)', async () => {
@@ -141,70 +171,18 @@ describe('SetupScreen', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Ebenen/);
   });
 
-  it('applies an EPAL pallet preset to the position dimensions', async () => {
+  it('applies an EPAL pallet preset to the position dimensions (built-in suggestion, no provider needed)', async () => {
+    // The built-in PALLET_PRESETS still surface through the combobox as 'standard' suggestions —
+    // this works even with no DataProvider in the tree (renderSetup has none), same guarantee the
+    // old Ladungsart select gave.
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
-    await userEvent.selectOptions(screen.getByLabelText('Ladungsart'), 'epal2');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'EPAL 2');
+    await userEvent.click(await screen.findByRole('option', { name: /EPAL 2/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
-  });
-
-  describe('user pallet presets (T4)', () => {
-    /** Type custom dimensions into the first position row and open its details panel. */
-    async function fillCustomDims(l = '1150', w = '750', h = '200') {
-      await userEvent.type(screen.getAllByLabelText('Länge')[1], l);
-      await userEvent.type(screen.getAllByLabelText('Breite')[1], w);
-      await userEvent.type(screen.getAllByLabelText('Höhe')[1], h);
-      await userEvent.click(screen.getAllByRole('button', { name: 'details' })[0]);
-    }
-
-    it('saves custom dimensions as a preset and offers it in every Ladungsart dropdown', async () => {
-      renderSetup(() => {});
-      await fillCustomDims();
-      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
-
-      // named after the position name fallback L×W×H, and visible in a *second* row's dropdown too
-      await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
-      const options = (screen.getAllByLabelText('Ladungsart')[1] as HTMLSelectElement).options;
-      expect([...options].map((o) => o.text)).toContain('1150×750×200');
-    });
-
-    it('applies a saved preset to another position and persists it across a remount', async () => {
-      const onCalculate = vi.fn();
-      const { unmount } = renderSetup(onCalculate);
-      await fillCustomDims();
-      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
-      unmount();
-
-      renderSetup(onCalculate);
-      const select = screen.getAllByLabelText('Ladungsart')[0] as HTMLSelectElement;
-      const userOption = [...select.options].find((o) => o.text === '1150×750×200');
-      expect(userOption).toBeDefined();
-      await userEvent.selectOptions(select, userOption!.value);
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
-      expect(onCalculate.mock.calls[0][0].cargo[0]).toMatchObject({ length: 1150, width: 750, height: 200 });
-    });
-
-    it('deletes the selected user preset', async () => {
-      renderSetup(() => {});
-      await fillCustomDims();
-      await userEvent.click(screen.getByRole('button', { name: 'Als Preset speichern' }));
-      // saved → the row now matches a user preset: delete is offered, save is not
-      expect(screen.queryByRole('button', { name: 'Als Preset speichern' })).not.toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Preset löschen' }));
-
-      const options = (screen.getAllByLabelText('Ladungsart')[0] as HTMLSelectElement).options;
-      expect([...options].map((o) => o.text)).not.toContain('1150×750×200');
-    });
-
-    it('does not offer saving dimensions that already match a built-in preset', async () => {
-      renderSetup(() => {});
-      await userEvent.selectOptions(screen.getByLabelText('Ladungsart'), 'epal2');
-      await userEvent.click(screen.getByRole('button', { name: 'details' }));
-      expect(screen.queryByRole('button', { name: 'Als Preset speichern' })).not.toBeInTheDocument();
-    });
   });
 
   it('persists the setup across a remount (no reset on refresh, #4)', async () => {
@@ -263,7 +241,7 @@ describe('SetupScreen', () => {
     // form filled: 4 demo orders, several positions
     const orderIds = (screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value);
     expect(orderIds).toEqual(['SO-1001', 'SO-1002', 'SO-1003', 'SO-1004']);
-    expect(screen.getAllByLabelText('Ladungsart').length).toBeGreaterThan(4);
+    expect(screen.getAllByRole('combobox', { name: 'Artikel' }).length).toBeGreaterThan(4);
 
     // and computed straight away, exercising the whole feature set
     expect(onCalculate).toHaveBeenCalledTimes(1);
@@ -399,5 +377,57 @@ describe('SetupScreen', () => {
     const load = onCalculate.mock.calls[0][0] as Load;
     const orderIds = [...new Set(load.cargo.map((c) => c.orderId))];
     expect(orderIds).toEqual(['SO-1', 'SO-2']);
+  });
+});
+
+describe('SetupScreen article combobox', () => {
+  it('has no preset dropdown and no separate name field any more (rgv.8)', () => {
+    renderSetup(() => {});
+    expect(screen.queryByLabelText('Ladungsart')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Artikel' })).toBeInTheDocument();
+  });
+
+  it('picking an article fills dimensions, both steps and the rules', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+    expect((screen.getAllByLabelText('Länge')[1] as HTMLInputElement).value).toBe('800');
+    expect((screen.getAllByLabelText('Höhe')[1] as HTMLInputElement).value).toBe('144');
+    // rules came along: the row switched to verschachtelt and carries the pairwise step
+    expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
+  });
+
+  it('dimensions that came from ERP are read-only, ones ERPNext never supplied stay editable', async () => {
+    // ERPNext supplied length+width only; height is blank over there, so it must stay editable
+    renderSetupWithCatalogue({
+      searchArticles: async () => [{ ...ERP_ARTICLE, height: undefined, erpFields: ['length', 'width'] }],
+    } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
+    expect(screen.getAllByLabelText('Länge')[1]).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('Höhe')[1]).not.toHaveAttribute('readonly');
+  });
+
+  it('saves a typed-in article to the catalogue', async () => {
+    const { upsertArticle } = renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+    expect(upsertArticle).toHaveBeenCalledWith(
+      expect.objectContaining({ itemCode: 'NEU-1', length: 1200, width: 800, height: 144 }),
+    );
+  });
+
+  it('a row without a picked article still computes (free text, manual dimensions)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'Sonderkiste');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '500');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.cargo[0].name).toBe('Sonderkiste');
   });
 });

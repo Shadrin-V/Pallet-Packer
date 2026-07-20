@@ -19,8 +19,6 @@ export const TRANSLATION_KEYS = [
   'setup.stack',
   'setup.vehiclePreset.custom',
   'setup.emptyOrders',
-  'setup.savePreset',
-  'setup.deletePreset',
   'setup.demo.mixed',
   'setup.demo.mixedHint',
   'setup.demo.nesting',
@@ -40,6 +38,9 @@ export const TRANSLATION_KEYS = [
   'article.source.local',
   'article.source.standard',
   'article.noMatches',
+  'article.save',
+  'article.update',
+  'article.lockedHint',
 
   // Ladeplan / result screen
   'ladeplan.title',
