@@ -25,12 +25,22 @@ export function ordersRoutes(app: FastifyInstance, erpnext?: OrderSource, db?: D
     const zone = await erpnext.importOrder(id);
     if (db) {
       const now = new Date().toISOString();
-      for (const p of zone.positions) {
-        upsertFromErp(
-          db,
-          { itemCode: p.itemCode, name: p.itemName, length: p.length, width: p.width, height: p.height },
-          { now },
-        );
+      const seedAll = db.transaction(() => {
+        for (const p of zone.positions) {
+          upsertFromErp(
+            db,
+            { itemCode: p.itemCode, name: p.itemName, length: p.length, width: p.width, height: p.height },
+            { now },
+          );
+        }
+      });
+      try {
+        seedAll();
+      } catch (err) {
+        // Catalogue seeding is best-effort enrichment: ERPNext already answered successfully, so a
+        // write failure here must not cost the caller the zone it already has. The transaction
+        // rolled back, so the catalogue is untouched rather than half-seeded.
+        req.log.error({ err, orderId: id }, 'failed to seed article catalogue from imported order');
       }
     }
     return zone;

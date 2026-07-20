@@ -35,9 +35,7 @@ describe('order routes (adapter configured)', () => {
     expect(res.json()).toEqual([{ orderId: 'SAL-ORD-2026', customer: 'ACME' }]);
     await app.close();
   });
-});
 
-describe('order routes (adapter configured)', () => {
   it('importing an order seeds the article catalogue and keeps local rules', async () => {
     const db = openDb(':memory:');
     // an article the user already configured by hand
@@ -67,6 +65,32 @@ describe('order routes (adapter configured)', () => {
     const fresh = getArticle(db, 'NEW-1')!;
     expect(fresh.name).toBe('Ohne Maße');
     expect(fresh.length).toBeUndefined(); // no dimensions in ERPNext yet — no error, just empty
+    await app.close();
+  });
+
+  it('returns the order zone even when catalogue seeding fails', async () => {
+    const db = openDb(':memory:');
+    // Provoke a genuine SQLite write failure: the article table is gone, so upsertFromErp's
+    // INSERT throws "no such table: article" — not a mock, a real error from the driver.
+    db.exec('DROP TABLE article');
+    const erpnext = {
+      importOrder: async (): Promise<OrderZone> => ({
+        orderId: 'SO-2',
+        positions: [
+          { itemCode: 'ABB101', itemName: 'Palette', quantity: 10, dimensionsSource: 'manual' },
+        ],
+      }),
+      searchOrders: async () => [],
+    };
+    const app = buildApp({ db, erpnext });
+
+    const res = await app.inject({ method: 'GET', url: '/api/orders/SO-2' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      orderId: 'SO-2',
+      positions: [{ itemCode: 'ABB101', itemName: 'Palette', quantity: 10 }],
+    });
     await app.close();
   });
 });
