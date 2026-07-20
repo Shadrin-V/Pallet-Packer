@@ -29,5 +29,18 @@ export function migrate(db: Database.Database): void {
       erpnext_refs_json TEXT NOT NULL DEFAULT '[]',
       notes TEXT
     );
+    CREATE TABLE IF NOT EXISTS article (
+      item_code            TEXT PRIMARY KEY,
+      name                 TEXT NOT NULL,
+      length               INTEGER,
+      width                INTEGER,
+      height               INTEGER,
+      nest_step_pairwise   INTEGER,
+      nest_step_sequential INTEGER,
+      rules_json           TEXT NOT NULL DEFAULT '{}',
+      source               TEXT NOT NULL DEFAULT 'local',
+      synced_at            TEXT,
+      updated_at           TEXT NOT NULL
+    );
   `);
 }
