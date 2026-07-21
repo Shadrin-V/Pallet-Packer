@@ -200,9 +200,10 @@ describe('article repo', () => {
     const db = openDb(':memory:');
     upsertFromErp(db, { itemCode: 'ERP1', name: 'Palette', length: 800, width: 600 }, { now: NOW });
     // ERPNext always supplies a name (ADR 022), so it always joins the provenance list alongside
-    // whichever dimensions were sent.
-    expect(getArticle(db, 'ERP1')?.erpFields).toEqual(['length', 'width', 'name']);
-    expect(searchArticles(db, 'ERP1')[0].erpFields).toEqual(['length', 'width', 'name']);
+    // whichever dimensions were sent. Sort both sides: this pins the *set* of required members,
+    // not the declaration order of ARTICLE_ERP_FIELDS.
+    expect([...(getArticle(db, 'ERP1')?.erpFields ?? [])].sort()).toEqual(['length', 'name', 'width']);
+    expect([...searchArticles(db, 'ERP1')[0].erpFields].sort()).toEqual(['length', 'name', 'width']);
     db.close();
   });
 
@@ -222,6 +223,22 @@ describe('article repo', () => {
        VALUES ('OLD1', 'Alte Palette', '{}', 'local', @updated_at)`,
     ).run({ updated_at: NOW });
     expect(getArticle(db, 'OLD1')?.erpFields).toEqual([]);
+    db.close();
+  });
+
+  it('a row seeded before this change (source erp, no name in provenance) still renames', () => {
+    const db = openDb(':memory:');
+    // Pre-ADR-022 row: source is 'erp' (it came from an old sync) but erp_fields_json is the
+    // column DEFAULT '[]' — ERPNext never recorded having supplied a name for it (ADR 022
+    // §Последствия: no migration backfills this, so it stays renameable until the next import).
+    // The forbidden rule `source === 'erp' && name` would lock this row's name; the correct rule
+    // (name only locks when 'name' is actually in erp_fields_json) must not.
+    db.prepare(
+      `INSERT INTO article (item_code, name, rules_json, source, updated_at)
+       VALUES ('OLD2', 'Alte ERP-Palette', '{}', 'erp', @updated_at)`,
+    ).run({ updated_at: NOW });
+    const out = upsertArticle(db, { itemCode: 'OLD2', name: 'Neu', rules: { ...RULES } }, { now: NOW });
+    expect(out.name).toBe('Neu');
     db.close();
   });
 });

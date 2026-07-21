@@ -88,8 +88,9 @@ export interface ArticleRules {
 /**
  * 'erp' — this article has been synced from ERPNext at least once; 'local' — created in the app
  * and never synced. This is provenance of the *record*, not of any individual field: an 'erp'
- * article can still have dimensions the user is free to edit (see `Article` below) — whether a
- * given constructive field is locked is decided per field on the server, not by this flag alone.
+ * article can still have dimensions (and, per ADR 022, a name) the user is free to edit (see
+ * `Article` below) — whether a given field is locked is decided per field on the server, not by
+ * this flag alone.
  */
 export const ARTICLE_SOURCES = ['erp', 'local'] as const;
 export type ArticleSource = (typeof ARTICLE_SOURCES)[number];

@@ -17,7 +17,8 @@ export interface ArticleSuggestion {
   nestStepSequential?: number;
   rules?: Partial<ArticleRules>;
   /** Fields ERPNext actually supplied (dimensions and, per ADR 022, `name`) — these and only these
-   *  are locked in the form. */
+   *  are locked against local edits. Dimensions enforce this as `readOnly`; `name` does not (ADR
+   *  022 §3: it stays the combobox's search input) — its lock shows as a notice instead. */
   erpFields: readonly ArticleErpField[];
   /** 'standard' = built-in EPAL preset: no article code, never saved to the catalogue. */
   origin: 'erp' | 'local' | 'standard';

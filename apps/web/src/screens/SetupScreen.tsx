@@ -206,9 +206,10 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
   };
 }
 
-/** Locked = exactly the constructive fields ERPNext supplied (Task 2 provenance). Never inferred
- *  from "value present": a value the user typed into a field ERPNext left blank must stay
- *  editable. Shared by picking a suggestion and by binding a row to the article a save returned. */
+/** Locked = exactly the fields ERPNext supplied (Task 2 provenance; ADR 022 adds `name` to the
+ *  set). Never inferred from "value present": a value the user typed into a field ERPNext left
+ *  blank must stay editable. Shared by picking a suggestion and by binding a row to the article a
+ *  save returned. */
 export function lockedFieldsFrom(fields: readonly ArticleErpField[]): LockedFields {
   const locked: LockedFields = {};
   for (const f of fields) locked[f] = true;
