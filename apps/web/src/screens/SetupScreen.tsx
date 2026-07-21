@@ -153,24 +153,44 @@ const emptyPosition = (): PositionState => ({
   maxTiers: '',
 });
 
-const emptyOrder = (n: number): OrderState => ({
+/** `colorIndex` defaults to `n - 1` (1-based n → 0-based palette slot) for the single-order
+ *  call sites (initial state, reset, "collapsed to empty") where a fresh list of exactly one
+ *  order always wants slot 0. `addOrder` passes an explicit slot from `nextColorIndex` instead —
+ *  see that function for why the id number cannot supply it. */
+const emptyOrder = (n: number, colorIndex: number = n - 1): OrderState => ({
   key: uid(),
   orderId: `SO-${n}`,
-  colorIndex: n - 1, // 1-based n → 0-based palette slot; addOrder passes nextOrderNumber(os)
+  colorIndex,
   positions: [emptyPosition()],
 });
 
 /** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
  *  Deleting an order frees no number for reuse while others survive it — otherwise a later
- *  addOrder can mint an id (and, via emptyOrder, a colorIndex) that collides with a surviving
- *  order (Finding 1: create SO-1/SO-2, delete SO-1, add → both `os.length + 1` formulas would
- *  land on 2 again). Orders renamed to non-`SO-n` ids are simply not counted. */
+ *  addOrder can mint an id that collides with a surviving order (Finding 1: create SO-1/SO-2,
+ *  delete SO-1, add → both `os.length + 1` formulas would land on 2 again). Orders renamed to
+ *  non-`SO-n` ids are simply not counted. Colour slots are a separate concern — see
+ *  `nextColorIndex` — because an id is user-editable text and a slot is not. */
 function nextOrderNumber(os: OrderState[]): number {
   const nums = os
     .map((o) => /^SO-(\d+)$/.exec(o.orderId)?.[1])
     .filter((s): s is string => s !== undefined)
     .map(Number);
   return (nums.length ? Math.max(...nums) : 0) + 1;
+}
+
+/** Next unused palette slot: the lowest non-negative integer not already held by any surviving
+ *  order's `colorIndex`. Review fix (Finding 1, wave 2): deriving colorIndex from the order's id
+ *  number (as `nextOrderNumber(os) - 1` once did, via emptyOrder's `n - 1` default) reused a slot
+ *  the moment an order was renamed away from `SO-n` — `nextOrderNumber` cannot see it any more, so
+ *  the freed-looking number it hands out can already be taken by the renamed order's OWN slot.
+ *  `Auftrags-ID` is freely editable (its whole purpose is to carry the real order number), so
+ *  "rename the default order, then add a second" is the ordinary first-use flow, not an edge case.
+ *  Slots must therefore be tracked independently of what the id currently says. */
+function nextColorIndex(os: OrderState[]): number {
+  const used = new Set(os.map((o) => o.colorIndex));
+  let slot = 0;
+  while (used.has(slot)) slot++;
+  return slot;
 }
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
@@ -362,7 +382,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       ),
     );
 
-  const addOrder = () => setOrders((os) => [...os, emptyOrder(nextOrderNumber(os))]);
+  const addOrder = () =>
+    setOrders((os) => [...os, emptyOrder(nextOrderNumber(os), nextColorIndex(os))]);
   // Reorder an order in the list. List order = order priority → zones (strict) and packing queue
   // (densityFirst) follow it; the engine/contract are untouched (ADR 017). 4bj.11.
   const moveOrder = (key: string, dir: -1 | 1) =>

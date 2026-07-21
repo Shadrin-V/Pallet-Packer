@@ -830,10 +830,37 @@ describe('SetupScreen — removing from the calculation', () => {
     expect(new Set(ids).size).toBe(2); // distinct — no collision with the surviving SO-2
   });
 
+  // Finding 1 (wave 2): emptyOrder used to derive colorIndex from the SAME number nextOrderNumber
+  // computed for the id — but nextOrderNumber only recognizes ids matching /^SO-(\d+)$/, so a
+  // renamed order is invisible to it and its slot gets handed out again. `Auftrags-ID` is a freely
+  // editable field whose whole purpose is to carry the real order number, so "rename the default
+  // order, then add a second" is the ordinary first-use flow, not an edge case — pins the first row
+  // of the reviewer's table (rename SO-1 → AB-4711, then add → colours must stay distinct).
+  it('a newly added order gets a colour slot distinct from a renamed order (Finding 1 colour regression)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    const orderIdField = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
+    await userEvent.clear(orderIdField);
+    await userEvent.type(orderIdField, 'AB-4711');
+
+    await userEvent.click(addOrder());
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const orderColors = onCalculate.mock.calls.at(-1)?.[1]?.orderColors as Record<string, number>;
+    const values = Object.values(orderColors);
+    expect(values).toHaveLength(2);
+    expect(new Set(values).size).toBe(2); // distinct — no shared palette slot
+  });
+
   // Finding 3: ArmedDelete used to stopPropagation() on its own clicks, so arming a trash button
   // never reached the document-level listener that collapses another row's OPEN details panel on
-  // any outside click. The narrower data-armed-delete fix must restore that collapse while still
-  // keeping the arming click from disarming itself (covered by ArmedDelete.test.tsx).
+  // any outside click. The narrower data-armed-delete fix must restore that collapse.
+  // Review fix (wave 2, Finding 2): this test does NOT also exercise "the arming click can't
+  // disarm itself" — the disarm listener is attached by an effect keyed on `armed`, and `armed`
+  // is null going into this click (row 1's trash has never been armed before), so the listener is
+  // not registered yet when this click dispatches; it cannot fire either way. The genuine
+  // self-disarm-resistance case is the RE-arm path (arm row A, then arm row B while the listener
+  // from row A's arming is already attached) — see "arms exactly one button at a time" above.
   it('arming a trash on one row still collapses another row\'s open details panel', async () => {
     renderSetup(() => {});
     await userEvent.click(addPosition()); // two position rows in the same order
@@ -845,7 +872,21 @@ describe('SetupScreen — removing from the calculation', () => {
     await userEvent.click(trashes()[1]); // arm row 1's trash — a click "elsewhere" for row 0
 
     expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'false');
-    // …and the arming itself still held — the same click didn't disarm what it just armed
+    // …and the click's own onArm ran: row 1 shows the confirm button (not a test of the
+    // disarm-listener guard — see comment above).
     expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+  });
+
+  // Finding 3 (wave 2): the shipped focus-fix test (ArmedDelete.test.tsx) only flips the `armed`
+  // prop via `rerender` on the isolated component — a prop flip, not a real gesture. Arm the trash
+  // button here by an actual KEYBOARD activation (Enter on the focused button, as a real user
+  // would) on the live SetupScreen, and check focus lands on the confirm button that replaces it.
+  it('arming a trash button by keyboard (Enter) moves focus to the confirm button', async () => {
+    renderSetup(() => {});
+    trashes()[0].focus();
+
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toHaveFocus();
   });
 });
