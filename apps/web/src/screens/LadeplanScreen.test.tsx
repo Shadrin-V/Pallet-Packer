@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { LadeplanScreen } from './LadeplanScreen';
 import { installSvgGeometry } from './components/svgTestGeometry';
@@ -99,8 +99,10 @@ describe('LadeplanScreen — unplaced figure', () => {
   });
 });
 
-// The buffer (dwc.3): what is NOT in the hold. jsdom has no layout, so the drag geometry itself is
-// verified in a real browser — these guard the wiring and the states the user can reach by clicking.
+// The buffer (dwc.3): what is NOT in the hold. This describe block only checks wiring and the
+// states reachable by clicking, without a real pointer drag. Drag geometry itself (createSVGPoint,
+// getScreenCTM, a non-zero bounding rect — none of which jsdom implements) is supplied by
+// `svgTestGeometry.ts` and exercised below, in "group selection".
 describe('LadeplanScreen — warehouse floor', () => {
   /** 11 cubes into a hold that takes 8 → 3 left over for the warehouse. */
   const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
@@ -265,6 +267,45 @@ describe('LadeplanScreen — group selection', () => {
       expect(svg.querySelector('[data-stack-ref="c1@2000,0"]')).not.toBeNull();
       expect(container.querySelector('[data-violations]')).toHaveAttribute('data-violations', '0');
       expect(screen.queryByTestId('edit-error')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows edit-error and leaves the block in place when a group move is refused', () => {
+    // Three single-file cubes at x=0/1000/2000 in a 4 m hold, spelled out by hand — the packer's own
+    // answer for three 1x1x1 cubes here is an L (0,0 / 0,1000 / 1000,0), not a row (see the group
+    // selection fixture in CrossSection.test.tsx for the same note). Band-select the first two and
+    // drag them one cell further — straight onto the third, UNSELECTED cube. That is an overlap
+    // refusal that never leaves the cutaway's own client rect, so it cannot be mistaken for a drop
+    // outside the hold (unlike aiming past the outer wall, where the svg's box and the vehicle's box
+    // coincide in these tests and the two situations become impossible to tell apart).
+    const threeInRow: Load = {
+      vehicle: { id: 'v4', name: 'LKW', length: 4000, width: 2000, height: 1000 },
+      cargo: [{ ...load.cargo[0], quantity: 3, stacking: { stackable: false } }],
+    };
+    const cubeAt = (x: number, y: number): Layout['placements'][number] => ({
+      cargoTypeId: 'c1', x, y, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt',
+    });
+    const threeInRowLayout: Layout = {
+      placements: [cubeAt(0, 0), cubeAt(1000, 0), cubeAt(2000, 0)],
+      unplaced: [],
+      metrics: { totalPlaced: 3, usedFloorPositions: 3, floorFillPercent: 0, volumeFillPercent: 0 },
+      contractVersion: '0.14.0',
+    };
+    withStubbedGeometry({ left: 0, top: 0, width: 4000, height: 2000 }, () => {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={threeInRow} layout={threeInRowLayout} />
+        </LocaleProvider>,
+      );
+      const svg = bandThenDrag(container, 'c1@0,0', 1500, 500); // one cell right — into the third cube
+
+      // the block never moved — none of the three cubes shifted
+      expect(svg.querySelector('[data-stack-ref="c1@0,0"]')).not.toBeNull();
+      expect(svg.querySelector('[data-stack-ref="c1@1000,0"]')).not.toBeNull();
+      expect(svg.querySelector('[data-stack-ref="c1@2000,0"]')).not.toBeNull();
+      // the selection survives the refusal, and this time the reason is shown to the user
+      expect(screen.getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+      expect(screen.getByTestId('edit-error')).toBeInTheDocument();
     });
   });
 });

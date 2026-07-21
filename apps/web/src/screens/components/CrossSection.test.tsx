@@ -36,6 +36,41 @@ function renderCut(view: 'top' | 'side', label: string) {
   );
 }
 
+describe('svgTestGeometry install/uninstall', () => {
+  // The stub file's own comment warns that a prototype patch left behind silently changes what
+  // every later test in the same worker sees. Pin the round trip directly, independent of any
+  // component: install must return Element.prototype / SVGSVGElement.prototype / the PointerEvent
+  // global to their EXACT prior shape — not just "working again", but no leftover own properties.
+  const patchedMembers = [
+    [SVGSVGElement.prototype, 'createSVGPoint'],
+    [SVGSVGElement.prototype, 'getScreenCTM'],
+    [SVGSVGElement.prototype, 'getBoundingClientRect'],
+    [Element.prototype, 'setPointerCapture'],
+    [Element.prototype, 'releasePointerCapture'],
+  ] as const;
+
+  it('restores every patched member and the PointerEvent global to their pre-install shape', () => {
+    const before = patchedMembers.map(([obj, key]) => Object.prototype.hasOwnProperty.call(obj, key));
+    const hadPointerEventBefore = 'PointerEvent' in globalThis;
+
+    const restore = installSvgGeometry();
+    restore();
+
+    const after = patchedMembers.map(([obj, key]) => Object.prototype.hasOwnProperty.call(obj, key));
+    expect(after).toEqual(before);
+    expect('PointerEvent' in globalThis).toBe(hadPointerEventBefore);
+  });
+
+  it('refuses a second install before the first is restored, rather than losing the original state', () => {
+    const restore = installSvgGeometry();
+    try {
+      expect(() => installSvgGeometry()).toThrow(/already installed/);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('CrossSection rendering polish', () => {
   it('uses non-scaling-stroke for crisp lines', () => {
     const { container } = renderCut('top', 'Draufsicht');
@@ -197,9 +232,10 @@ describe('side view dimming (D2)', () => {
   });
 });
 
-// Перетаскивание целиком в jsdom не проверить: getScreenCTM там не реализован, любое движение
-// сворачивается в ноль. Здесь — отрисовка призрака по готовому решению движка; сам жест
-// (pointer → resolveDrop → призрак → постановка) проверяется в реальном Chrome.
+// Отрисовка призрака по готовому решению движка. Сам жест (pointer → resolveDrop → призрак →
+// постановка) для этого набора кейсов покрыт статичным `preview`, без pointer-событий; полный жест
+// целиком (включая getScreenCTM/createSVGPoint, которых jsdom не даёт) проверяется ниже, в
+// «group selection», через стаб `svgTestGeometry.ts`.
 describe('drop preview', () => {
   const renderPreview = (preview: Parameters<typeof CrossSection>[0]['preview']) =>
     render(
@@ -391,6 +427,32 @@ describe('group selection', () => {
     expect(stackEl(container, 0, 0).querySelector('[stroke-dasharray="6 4"]')).toBeNull();
   });
 
+  it('ctrl-click drops one stack out of the selection, same as shift-click', () => {
+    const { svg, container, getByTestId } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+    expect(getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+
+    fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500, ctrlKey: true });
+
+    expect(container.querySelector('[data-testid="group-count"]')).toBeNull();
+    expect(stackEl(container, 1000, 0).querySelector('[stroke-dasharray="6 4"]')).not.toBeNull();
+    expect(stackEl(container, 0, 0).querySelector('[stroke-dasharray="6 4"]')).toBeNull();
+  });
+
+  it('meta-click adds a stack to the selection, same as shift-click', () => {
+    const onMoveStack = vi.fn();
+    const { svg, container, getByTestId } = renderTop({ onMoveStack });
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    fireEvent.pointerDown(stackEl(container, 2000, 0), { clientX: 2500, clientY: 500, metaKey: true });
+    expect(getByTestId('group-count')).toHaveTextContent('3 Stapel ausgewählt');
+
+    // no drag was armed by that press: a move + release afterwards moves nothing
+    fireEvent.pointerMove(svg, { clientX: 2500, clientY: 1500 });
+    fireEvent.pointerUp(svg, { clientX: 2500, clientY: 1500 });
+    expect(onMoveStack).not.toHaveBeenCalled();
+  });
+
   it('shift-click adds a stack to the selection and starts no drag', () => {
     const onMoveStack = vi.fn();
     const { svg, container, getByTestId } = renderTop({ onMoveStack });
@@ -511,6 +573,90 @@ describe('group selection', () => {
     expect(onMoveStacks).not.toHaveBeenCalled();
     expect(onMoveStack).toHaveBeenCalledTimes(1);
     expect(onMoveStack.mock.calls[0][0]).toMatchObject({ cargoTypeId: 'c', x: 2000, y: 0 });
+  });
+
+  it('clicking the sole selected stack deselects it (the wasSole path)', () => {
+    const { svg, container, queryByTestId } = renderTop();
+    // First click selects the stack alone — it is now the entire selection.
+    fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+    fireEvent.pointerUp(svg, { clientX: 500, clientY: 500 });
+    expect(stackEl(container, 0, 0).querySelector('[stroke-dasharray="6 4"]')).not.toBeNull();
+
+    // A second click on that same, still-sole selection is a toggle-off, not a re-select.
+    fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+    fireEvent.pointerUp(svg, { clientX: 500, clientY: 500 });
+
+    expect(stackEl(container, 0, 0).querySelector('[stroke-dasharray="6 4"]')).toBeNull();
+    expect(queryByTestId('group-frame')).toBeNull();
+  });
+
+  it('clicking one member of a multi-stack selection keeps THAT stack, not refs[0] (the pressed path)', () => {
+    const { svg, container } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500); // selects (0,0) and (1000,0); refs[0] is (0,0)
+
+    // Press the member that is NOT first in the selection, and release without dragging — a click.
+    fireEvent.pointerDown(stackEl(container, 1000, 0), { clientX: 1500, clientY: 500 });
+    fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
+
+    // down to one — the frame goes away — and the survivor is the PRESSED stack, not refs[0]
+    expect(container.querySelector('[data-testid="group-count"]')).toBeNull();
+    expect(stackEl(container, 1000, 0).querySelector('[stroke-dasharray="6 4"]')).not.toBeNull();
+    expect(stackEl(container, 0, 0).querySelector('[stroke-dasharray="6 4"]')).toBeNull();
+  });
+
+  it('leaves a real layout untouched when the engine refuses a group drag', () => {
+    restoreSvgGeometry = installSvgGeometry();
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <MovableGroup />
+      </LocaleProvider>,
+    );
+    const svg = container.querySelector('svg[data-cutaway="top"]')!;
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    // far past the 2000 mm-wide hold — out of the magnet's reach, so the refusal must be a no-op
+    dragFirstStack(svg, container, 500, 4000);
+
+    // the placements never moved — a real moveStacks() ran and rejected the delta
+    expect(container.querySelector('[data-stack-ref="c@0,0"]')).not.toBeNull();
+    expect(container.querySelector('[data-stack-ref="c@1000,0"]')).not.toBeNull();
+    // and the selection survives the refusal
+    expect(screen.getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+  });
+
+  it('clears the selection after a single-stack move, unlike a group move which keeps it', () => {
+    const onMoveStack = vi.fn();
+    const { svg, container } = renderTop({ onMoveStack });
+    // A lone drag with no prior selection: onMoveStack must fire and the selection then be empty.
+    dragFirstStack(svg, container, 500, 1500); // down one cell — an empty spot
+
+    expect(onMoveStack).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-testid="group-frame"]')).toBeNull();
+    expect(container.querySelector('[stroke-dasharray="6 4"]')).toBeNull();
+  });
+
+  it('drags a single, non-grouped stack off the cutaway as an array of exactly one ref', () => {
+    const onDropOutside = vi.fn();
+    const { svg, container } = renderTop({ onDropOutside });
+    // No prior selection — this is a lone drag, not a group drag.
+    dragFirstStack(svg, container, 500, 2600); // below the svg's 2000-tall box
+
+    expect(onDropOutside).toHaveBeenCalledTimes(1);
+    const [refs] = onDropOutside.mock.calls[0];
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ cargoTypeId: 'c', x: 0, y: 0 });
+  });
+
+  it('a plain press outside the selection removes the old group frame, not just the callbacks', () => {
+    const { svg, container } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+    expect(container.querySelector('[data-testid="group-frame"]')).not.toBeNull();
+
+    fireEvent.pointerDown(stackEl(container, 2000, 0), { clientX: 2500, clientY: 500 });
+    fireEvent.pointerUp(svg, { clientX: 2500, clientY: 500 }); // a click, no drag
+
+    expect(container.querySelector('[data-testid="group-frame"]')).toBeNull();
+    expect(stackEl(container, 2000, 0).querySelector('[stroke-dasharray="6 4"]')).not.toBeNull();
   });
 
   it('offers the rotate handle for a single stack only', () => {

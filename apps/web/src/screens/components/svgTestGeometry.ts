@@ -1,4 +1,9 @@
-// Test-only: jsdom ships no SVG geometry (createSVGPoint, getScreenCTM) and returns a zero
+// TEST-ONLY MODULE — never import this from production code. It monkey-patches
+// SVGSVGElement.prototype and Element.prototype in place; shipping it in the app bundle would patch
+// those prototypes for real users too. It lives under src/ only because the test files that use it
+// (CrossSection.test.tsx, LadeplanScreen.test.tsx) do too — nothing here is meant to run in the app.
+//
+// jsdom ships no SVG geometry (createSVGPoint, getScreenCTM) and returns a zero
 // getBoundingClientRect, so a pointer gesture over a cutaway collapses to a zero-length drag and
 // every such test silently asserts nothing.
 //
@@ -8,7 +13,15 @@
 // Returns an uninstall function. Prototype patches outlive the test that made them — they are not
 // undone by Testing Library's cleanup — so a test file that forgets to restore silently changes the
 // geometry every later file in the same worker sees. Always restore in afterEach.
+let installedRestore: (() => void) | null = null;
+
 export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height: 2000 }): () => void {
+  if (installedRestore) {
+    throw new Error(
+      'installSvgGeometry: already installed — call the previous restore() before installing again ' +
+        '(otherwise the stubs would be captured as the "original" state and the real one lost for good).',
+    );
+  }
   const g = globalThis as unknown as Record<string, unknown>;
   // jsdom has no PointerEvent either, so Testing Library falls back to a bare Event — which silently
   // drops clientX/clientY, and every coordinate the component computes comes out NaN. A MouseEvent
@@ -36,6 +49,11 @@ export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height
     createSVGPoint: Object.prototype.hasOwnProperty.call(proto, 'createSVGPoint'),
     getScreenCTM: Object.prototype.hasOwnProperty.call(proto, 'getScreenCTM'),
     getBoundingClientRect: Object.prototype.hasOwnProperty.call(proto, 'getBoundingClientRect'),
+    // jsdom defines neither on Element.prototype, so both are normally added fresh — and must be
+    // DELETED on uninstall too, or a plain re-assignment leaves an own `undefined` property that
+    // makes `'setPointerCapture' in el` feature-detection lie forever after.
+    setPointerCapture: Object.prototype.hasOwnProperty.call(elProto, 'setPointerCapture'),
+    releasePointerCapture: Object.prototype.hasOwnProperty.call(elProto, 'releasePointerCapture'),
   };
   proto.createSVGPoint = function () {
     return {
@@ -67,7 +85,7 @@ export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height
   elProto.setPointerCapture = function () {};
   elProto.releasePointerCapture = function () {};
 
-  return () => {
+  const restore = () => {
     if (!hadPointerEvent) delete g.PointerEvent;
     // SVGSVGElement.prototype inherits these from Element/SVGElement; a plain re-assignment would
     // leave an own property shadowing the inherited one forever. Delete when there was none.
@@ -77,7 +95,15 @@ export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height
     else delete proto.getScreenCTM;
     if (hadOwn.getBoundingClientRect) proto.getBoundingClientRect = saved.getBoundingClientRect;
     else delete proto.getBoundingClientRect;
-    elProto.setPointerCapture = saved.setPointerCapture;
-    elProto.releasePointerCapture = saved.releasePointerCapture;
+    // Same delete-when-absent treatment as the SVG methods above (dwc.6 review): jsdom has neither
+    // of these on Element.prototype, so a plain re-assignment would leave two own `undefined`
+    // properties behind forever.
+    if (hadOwn.setPointerCapture) elProto.setPointerCapture = saved.setPointerCapture;
+    else delete elProto.setPointerCapture;
+    if (hadOwn.releasePointerCapture) elProto.releasePointerCapture = saved.releasePointerCapture;
+    else delete elProto.releasePointerCapture;
+    installedRestore = null;
   };
+  installedRestore = restore;
+  return restore;
 }
