@@ -17,7 +17,7 @@
 - No user-facing string literals in `apps/web` — locale keys only, present in BOTH `de` and `ru` (ADR 006). `packages/i18n` publishes from a gitignored `dist/`: after adding a key run `npm run build --workspace packages/i18n`.
 - `packages/contracts` also publishes from a gitignored `dist/` (`tsup`): after changing it run `npm run build --workspace packages/contracts`, or consumers keep seeing the old types.
 - **The field-lock condition is not to be touched.** A field is locked when and only when ERPNext actually supplied it (`erp_fields_json`) — never inferred from `source` plus "value is non-empty". This has been broken and re-fixed three times.
-- A breaking contract change requires an ADR and a `docs/api-contract.md` update **before** the code.
+- A breaking contract change requires an ADR **before** the code. Note WHICH contract: `docs/api-contract.md` is the ENGINE contract and its version line must always equal `ENGINE_CONTRACT_VERSION` in `packages/engine/src/index.ts` (it has, at 0.12.0/0.13.0/0.14.0). Article DTOs live in `packages/contracts` and are specced in `docs/superpowers/specs/2026-07-20-article-autocomplete-design.md` — changing them must NOT bump the engine contract.
 - Tests run from the repo root: `npm test`. Web tests use German strings.
 - Commit messages in English; docs prose in Russian.
 
@@ -26,7 +26,7 @@
 | File | Responsibility |
 |---|---|
 | `docs/adr/022-article-name-provenance-and-confirm-patterns.md` | *new* — why `name` joins ERP provenance, and which confirmation pattern to use where |
-| `docs/api-contract.md` | contract `0.15.0`: `ArticleErpField`, `erpFields` may contain `'name'` |
+| `docs/superpowers/specs/2026-07-20-article-autocomplete-design.md` | the article DTO contract — `ArticleErpField`, `erpFields` may contain `'name'` |
 | `packages/contracts/src/dto.ts` | the renamed constant/type and the widened `erpFields` doc |
 | `apps/server/src/db/articles.ts` | `upsertArticle` keeps an ERP-supplied name; `upsertFromErp` records `'name'` |
 | `apps/web/src/screens/components/ArmedDelete.tsx` | *new* — presentational two-step delete control; owns no arming state |
@@ -41,7 +41,8 @@
 
 **Files:**
 - Create: `docs/adr/022-article-name-provenance-and-confirm-patterns.md`
-- Modify: `docs/api-contract.md:5` (version line), the article section, and the version-history list
+- Modify: `docs/superpowers/specs/2026-07-20-article-autocomplete-design.md` (the article DTO section)
+- Revert: `docs/api-contract.md` — it documents the ENGINE contract only and must go back to `0.14.0`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -50,6 +51,7 @@
   - `type ArticleErpField = (typeof ARTICLE_ERP_FIELDS)[number]`
   - `Article.erpFields: readonly ArticleErpField[]`
   - `ARTICLE_CONSTRUCTIVE_FIELDS` / `ArticleConstructiveField` cease to exist.
+  - `docs/api-contract.md` stays at `0.14.0` — the packing engine is untouched by this work.
 
 - [ ] **Step 1: Write ADR 022**
 
@@ -61,7 +63,7 @@ Read `docs/adr/021-group-layout-edits.md` first and match its header format exac
 - Статус: принято
 - Дата: 2026-07-21
 - Задача: `LKWkalk-yxn`
-- Контракт: `0.15.0` (ломающее: переименование типа)
+- Контракт: DTO `packages/contracts` (ломающее: переименование типа). Контракт движка не меняется.
 - Связано: `docs/superpowers/specs/2026-07-20-article-autocomplete-design.md`
 
 ## Контекст
