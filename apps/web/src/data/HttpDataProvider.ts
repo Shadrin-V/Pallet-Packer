@@ -16,7 +16,9 @@ type Fetch = typeof fetch;
 export class HttpDataProvider implements DataProvider {
   constructor(
     private readonly base = '',
-    private readonly fetchImpl: Fetch = fetch,
+    // Bound on purpose: browsers require `window` as the receiver of `fetch`, and a bare
+    // `this.fetchImpl(...)` would hand them the provider instead (LKWkalk-7wb).
+    private readonly fetchImpl: Fetch = (...args) => globalThis.fetch(...args),
   ) {}
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {

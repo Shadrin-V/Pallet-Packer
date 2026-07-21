@@ -66,4 +66,25 @@ describe('HttpDataProvider', () => {
       expect.objectContaining({ method: 'PUT', body: JSON.stringify(a) }),
     );
   });
+
+  // LKWkalk-7wb: a browser rejects `fetch` unless the receiver is the global object — a bare method
+  // call passes the provider instead and Chrome answers "Illegal invocation", so every catalogue
+  // request died before a single byte hit the network. Node's fetch ignores the receiver, which is
+  // why this went unnoticed. The stand-in below records receivers instead of merely refusing wrong
+  // ones: asserting the *first* call was already correct rules out a retry-after-failure fix, which
+  // would resend non-idempotent writes.
+  it('calls the global fetch with the global object as receiver', async () => {
+    const realFetch = globalThis.fetch;
+    const calls: { receiver: unknown; input: string }[] = [];
+    globalThis.fetch = function (this: unknown, input: string) {
+      calls.push({ receiver: this, input });
+      return Promise.resolve(new Response('[]', { status: 200 }));
+    } as unknown as typeof fetch;
+    try {
+      await expect(new HttpDataProvider().searchArticles('QA')).resolves.toEqual([]);
+      expect(calls).toEqual([{ receiver: globalThis, input: '/api/articles?q=QA' }]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });
