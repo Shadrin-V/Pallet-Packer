@@ -133,42 +133,47 @@ Read `docs/adr/021-group-layout-edits.md` first and match its header format exac
   ERPNext как источником истины.
 ```
 
-- [ ] **Step 2: Update the API contract**
+- [ ] **Step 2: Record the DTO change where those types live**
 
-In `docs/api-contract.md`, change the version on line 5 from `0.14.0` to `0.15.0`.
+**Do NOT touch `docs/api-contract.md`.** That file is the ENGINE contract — its own header says
+"граница между ядром `@shadrin-v/engine`, UI и будущим MCP-сервером" — and its version line has
+always equalled `ENGINE_CONTRACT_VERSION` in `packages/engine/src/index.ts` (0.12.0, 0.13.0,
+0.14.0). This work does not touch the packing engine, so that contract does not move. An earlier
+draft of this plan said otherwise, it was executed, and it had to be reverted; do not repeat it.
 
-Find the article section (search for `ARTICLE_CONSTRUCTIVE_FIELDS` / `erpFields`) and update it so it reads:
-
-```markdown
-```ts
-/** Поля, которые ERPNext способен прислать для артикула. */
-const ARTICLE_ERP_FIELDS = ['length', 'width', 'height', 'name'] as const;
-type ArticleErpField = (typeof ARTICLE_ERP_FIELDS)[number];
-```
-
-`Article.erpFields: readonly ArticleErpField[]` — какие поля ERPNext ФАКТИЧЕСКИ прислал для этого
-артикула; эти и только эти заперты от локальной правки. Поле, отсутствующее в списке, редактируется
-всегда, даже у артикула с `source: 'erp'`. Список решает сервер; клиент не имеет права выводить его
-из `source` плюс «значение непустое».
-
-`'name'` в списке означает, что имя пришло из ERPNext и `upsertArticle` его не перезапишет.
-Переименование локального артикула (имени в списке нет) продолжает работать.
-```
-
-Add at the top of the version-history list:
+Article DTOs live in `packages/contracts` (package version `0.0.0`, unversioned) and are specced in
+`docs/superpowers/specs/2026-07-20-article-autocomplete-design.md`. Add a subsection there, in the
+file's existing Russian voice and heading level:
 
 ```markdown
-- `0.15.0` — **ломающее (типы, не провод):** `ARTICLE_CONSTRUCTIVE_FIELDS` → `ARTICLE_ERP_FIELDS`,
-  `ArticleConstructiveField` → `ArticleErpField`, и в список добавлено `'name'`. На проводе
-  `erpFields` остаётся массивом строк, но теперь может содержать `"name"` — потребитель, который
-  исчерпывающе разбирает это поле, обязан обновиться. Провенанс имени делает переименование
-  ERP-артикула через `upsertArticle` невозможным (`LKWkalk-yxn`).
+### Уточнение провенанса: имя артикула (ADR 022)
+
+`ARTICLE_CONSTRUCTIVE_FIELDS` переименована в `ARTICLE_ERP_FIELDS`, тип
+`ArticleConstructiveField` — в `ArticleErpField`, и в список добавлено `'name'`: имя — не
+конструктивное поле, но ERPNext его поставляет и владеет им.
+
+У артикула, чьё имя пришло из ERPNext (`'name'` есть в `erpFields`), `upsertArticle` имя не
+меняет. У локального артикула (`'name'` в списке нет) переименование продолжает работать.
+
+На проводе `erpFields` остаётся массивом строк, но теперь может содержать `"name"` — потребитель,
+разбирающий это поле исчерпывающе, обязан обновиться.
+
+Условие замка не меняется: поле заперто тогда и только тогда, когда ERPNext фактически его
+прислал, а НЕ когда «запись из ERP и значение непустое».
+См. [ADR 022](../../adr/022-article-name-provenance-and-confirm-patterns.md).
 ```
 
-- [ ] **Step 3: Verify nothing else claims the old contract version**
+Then re-read the whole spec file and correct any older sentence that still claims ERPNext never
+supplies the name or that the name is always locally editable — this project's rule is that `docs/`
+is always current, so a superseding note is not a substitute for fixing the stale sentence. Leave
+the nesting increments alone: `nestStepPairwise` / `nestStepSequential` genuinely are never supplied
+by ERPNext and stay always editable.
 
-Run: `grep -rn "0\.14\.0" docs/api-contract.md packages/engine/src/index.ts | head`
-Expected: the engine's `ENGINE_CONTRACT_VERSION` is a SEPARATE version line for the packing engine — leave it alone. Only `docs/api-contract.md`'s own header and history mention the DTO contract. If the grep shows the engine constant, that is correct and must not be changed by this task.
+- [ ] **Step 3: Verify the engine contract did not move**
+
+Run: `git diff main --stat -- docs/api-contract.md && grep -n "ENGINE_CONTRACT_VERSION" packages/engine/src/index.ts`
+Expected: the diff is EMPTY, and the constant still reads `'0.14.0'`. If either is untrue, undo it —
+the engine contract is not in this task's scope.
 
 - [ ] **Step 4: Run the suite**
 
@@ -178,8 +183,8 @@ Expected: all pass (531 at branch point) — this task changes documentation onl
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/adr/022-article-name-provenance-and-confirm-patterns.md docs/api-contract.md
-git commit -m "docs(contracts): article name provenance + confirm patterns, contract 0.15.0 (LKWkalk-yxn)"
+git add docs/adr/022-article-name-provenance-and-confirm-patterns.md docs/adr/README.md docs/superpowers/specs/2026-07-20-article-autocomplete-design.md
+git commit -m "docs(contracts): article name joins ERP provenance + confirm patterns (LKWkalk-yxn)"
 ```
 
 ---
