@@ -578,28 +578,43 @@ describe('moveStacks', () => {
       const dx = wide.vehicle.length - bad.x;
       // sanity: GOOD's target footprint (cube is 1000 mm on a side) stays inside the hold
       expect(good.x + dx + wide.cargo[0].length).toBeLessThanOrEqual(wide.vehicle.length);
+      // Snapshot GOOD's own placement BEFORE the call, correlated by array index rather than by its
+      // (x, y) — comparing against a live re-query of the same coordinates would trivially match
+      // whatever the object now holds. `toBe(layout)` alone cannot tell an in-place mutation of this
+      // object from an untouched one; this can.
+      const goodIndex = layout.placements.findIndex((p) => p.x === good.x && p.y === good.y);
+      const goodBefore = { x: layout.placements[goodIndex].x, y: layout.placements[goodIndex].y };
 
       const { layout: next, error } = moveStacks(wide, layout, refs, dx, 0);
 
       expect(error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
       expect(next).toBe(layout); // identity: nothing applied
-      expect(next.placements.some((p) => p.x === good.x && p.y === good.y)).toBe(true); // good member untouched
+      expect({ x: next.placements[goodIndex].x, y: next.placements[goodIndex].y }).toEqual(goodBefore); // good member untouched
     });
 
     it('refuses when one member lands free and another lands on an unselected stack', () => {
       const layout = calculateLayout(row);
       const refs = rowRefs(layout);
       const step = refs[1].x - refs[0].x;
-      // Move the FIRST two stacks together: refs[0] -> refs[1]'s old spot (fine, refs[1] is moving
-      // too), but refs[1] -> a spot occupied by refs[2], which is NOT selected.
-      const selection = [refs[0], refs[1]];
+      // Selection order is deliberate: refs[2] is processed FIRST and its target — one cell past the
+      // row's right end — is genuinely free, so a naive per-ref loop would apply it. refs[0] is
+      // processed SECOND and its target (refs[1]'s spot) is blocked, because refs[1] is NOT selected
+      // and never moves out of the way. A loop-based implementation would therefore apply refs[2]
+      // before discovering refs[0] is blocked, and return that half-applied layout — failing the
+      // identity check below. (Putting the blocked member first, as an earlier version of this test
+      // did, lets a naive loop refuse before applying anything, which passes by accident.)
+      const selection = [refs[2], refs[0]];
+      // Snapshot refs[2]'s own placement BEFORE the call, correlated by array index — see the
+      // sibling test above for why this catches more than a live re-query of the same coordinates.
+      const freeIndex = layout.placements.findIndex((p) => p.x === refs[2].x && p.y === refs[2].y);
+      const freeBefore = { x: layout.placements[freeIndex].x, y: layout.placements[freeIndex].y };
 
       const { layout: next, error } = moveStacks(row, layout, selection, step, 0);
 
       expect(error?.code).toBe('ERR_EDIT_OVERLAP');
       expect(next).toBe(layout);
-      // refs[0], the member whose own target was free, did NOT move.
-      expect(next.placements.some((p) => p.x === refs[0].x && p.y === refs[0].y)).toBe(true);
+      // refs[2], the member whose own target was free, did NOT move either — the refusal is whole.
+      expect({ x: next.placements[freeIndex].x, y: next.placements[freeIndex].y }).toEqual(freeBefore);
     });
 
     it('refuses when the selection combines a valid ref with one that names no column', () => {
@@ -609,12 +624,16 @@ describe('moveStacks', () => {
         { cargoTypeId: 'c', x: good.x, y: good.y },
         { cargoTypeId: 'c', x: 12345, y: 0 },
       ];
+      // Snapshot GOOD's own placement BEFORE the call, correlated by array index — see the first
+      // mixed-selection test above for why this catches more than a live re-query of the coordinates.
+      const goodIndex = 0; // `good` IS layout.placements[0]
+      const goodBefore = { x: good.x, y: good.y };
 
       const { layout: next, error } = moveStacks(wide, layout, refs, 1000, 0);
 
       expect(error?.code).toBe('ERR_EDIT_NO_STACK');
       expect(next).toBe(layout);
-      expect(next.placements.some((p) => p.x === good.x && p.y === good.y)).toBe(true); // good member untouched
+      expect({ x: next.placements[goodIndex].x, y: next.placements[goodIndex].y }).toEqual(goodBefore); // good member untouched
     });
   });
 });

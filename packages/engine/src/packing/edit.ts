@@ -299,9 +299,12 @@ export function moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: num
   const moving = (p: Placement) => keys.has(refKey(p));
 
   // Every check runs against the original layout before anything is built — bounds for all members
-  // first (the more fundamental answer, as elsewhere in this module), then overlap. Refs are
-  // validated here, BEFORE the zero-delta short-circuit below, so a bogus ref is refused even at
-  // (0, 0) — the same order the singular moveStack uses.
+  // first (the more fundamental answer, as elsewhere in this module), then overlap. Both ref
+  // existence AND cargo lookup are validated here, BEFORE the zero-delta short-circuit below, so a
+  // bogus ref is refused even at (0, 0). This is stricter than the singular moveStack, which only
+  // moves its ref-existence check ahead of the short-circuit and still no-ops at (0, 0) for a ref
+  // whose cargoTypeId is missing from load.cargo — that lookup happens after moveStack's own
+  // short-circuit.
   const footprints: { ref: StackRef; w: number; h: number }[] = [];
   for (const ref of unique) {
     const column = layout.placements.filter(isRef(ref));
