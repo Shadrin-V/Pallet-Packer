@@ -1187,8 +1187,19 @@ Create `apps/web/src/screens/components/svgTestGeometry.ts`:
 // These stubs install the IDENTITY transform: one client pixel is one millimetre of hold, and the
 // svg occupies the rect it is given. That makes gesture tests honest — the component's own
 // arithmetic still runs, only the browser's missing plumbing is supplied.
-export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height: 2000 }): void {
+// Returns an uninstall function. Prototype patches outlive the test that made them — they are not
+// undone by Testing Library's cleanup — so a test file that forgets to restore silently changes the
+// geometry every later file in the same worker sees. Always restore in afterEach.
+export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height: 2000 }): () => void {
   const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
+  const elProto = Element.prototype as unknown as Record<string, unknown>;
+  const saved = {
+    createSVGPoint: proto.createSVGPoint,
+    getScreenCTM: proto.getScreenCTM,
+    getBoundingClientRect: proto.getBoundingClientRect,
+    setPointerCapture: elProto.setPointerCapture,
+    releasePointerCapture: elProto.releasePointerCapture,
+  };
   proto.createSVGPoint = function () {
     return {
       x: 0,
@@ -1216,10 +1227,30 @@ export function installSvgGeometry(rect = { left: 0, top: 0, width: 4000, height
     };
   };
   // jsdom throws InvalidPointerId for a pointer it never saw; capture is irrelevant to the logic.
-  (Element.prototype as unknown as Record<string, unknown>).setPointerCapture = function () {};
-  (Element.prototype as unknown as Record<string, unknown>).releasePointerCapture = function () {};
+  elProto.setPointerCapture = function () {};
+  elProto.releasePointerCapture = function () {};
+
+  return () => {
+    proto.createSVGPoint = saved.createSVGPoint;
+    proto.getScreenCTM = saved.getScreenCTM;
+    proto.getBoundingClientRect = saved.getBoundingClientRect;
+    elProto.setPointerCapture = saved.setPointerCapture;
+    elProto.releasePointerCapture = saved.releasePointerCapture;
+  };
 }
 ```
+
+Every test file that installs these MUST restore them:
+
+```ts
+let restoreSvgGeometry: (() => void) | null = null;
+afterEach(() => {
+  restoreSvgGeometry?.();
+  restoreSvgGeometry = null;
+});
+```
+
+and each `renderTop()` / gesture test assigns `restoreSvgGeometry = installSvgGeometry(...)` instead of discarding the return value.
 
 - [ ] **Step 2: Write the failing component tests**
 
@@ -1249,7 +1280,7 @@ describe('group selection', () => {
   };
 
   const renderTop = (props: Partial<Parameters<typeof CrossSection>[0]> = {}) => {
-    installSvgGeometry();
+    restoreSvgGeometry = installSvgGeometry();
     const layout = calculateLayout(groupLoad);
     const utils = render(
       <LocaleProvider initial="de">
@@ -1399,7 +1430,7 @@ Append to `apps/web/src/screens/LadeplanScreen.test.tsx`, following the fixture 
 it('sends a whole group to the buffer in one gesture', () => {
   // The svg sits at the top of the viewport; the buffer strip is stubbed below it, so a release at
   // y=2600 is outside the cutaway AND over the strip.
-  installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
+  const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
   const origRect = HTMLDivElement.prototype.getBoundingClientRect;
   HTMLDivElement.prototype.getBoundingClientRect = function () {
     return { left: 0, top: 2400, right: 4000, bottom: 3000, width: 4000, height: 600, x: 0, y: 2400, toJSON: () => ({}) } as DOMRect;
@@ -1421,6 +1452,7 @@ it('sends a whole group to the buffer in one gesture', () => {
     expect(screen.getByTestId('warehouse-count')).toHaveTextContent('2 nicht platziert');
   } finally {
     HTMLDivElement.prototype.getBoundingClientRect = origRect;
+    restoreSvg();
   }
 });
 ```
