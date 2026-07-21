@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Layout, Load } from '../model/index';
+import type { CargoType, Layout, Load } from '../model/index';
+import { calculateLayout } from '../api/api';
 import { placeStack } from './edit';
-import { resolveDrop } from './resolveDrop';
+import type { StackRef } from './edit';
+import { resolveDrop, resolveGroupDrop } from './resolveDrop';
 
 const V = { id: 'v', name: 'LKW', length: 10000, width: 2400, height: 2650 };
 const pallet = {
@@ -134,5 +136,125 @@ describe('resolveDrop', () => {
         ).toBeUndefined();
       }
     }
+  });
+});
+
+const gcargo = (over: Partial<CargoType> & Pick<CargoType, 'id' | 'name'>): CargoType => ({
+  length: 1000,
+  width: 1000,
+  height: 1000,
+  quantity: 1,
+  rotation: 'yawOnly',
+  stacking: { stackable: false },
+  nesting: { nestable: false },
+  state: 'entschachtelt',
+  ...over,
+});
+
+describe('resolveGroupDrop', () => {
+  /** 4×2 m hold, 1×1 m cubes → 8 floor positions in a 4×2 grid. */
+  const grid: Load = {
+    vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 1000 },
+    cargo: [gcargo({ id: 'c', name: 'Cube', quantity: 8 })],
+  };
+  const refsAt = (...pts: [number, number][]): StackRef[] =>
+    pts.map(([x, y]) => ({ cargoTypeId: 'c', x, y }));
+
+  it('accepts the zero delta — a group that already stands legally may stay put', () => {
+    const layout = calculateLayout(grid);
+    const sorted = [...layout.placements].sort((a, b) => a.x - b.x || a.y - b.y);
+    const refs = refsAt([sorted[0].x, sorted[0].y]);
+
+    const r = resolveGroupDrop(grid, layout, refs, { dx: 0, dy: 0 });
+
+    expect(r.ok).toBe(true);
+    expect(r.dx).toBe(0);
+    expect(r.dy).toBe(0);
+    expect(r.blocking).toEqual([]);
+  });
+
+  it('pulls a near miss flush — flush beats near, as for a single stack', () => {
+    // One lone stack in an otherwise empty hold, aimed 60 mm short of the far wall.
+    const lone: Load = {
+      vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 1000 },
+      cargo: [gcargo({ id: 'c', name: 'Cube', quantity: 1 })],
+    };
+    const layout = calculateLayout(lone);
+    const start = layout.placements[0];
+    const refs = refsAt([start.x, start.y]);
+    // aim so the stack's far edge sits 60 mm short of x = 4000
+    const aimDx = 4000 - 1000 - 60 - start.x;
+
+    const r = resolveGroupDrop(lone, layout, refs, { dx: aimDx, dy: 0 });
+
+    expect(r.ok).toBe(true);
+    expect(start.x + r.dx).toBe(3000); // flush against the far wall, not 60 mm short of it
+  });
+
+  it('refuses as a whole when no delta in reach works, and names what is in the way', () => {
+    const layout = calculateLayout(grid);
+    const sorted = [...layout.placements].sort((a, b) => a.x - b.x || a.y - b.y);
+    const one = refsAt([sorted[0].x, sorted[0].y]);
+
+    // aim straight onto an occupied neighbour, with a tolerance too small to escape it
+    const r = resolveGroupDrop(grid, layout, one, { dx: 1000, dy: 0 }, { tolerance: 0 });
+
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe('ERR_EDIT_OVERLAP');
+    expect(r.blocking.length).toBeGreaterThan(0);
+  });
+
+  it('reports out-of-bounds rather than overlap when the aim leaves the hold', () => {
+    const layout = calculateLayout(grid);
+    const sorted = [...layout.placements].sort((a, b) => a.x - b.x || a.y - b.y);
+    const one = refsAt([sorted[0].x, sorted[0].y]);
+
+    const r = resolveGroupDrop(grid, layout, one, { dx: 100000, dy: 0 }, { tolerance: 0 });
+
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
+  });
+
+  it('never counts a group member as an obstacle to another member', () => {
+    const layout = calculateLayout(grid);
+    const all = layout.placements.map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+    // The entire floor moves as one: any delta that keeps it in bounds must be legal, because the
+    // only things in the way are members.
+    const r = resolveGroupDrop(grid, layout, all, { dx: 0, dy: 0 });
+    expect(r.ok).toBe(true);
+    expect(r.blocking).toEqual([]);
+  });
+
+  it('resolves the same delta regardless of ref order or duplicates — the selection is a set', () => {
+    // 3 cubes in a single-file row (4 m long, 1-cell-wide hold) with one free cell past the end.
+    // Selecting the WHOLE row and aiming 60 mm short of a one-cell shift snaps the group flush
+    // against the far wall — a genuinely non-zero delta, unlike (37, 12) against a fully packed
+    // grid, which collapses to (0, 0) at the origin wall and never touches the tie-break chain.
+    const row: Load = {
+      vehicle: { id: 'v', name: 'V', length: 4000, width: 1000, height: 1000 },
+      cargo: [gcargo({ id: 'c', name: 'Cube', quantity: 3 })],
+    };
+    const layout = calculateLayout(row);
+    const refs = [...layout.placements]
+      .sort((a, b) => a.x - b.x || a.y - b.y)
+      .map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+    const aim = { dx: 940, dy: 0 }; // 60 mm short of a clean 1000 mm shift
+
+    const base = resolveGroupDrop(row, layout, refs, aim);
+    expect(base.ok).toBe(true);
+    expect(base.dx).not.toBe(0); // genuinely exercises the tie-break chain, not a trivial no-op
+    expect(base).toMatchObject({ dx: 1000, dy: 0 });
+
+    const reversed = resolveGroupDrop(row, layout, [...refs].reverse(), aim);
+    const duplicated = resolveGroupDrop(row, layout, [refs[0], refs[1], refs[2], refs[0], refs[1]], aim);
+
+    expect(reversed).toEqual(base);
+    expect(duplicated).toEqual(base);
+  });
+
+  it('refuses an empty selection and a ref that names no column', () => {
+    const layout = calculateLayout(grid);
+    expect(resolveGroupDrop(grid, layout, [], { dx: 0, dy: 0 }).error?.code).toBe('ERR_EDIT_NO_STACK');
+    expect(resolveGroupDrop(grid, layout, refsAt([12345, 0]), { dx: 0, dy: 0 }).error?.code).toBe('ERR_EDIT_NO_STACK');
   });
 });

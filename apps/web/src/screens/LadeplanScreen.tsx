@@ -6,17 +6,19 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   findGeometryViolations,
   moveStack,
+  moveStacks,
   orientedDims,
   placeStack,
   resolveDrop,
   rotateStack,
   stackBuffer,
-  unplaceStack,
+  unplaceStacks,
   type EngineError,
   type Layout,
   type Load,
   type LoadingMode,
   type OrderGrouping,
+  type StackRef,
 } from '@shadrin-v/engine';
 import { formatLength } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
@@ -124,6 +126,18 @@ export function LadeplanScreen({
     setEdited(layout);
     setEditError(null); // the refusal spoke about the previous layout; this one is fresh
   }, [layout]);
+  // The top view keeps its own selection and drag state, and those are only meaningful for the plan
+  // they were made on: a selection is a list of floor coordinates, and a recompute repacks the hold
+  // underneath it. Remount it whenever a NEW layout arrives — the very event the effect above answers
+  // to — so the stale block cannot survive to be drawn, counted, or dragged.
+  // Manual edits go through applyEdit and never touch the `layout` PROP, so they do not remount:
+  // a group stays selected after its own move and can be nudged again (design 2026-07-21).
+  // The generation is a pure function of the prop's object identity — same reference in, same key
+  // out — so it cannot fall out of step with the effect the way a counter bumped from a handler
+  // could.
+  const planGen = useRef({ layout, n: 0 });
+  if (planGen.current.layout !== layout) planGen.current = { layout, n: planGen.current.n + 1 };
+  const planKey = planGen.current.n;
   // The engine refuses an impossible edit and says why (ADR 019); we show that reason instead of
   // leaving the user to guess why a control seems dead (dwc.4).
   const [editError, setEditError] = useState<EngineError | null>(null);
@@ -139,6 +153,10 @@ export function LadeplanScreen({
   // they are. Re-snapping here would pull a flush fit back off its neighbour's edge.
   const onMoveStack = (sel: StackSel, toX: number, toY: number) =>
     applyEdit((prev) => moveStack(load, prev, sel, toX, toY));
+  // A group moves by a common DELTA, already resolved by the magnet (ADR 021) — one edit, so the
+  // block either lands whole or not at all.
+  const onMoveStacks = (refs: StackRef[], dx: number, dy: number) =>
+    applyEdit((prev) => moveStacks(load, prev, refs, dx, dy));
   const onRotateStack = (sel: StackSel) => applyEdit((prev) => rotateStack(load, prev, sel));
 
   // ---- buffer (dwc.3): stacks that are not in the hold — unplaced by the packer, or pulled out by
@@ -240,14 +258,17 @@ export function LadeplanScreen({
     };
   });
 
-  /** A stack dragged out of the hold and dropped on the strip goes back to the buffer. */
+  /** Stacks dragged out of the hold and dropped on the strip go back to the buffer, all at once. */
   const bufferRef = useRef<HTMLDivElement>(null);
-  const onDropOutside = (sel: StackSel, clientX: number, clientY: number) => {
+  const onDropOutside = (refs: StackRef[], clientX: number, clientY: number): boolean => {
     const box = bufferRef.current?.getBoundingClientRect();
-    if (!box) return;
+    if (!box) return false;
     const overBuffer =
       clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
-    if (overBuffer) applyEdit((prev) => unplaceStack(load, prev, sel));
+    if (overBuffer) applyEdit((prev) => unplaceStacks(load, prev, refs));
+    // The answer the cutaway needs: did these stacks leave the floor? Only then may it drop them
+    // from the selection — a release beside the strip is a miss, and the block is still there.
+    return overBuffer;
   };
   const violations = findGeometryViolations(load, edited).length;
 
@@ -426,12 +447,14 @@ export function LadeplanScreen({
 
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection
+              key={planKey}
               load={load}
               layout={edited}
               view="top"
               label={tt('ladeplan.top')}
               orderColors={orderColorMap}
               onMoveStack={onMoveStack}
+              onMoveStacks={onMoveStacks}
               onRotateStack={onRotateStack}
               onDropOutside={onDropOutside}
               preview={tilePreview}

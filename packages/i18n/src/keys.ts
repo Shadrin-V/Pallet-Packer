@@ -67,6 +67,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.pltAbbr',
   'ladeplan.notPlaced',
   'ladeplan.rotateStack',
+  'ladeplan.selection.count',
   'ladeplan.discardEditsConfirm',
   'ladeplan.emptyHint',
   'ladeplan.unplacedFig',

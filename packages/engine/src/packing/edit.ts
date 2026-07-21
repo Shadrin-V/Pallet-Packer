@@ -53,6 +53,9 @@ const err = (code: string, details?: Record<string, unknown>): EngineError =>
 const isRef = (ref: StackRef) => (p: Placement) =>
   p.cargoTypeId === ref.cargoTypeId && p.x === ref.x && p.y === ref.y;
 
+/** Stable identity of a floor column — used to test membership of a selection. */
+export const refKey = (r: StackRef): string => `${r.cargoTypeId}@${r.x},${r.y}`;
+
 /** Half-open interval overlap (touching edges do not overlap). */
 const overlaps1d = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 && b0 < a1;
 
@@ -121,7 +124,7 @@ function withUnplaced(layout: Layout, cargoTypeId: string, delta: number): Unpla
 
 /** Rebuild a layout around new placements/unplaced, with metrics recomputed by the core. */
 function retally(load: Load, layout: Layout, placements: Placement[], unplaced: UnplacedCount[]): Layout {
-  const columns = new Set(placements.map((p) => `${p.cargoTypeId}@${p.x},${p.y}`));
+  const columns = new Set(placements.map((p) => refKey(p)));
   const next: Layout = { ...layout, placements, unplaced };
   return {
     ...next,
@@ -250,6 +253,81 @@ export function rotateStack(load: Load, layout: Layout, ref: StackRef): EditResu
   const candidate: Layout = {
     ...layout,
     placements: layout.placements.map((p) => (isRef(ref)(p) ? { ...p, orientation: to } : p)),
+  };
+  const bad = violationError(load, candidate);
+  return bad ? { layout, error: bad } : { layout: candidate };
+}
+
+/**
+ * Take several columns off the floor at once (ADR 021).
+ *
+ * Cannot fail on geometry — the floor only empties — so the only refusal is a ref that names no
+ * column, and it refuses the WHOLE call: a partially emptied floor is exactly the half-applied edit
+ * ADR 019 forbids. Repeated refs are one stack; a selection is a set.
+ */
+export function unplaceStacks(load: Load, layout: Layout, refs: StackRef[]): EditResult {
+  const unique = new Map(refs.map((r) => [refKey(r), r]));
+  // Validate every ref against the ORIGINAL layout first, so nothing is applied before we know the
+  // whole call is good.
+  for (const ref of unique.values()) {
+    if (!layout.placements.some(isRef(ref))) return { layout, error: err('ERR_EDIT_NO_STACK', { ...ref }) };
+  }
+  let cur = layout;
+  for (const ref of unique.values()) {
+    // .error is safe to drop: this ref was already checked against the ORIGINAL layout above, and
+    // unplaceStack can only refuse with ERR_EDIT_NO_STACK — a column, once found, cannot un-exist
+    // partway through this loop, so every call here succeeds.
+    cur = unplaceStack(load, cur, ref).layout;
+  }
+  return { layout: cur };
+}
+
+/**
+ * Shift several columns by a common delta (ADR 021).
+ *
+ * Takes a DELTA rather than target coordinates: the group's mutual arrangement is then preserved by
+ * construction, and "the group came apart" is not expressible. Members are excluded from each
+ * other's overlap test — they move together, so a member sliding onto another member's old spot is
+ * legal. Refusal is whole: the original layout comes back untouched.
+ */
+export function moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: number, dy: number): EditResult {
+  const unique = [...new Map(refs.map((r) => [refKey(r), r])).values()];
+  if (unique.length === 0) return { layout };
+
+  const byId = new Map(load.cargo.map((c) => [c.id, c]));
+  const keys = new Set(unique.map(refKey));
+  const moving = (p: Placement) => keys.has(refKey(p));
+
+  // Every check runs against the original layout before anything is built — bounds for all members
+  // first (the more fundamental answer, as elsewhere in this module), then overlap. Both ref
+  // existence AND cargo lookup are validated here, BEFORE the zero-delta short-circuit below, so a
+  // bogus ref is refused even at (0, 0). This is stricter than the singular moveStack, which only
+  // moves its ref-existence check ahead of the short-circuit and still no-ops at (0, 0) for a ref
+  // whose cargoTypeId is missing from load.cargo — that lookup happens after moveStack's own
+  // short-circuit.
+  const footprints: { ref: StackRef; w: number; h: number }[] = [];
+  for (const ref of unique) {
+    const column = layout.placements.filter(isRef(ref));
+    const cargo = byId.get(ref.cargoTypeId);
+    if (column.length === 0 || !cargo) return { layout, error: err('ERR_EDIT_NO_STACK', { ...ref }) };
+    const [w, h] = orientedDims(cargo.length, cargo.width, cargo.height, column[0].orientation);
+    footprints.push({ ref, w, h });
+  }
+  if (dx === 0 && dy === 0) return { layout };
+  for (const { ref, w, h } of footprints) {
+    if (outOfBounds(load, ref.x + dx, ref.y + dy, w, h)) {
+      return { layout, error: err('ERR_EDIT_OUT_OF_BOUNDS', { ...ref, dx, dy }) };
+    }
+  }
+  for (const { ref, w, h } of footprints) {
+    if (overlapsOtherStack(load, layout, moving, ref.x + dx, ref.y + dy, w, h)) {
+      return { layout, error: err('ERR_EDIT_OVERLAP', { ...ref, dx, dy }) };
+    }
+  }
+
+  const candidate: Layout = {
+    ...layout,
+    placements: layout.placements.map((p) => (moving(p) ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
   };
   const bad = violationError(load, candidate);
   return bad ? { layout, error: bad } : { layout: candidate };

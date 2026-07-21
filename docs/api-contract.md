@@ -2,7 +2,7 @@
 
 > Граница между ядром `@shadrin-v/engine`, UI (Lovable) и будущим MCP-сервером.
 > Это источник истины по формам входа/выхода. **Ломающее изменение → ADR + правка этого файла
-> до реализации.** Версия контракта: `0.13.0` (аддитивно; полная история версий — в конце файла).
+> до реализации.** Версия контракта: `0.14.0` (аддитивно; полная история версий — в конце файла).
 
 Единицы: все линейные размеры — **целые миллиметры**. Координаты — от угла грузового отсека
 (`x` — длина, `y` — ширина, `z` — высота). Движок текст не возвращает — только данные и коды ошибок.
@@ -260,6 +260,50 @@ resolveDrop(load: Load, layout: Layout, spec: PlaceStackSpec, opts?: ResolveDrop
 единиц). `placeStack`/`moveStack` при этом **остаются строгими**: они судят ту точку, которую им дали,
 и никогда не двигают груз сами — магнит вызывается отдельно и до них.
 
+### Групповые правки (0.14.0, [ADR 021](adr/021-group-layout-edits.md))
+
+Операции над несколькими стопками сразу. Отказ — всегда целиком: возвращается исходная
+раскладка и код ошибки, полуприменённого состояния не бывает.
+
+```ts
+interface GroupAim { dx: number; dy: number }
+
+interface GroupDropResolution {
+  dx: number;
+  dy: number;
+  ok: boolean;
+  error?: EngineError;
+  /** Невыделенные стопки, мешающие в прицельной дельте. Пусто при ok. */
+  blocking: StackRef[];
+}
+
+/** Опции группового магнита. */
+interface GroupDropOptions {
+  /** Насколько далеко магнит может подтянуть, мм. Применяется одинаково ко всем участницам —
+   *  группа жёсткая. По умолчанию: значение самой тесной стопки (половина её короткой стороны). */
+  tolerance?: number;
+}
+
+unplaceStacks(load: Load, layout: Layout, refs: StackRef[]): EditResult
+moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: number, dy: number): EditResult
+resolveGroupDrop(
+  load: Load,
+  layout: Layout,
+  refs: StackRef[],
+  aim: GroupAim,
+  opts?: GroupDropOptions,
+): GroupDropResolution
+```
+
+`moveStacks` принимает дельту, а не целевые координаты: взаимное расположение группы
+сохраняется по построению. Повторяющиеся `refs` считаются одной стопкой (выделение — множество).
+
+Пустой `refs` и дельта `(0, 0)` для валидных `refs` — успешные no-op: возвращается исходная
+раскладка без ошибки. Дельта `(0, 0)` с ref, не называющим ни одной колонки, — по-прежнему отказ
+(`ERR_EDIT_NO_STACK`): ref проверяется до короткого пути нулевой дельты.
+
+Коды ошибок — существующие: `ERR_EDIT_NO_STACK`, `ERR_EDIT_OUT_OF_BOUNDS`, `ERR_EDIT_OVERLAP`.
+
 ## 3. Коды ошибок
 
 Возвращаются движком при валидации; текст — на стороне UI.
@@ -299,6 +343,9 @@ resolveDrop(load: Load, layout: Layout, spec: PlaceStackSpec, opts?: ResolveDrop
 - `contractVersion` в `Layout` позволяет клиентам проверять совместимость.
 
 ### История версий
+- `0.14.0` — добавлены групповые правки: `unplaceStacks`, `moveStacks`, `resolveGroupDrop`,
+  типы `GroupAim`, `GroupDropResolution`, `GroupDropOptions`. Аддитивно: одиночные операции и их
+  поведение не менялись. `ENGINE_CONTRACT_VERSION` → `0.14.0` (`LKWkalk-dwc.6`).
 - `0.13.0` — добавлен магнит постановки: `resolveDrop`, типы `DropResolution`, `ResolveDropOptions`
   ([ADR 020](adr/020-magnet-drop-resolution.md)). Аддитивно: существующие операции и типы не менялись,
   `placeStack`/`moveStack` остаются строгими. `ENGINE_CONTRACT_VERSION` → `0.13.0` (`LKWkalk-crb`).
