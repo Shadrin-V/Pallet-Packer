@@ -305,7 +305,7 @@ describe('LadeplanScreen — group selection', () => {
       expect(svg.querySelector('[data-stack-ref="c1@2000,0"]')).not.toBeNull();
       // the selection survives the refusal, and this time the reason is shown to the user
       expect(screen.getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
-      expect(screen.getByTestId('edit-error')).toBeInTheDocument();
+      expect(screen.getByTestId('edit-error')).toBeVisible();
     });
   });
 });
