@@ -5,6 +5,7 @@ import { calculateLayout } from '../api/api';
 import { findGeometryViolations } from '../geometry/geometry';
 import { moveStack, rotateStack, unplaceStack, placeStack, stackBuffer, unplaceStacks, moveStacks } from './edit';
 import type { StackRef } from './edit';
+import { resolveGroupDrop } from './resolveDrop';
 
 const cargo = (over: Partial<CargoType> & Pick<CargoType, 'id' | 'name'>): CargoType => ({
   length: 1200,
@@ -640,9 +641,17 @@ describe('moveStacks', () => {
 });
 
 describe('group edits — invariants', () => {
+  // 3 cubes on a 6×4 m floor (6 length-cells × 4 width-cells). The shelf packer (ADR 017) fills
+  // width before extending length, so 3 units land in one column at x = 0, using only 3 of the 4
+  // width-cells — one width-cell of slack remains AND the column only touches the near wall on
+  // each axis, not both. That is deliberate: the original 4×2 grid at quantity 8 exactly saturates
+  // its hold (0 free cells anywhere), so no non-empty subset's non-zero delta can ever land legally
+  // — the whole-group delta only stays in bounds at exactly (0, 0), a single point no integer range
+  // narrowing reaches with any real frequency. This fixture leaves genuine room on both axes so a
+  // healthy fraction of (subset, dx, dy) draws reach the accepted branch.
   const grid: Load = {
-    vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 1000 },
-    cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 8 })],
+    vehicle: { id: 'v', name: 'V', length: 6000, width: 4000, height: 1000 },
+    cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 3 })],
   };
 
   it('any ACCEPTED group move leaves a geometrically valid layout', () => {
@@ -652,8 +661,12 @@ describe('group edits — invariants', () => {
     fc.assert(
       fc.property(
         fc.subarray(all, { minLength: 1 }),
-        fc.integer({ min: -4000, max: 4000 }),
-        fc.integer({ min: -2000, max: 2000 }),
+        // Narrowed from ±4000/±2000 (the hold's own extent), which almost always drove the aim out
+        // of bounds and left the accepted branch — and therefore findGeometryViolations/totalUnits —
+        // unexercised (measured: 0/300 accepted). ±1200/±1000 on this fixture measures 53/300 (~18%)
+        // accepted, a healthy split between the refusal and acceptance branches (see review report).
+        fc.integer({ min: -1200, max: 1200 }),
+        fc.integer({ min: -1000, max: 1000 }),
         (refs, dx, dy) => {
           const { layout: next, error } = moveStacks(grid, layout, refs, dx, dy);
           if (error) {
@@ -665,6 +678,117 @@ describe('group edits — invariants', () => {
         },
       ),
       { numRuns: 300, seed: 20260721 },
+    );
+  });
+
+  // ADR 020's point, extended to groups: the preview must not promise what the drop would refuse —
+  // resolveGroupDrop and moveStacks must agree. Five fixtures (cube and pallet cargo, single- and
+  // multi-tier columns, tight and roomy holds) so the property isn't accidentally pinned to one
+  // packer shape. `load`/`layout` are consistent pairs — `layout = calculateLayout(load)`, no
+  // subsequent edit — per the task: resolveGroupDrop checks only bounds/overlap while moveStacks
+  // also runs findGeometryViolations (orientation, fork access), so an INCONSISTENT pair could
+  // diverge on rules resolveGroupDrop never asked about. That asymmetry is real but out of scope
+  // here (tracked separately) — this property only claims agreement for inputs where it can't fire.
+  //
+  // Measured: 763/1500 accepted (5 × 300 runs) across the five fixtures below, zero counterexamples.
+  describe('resolveGroupDrop / moveStacks coherence', () => {
+    const floorRefs = (load: Load, layout: Layout): StackRef[] =>
+      [...new Map(layout.placements.map((p) => [`${p.x},${p.y}`, p])).values()].map((p) => ({
+        cargoTypeId: p.cargoTypeId,
+        x: p.x,
+        y: p.y,
+      }));
+
+    const fixtures: { name: string; load: Load; dxRange: number; dyRange: number }[] = [
+      {
+        name: 'cubes, roomy hold, single tier',
+        load: {
+          vehicle: { id: 'v', name: 'V', length: 6000, width: 4000, height: 1000 },
+          cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 3 })],
+        },
+        dxRange: 1500,
+        dyRange: 1500,
+      },
+      {
+        name: 'cubes, tight single-file row',
+        load: {
+          vehicle: { id: 'v', name: 'V', length: 4000, width: 1000, height: 1000 },
+          cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 3 })],
+        },
+        dxRange: 1200,
+        dyRange: 500,
+      },
+      {
+        name: 'pair of cubes, generous width',
+        load: {
+          vehicle: { id: 'v', name: 'V', length: 5000, width: 3000, height: 1000 },
+          cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 2 })],
+        },
+        dxRange: 1800,
+        dyRange: 1200,
+      },
+      {
+        name: 'pallets, realistic LKW hold',
+        load: {
+          vehicle: { id: 'v', name: 'V', length: 10000, width: 2400, height: 2650 },
+          cargo: [
+            cargo({
+              id: 'p',
+              name: 'P',
+              length: 1200,
+              width: 800,
+              height: 1000,
+              quantity: 4,
+              orderId: 'SO-1',
+            }),
+          ],
+        },
+        dxRange: 1500,
+        dyRange: 800,
+      },
+      {
+        name: 'stackable cubes, multi-tier columns',
+        load: {
+          vehicle: { id: 'v', name: 'V', length: 6000, width: 4000, height: 3000 },
+          cargo: [
+            cargo({
+              id: 's',
+              name: 'Stackable',
+              length: 1000,
+              width: 1000,
+              height: 1000,
+              quantity: 6,
+              stacking: { stackable: true },
+            }),
+          ],
+        },
+        dxRange: 1500,
+        dyRange: 1500,
+      },
+    ];
+
+    it.each(fixtures)(
+      'every accepted resolveGroupDrop delta is a delta moveStacks accepts cleanly — $name',
+      ({ load, dxRange, dyRange }) => {
+        const layout = calculateLayout(load);
+        const refs = floorRefs(load, layout);
+
+        fc.assert(
+          fc.property(
+            fc.subarray(refs, { minLength: 1 }),
+            fc.integer({ min: -dxRange, max: dxRange }),
+            fc.integer({ min: -dyRange, max: dyRange }),
+            (sel, dx, dy) => {
+              const r = resolveGroupDrop(load, layout, sel, { dx, dy });
+              if (!r.ok) return;
+              const { layout: next, error } = moveStacks(load, layout, sel, r.dx, r.dy);
+              expect(error).toBeUndefined();
+              expect(findGeometryViolations(load, next)).toEqual([]);
+            },
+          ),
+          { numRuns: 300, seed: 20260721 },
+        );
+      },
     );
   });
 });

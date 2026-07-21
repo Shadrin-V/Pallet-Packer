@@ -225,13 +225,31 @@ describe('resolveGroupDrop', () => {
     expect(r.blocking).toEqual([]);
   });
 
-  it('is deterministic — the same input always resolves to the same delta', () => {
-    const layout = calculateLayout(grid);
-    const sorted = [...layout.placements].sort((a, b) => a.x - b.x || a.y - b.y);
-    const refs = refsAt([sorted[0].x, sorted[0].y]);
-    const a = resolveGroupDrop(grid, layout, refs, { dx: 37, dy: 12 });
-    const b = resolveGroupDrop(grid, layout, refs, { dx: 37, dy: 12 });
-    expect(a).toEqual(b);
+  it('resolves the same delta regardless of ref order or duplicates — the selection is a set', () => {
+    // 3 cubes in a single-file row (4 m long, 1-cell-wide hold) with one free cell past the end.
+    // Selecting the WHOLE row and aiming 60 mm short of a one-cell shift snaps the group flush
+    // against the far wall — a genuinely non-zero delta, unlike (37, 12) against a fully packed
+    // grid, which collapses to (0, 0) at the origin wall and never touches the tie-break chain.
+    const row: Load = {
+      vehicle: { id: 'v', name: 'V', length: 4000, width: 1000, height: 1000 },
+      cargo: [gcargo({ id: 'c', name: 'Cube', quantity: 3 })],
+    };
+    const layout = calculateLayout(row);
+    const refs = [...layout.placements]
+      .sort((a, b) => a.x - b.x || a.y - b.y)
+      .map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+    const aim = { dx: 940, dy: 0 }; // 60 mm short of a clean 1000 mm shift
+
+    const base = resolveGroupDrop(row, layout, refs, aim);
+    expect(base.ok).toBe(true);
+    expect(base.dx).not.toBe(0); // genuinely exercises the tie-break chain, not a trivial no-op
+    expect(base).toMatchObject({ dx: 1000, dy: 0 });
+
+    const reversed = resolveGroupDrop(row, layout, [...refs].reverse(), aim);
+    const duplicated = resolveGroupDrop(row, layout, [refs[0], refs[1], refs[2], refs[0], refs[1]], aim);
+
+    expect(reversed).toEqual(base);
+    expect(duplicated).toEqual(base);
   });
 
   it('refuses an empty selection and a ref that names no column', () => {

@@ -359,12 +359,17 @@ export function resolveGroupDrop(
   // Score cheaply, sort, then validate in order — the expensive check runs on the winner, not on
   // the whole cross product. Flush beats near; distance breaks ties; (dx, dy) breaks the last one,
   // so the same drag always resolves the same way.
+  //
+  // flushX/flushY depend only on their own axis value, not on the pairing — memoise per distinct
+  // value instead of recomputing it once per cross-product cell.
+  const flushXByValue = new Map(dxs.map((d) => [d, flushX(d)]));
+  const flushYByValue = new Map(dys.map((d) => [d, flushY(d)]));
   const scored = dxs
     .flatMap((ddx) => dys.map((ddy) => ({ ddx, ddy })))
     .map(({ ddx, ddy }) => ({
       ddx,
       ddy,
-      flush: (flushX(ddx) ? 1 : 0) + (flushY(ddy) ? 1 : 0),
+      flush: (flushXByValue.get(ddx) ? 1 : 0) + (flushYByValue.get(ddy) ? 1 : 0),
       dist: Math.hypot(ddx - aim.dx, ddy - aim.dy),
     }))
     .sort((a, b) => b.flush - a.flush || a.dist - b.dist || a.ddx - b.ddx || a.ddy - b.ddy);
