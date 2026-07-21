@@ -43,6 +43,7 @@ export const ru: Dictionary = {
   'article.update': 'Обновить артикул',
   'article.lockedHint': 'Меняется в ERPNext, артикул {code}',
   'article.saveError': 'Не удалось сохранить. Попробуйте ещё раз.',
+  'article.renameInErp': 'Имя меняется в ERPNext. Сохранение создаст НОВЫЙ артикул.',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',

@@ -890,3 +890,83 @@ describe('SetupScreen — removing from the calculation', () => {
     expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toHaveFocus();
   });
 });
+
+describe('SetupScreen — the name belongs to ERPNext', () => {
+  const ERP_NAMED = {
+    itemCode: 'ABB101',
+    name: 'Gitterbox',
+    length: 1200,
+    width: 800,
+    height: 970,
+    rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+    source: 'erp',
+    updatedAt: '2026-07-21T00:00:00.000Z',
+    erpFields: ['length', 'width', 'height', 'name'],
+  } as const;
+
+  it('explains where the name is changed once the user edits it away from an ERP article', async () => {
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    // The notice lives in the details/nesting panel next to the save button it explains the
+    // consequence of — picking ERP_NAMED (rules.state 'entschachtelt') auto-collapses that panel,
+    // so open it explicitly (same idiom as "saves a typed-in article to the catalogue" above).
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' NEU');
+
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+  });
+
+  it('says nothing for an article whose name ERPNext never supplied', async () => {
+    const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([LOCAL]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'Eig');
+    await userEvent.click(await screen.findByText('Eigenbau'));
+    await userEvent.type(box, ' 2');
+
+    expect(screen.queryByText(/ERPNext/)).toBeNull();
+  });
+
+  it('still lets a brand-new local article be created from free text', async () => {
+    const upsertArticle = vi.fn().mockImplementation(async (a) => ({ ...a, source: 'local', updatedAt: 'x', erpFields: [] }));
+    renderSetupWithCatalogue({ upsertArticle, searchArticles: vi.fn().mockResolvedValue([]) });
+
+    // getAllByLabelText, index [1]: the vehicle bar (index [0]) has its own Länge/Breite/Höhe
+    // fields with the same aria-labels, same idiom as the other saveArticle tests in this file.
+    await userEvent.type(screen.getByLabelText('Artikel'), 'Sonderpalette');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1340');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '890');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '178');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    expect(upsertArticle).toHaveBeenCalledOnce();
+    expect(upsertArticle.mock.calls[0][0].itemCode).toBe('Sonderpalette');
+  });
+
+  it('picking a suggestion clears a previous ERPNext notice', async () => {
+    const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED, LOCAL]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    // Picking auto-collapses the panel (rules.state 'entschachtelt' for both fixtures here) —
+    // reopen it each time so the notice (and its absence) is actually observable, not merely
+    // hidden by the accordion being closed.
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' NEU');
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Eig');
+    await userEvent.click(await screen.findByText('Eigenbau'));
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    expect(screen.queryByText(/ERPNext/)).toBeNull();
+  });
+});

@@ -43,6 +43,7 @@ export const de: Dictionary = {
   'article.update': 'Artikel aktualisieren',
   'article.lockedHint': 'Wird in ERPNext geändert, Artikel {code}',
   'article.saveError': 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
+  'article.renameInErp': 'Der Name wird in ERPNext geändert. Speichern legt einen NEUEN Artikel an.',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',

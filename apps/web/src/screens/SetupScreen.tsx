@@ -65,6 +65,10 @@ export interface PositionState {
   articleCode?: string;
   /** Constructive fields ERPNext already filled — read-only in the form (spec Q5). */
   locked?: LockedFields;
+  /** Where this row was bound when the user started editing the name, and only when that article's
+   *  name came from ERPNext. Drives the "the name is changed in ERPNext" notice — without it the
+   *  row would simply look like free text and a save would fork a second article silently. */
+  unboundFromErp?: { itemCode: string; name: string };
 }
 
 export interface OrderState {
@@ -273,6 +277,7 @@ export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
     ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
     ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
     locked: lockedFieldsFrom(s.erpFields),
+    unboundFromErp: undefined,
   };
 }
 
@@ -728,7 +733,12 @@ function PositionRow({
       setSaveError(null);
       // Finding 1: bind the row to what the server actually stored — otherwise articleCode stays
       // unset and the button keeps reading "save" instead of flipping to "update".
-      if (saved) onChange({ articleCode: saved.itemCode, locked: lockedFieldsFrom(saved.erpFields) });
+      if (saved)
+        onChange({
+          articleCode: saved.itemCode,
+          locked: lockedFieldsFrom(saved.erpFields),
+          unboundFromErp: undefined,
+        });
     } catch {
       setSaveError(tt('article.saveError'));
     }
@@ -778,7 +788,17 @@ function PositionRow({
           <ArticleCombobox
             ariaLabel={tt('article.label')}
             value={p.name}
-            onChange={(name) => onChange({ name, articleCode: undefined, locked: {} })}
+            onChange={(name) =>
+              onChange({
+                name,
+                articleCode: undefined,
+                locked: {},
+                // Keep the first binding we left, not the latest keystroke's.
+                unboundFromErp:
+                  p.unboundFromErp ??
+                  (p.articleCode && p.locked?.name ? { itemCode: p.articleCode, name: p.name } : undefined),
+              })
+            }
             onPick={(s) => {
               const patch = applySuggestion(s);
               // Picking another article collapses the nesting panel (E16) — unless the article's
@@ -930,6 +950,9 @@ function PositionRow({
               {tt(p.articleCode ? 'article.update' : 'article.save')}
             </Button>
             {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
+            {p.unboundFromErp && p.name.trim() !== p.unboundFromErp.name && (
+              <p className="text-caption text-muted">{tt('article.renameInErp')}</p>
+            )}
           </div>
 
           {/* validation hint + live formula */}
