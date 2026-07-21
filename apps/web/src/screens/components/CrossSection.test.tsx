@@ -681,6 +681,100 @@ describe('group selection', () => {
     expect(queryByTestId('group-frame')).toBeNull();
   });
 
+  it('a few mm of jitter next to a stack clears the selection instead of catching it', () => {
+    const { svg, container, queryByTestId } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+    expect(queryByTestId('group-count')).not.toBeNull();
+
+    // Press on bare floor 5 mm below the row, then jitter 10 mm back across its edge — well under
+    // CLICK_SLOP_MM, so the gesture table says this is a click on empty floor, not a band.
+    fireEvent.pointerDown(svg, { clientX: 500, clientY: 1005 });
+    fireEvent.pointerMove(svg, { clientX: 500, clientY: 995 });
+    expect(queryByTestId('marquee')).toBeNull(); // below the slop nothing is drawn…
+    fireEvent.pointerUp(svg, { clientX: 500, clientY: 995 });
+
+    // …and nothing is caught: the selection is cleared, not replaced by the stack the jitter grazed.
+    expect(queryByTestId('group-frame')).toBeNull();
+    expect(container.querySelector('[stroke-dasharray="6 4"]')).toBeNull();
+  });
+
+  it('abandons a carried stack on pointercancel instead of leaving it translated forever', () => {
+    const onMoveStack = vi.fn();
+    const { svg, container, queryByTestId } = renderTop({ onMoveStack });
+    fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(svg, { clientX: 500, clientY: 1500 });
+    expect(queryByTestId('drop-preview')).not.toBeNull();
+
+    fireEvent.pointerCancel(svg, { clientX: 500, clientY: 1500 });
+
+    expect(queryByTestId('drop-preview')).toBeNull();
+    expect(stackEl(container, 0, 0).getAttribute('transform')).toBeNull(); // back where it stands
+    fireEvent.pointerUp(svg, { clientX: 500, clientY: 1500 });
+    expect(onMoveStack).not.toHaveBeenCalled(); // a cancelled gesture applies nothing
+  });
+
+  it('abandons a half-drawn band on pointercancel, selecting nothing', () => {
+    const { svg, queryByTestId } = renderTop();
+    fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
+    expect(queryByTestId('marquee')).not.toBeNull();
+
+    fireEvent.pointerCancel(svg, { clientX: 1500, clientY: 500 });
+
+    expect(queryByTestId('marquee')).toBeNull();
+    expect(queryByTestId('group-frame')).toBeNull();
+  });
+
+  it('a second pointer on bare floor ends the stack drag rather than running both gestures', () => {
+    const onMoveStack = vi.fn();
+    const { svg, container } = renderTop({ onMoveStack });
+    fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(svg, { clientX: 500, clientY: 1500 });
+
+    // second finger down on empty floor while the first still carries a stack
+    fireEvent.pointerDown(svg, { clientX: 3500, clientY: 1500 });
+    fireEvent.pointerMove(svg, { clientX: 3900, clientY: 1900 });
+    fireEvent.pointerUp(svg, { clientX: 3900, clientY: 1900 });
+
+    // the carried stack was let go, not left hovering at the old delta
+    expect(stackEl(container, 0, 0).getAttribute('transform')).toBeNull();
+    expect(onMoveStack).not.toHaveBeenCalled();
+  });
+
+  it('keeps the selection when a release outside the hold is not taken by the parent', () => {
+    const onDropOutside = vi.fn(() => false); // the parent looked, and the release was a miss
+    const { svg, container, getByTestId } = renderTop({ onDropOutside, onMoveStacks: vi.fn() });
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    dragFirstStack(svg, container, 500, 2600); // below the svg's box, but over nothing that takes cargo
+
+    expect(onDropOutside).toHaveBeenCalledTimes(1);
+    expect(getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+    expect(getByTestId('group-frame')).toHaveAttribute('y', '0'); // still on the floor, still there
+  });
+
+  it('clears the selection when the parent really took the stacks off the floor', () => {
+    const onDropOutside = vi.fn(() => true);
+    const { svg, container, queryByTestId } = renderTop({ onDropOutside, onMoveStacks: vi.fn() });
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    dragFirstStack(svg, container, 500, 2600);
+
+    expect(queryByTestId('group-frame')).toBeNull();
+  });
+
+  it('leaves the selection where it is when no group handler exists to move it', () => {
+    // A consumer that supplies onMoveStack but never opted into group moves: nothing is applied, so
+    // the selection must not be shifted to coordinates where no stack stands.
+    const { svg, container, getByTestId } = renderTop(); // no onMoveStacks
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    dragFirstStack(svg, container, 500, 1500); // a legal metre down — but nothing carries it out
+
+    expect(getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+    expect(getByTestId('group-frame')).toHaveAttribute('y', '0');
+  });
+
   it('keeps every selection affordance off the printed sheet', () => {
     const { svg, getByTestId, queryByTestId } = renderTop();
     fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });

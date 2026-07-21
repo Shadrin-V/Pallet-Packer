@@ -298,7 +298,9 @@ export function resolveGroupDrop(
         const d = target - pos;
         if (target >= 0 && target <= lim && Math.abs(d - aimD) <= tol) out.add(d);
       };
-      push(pos + aimD);
+      // The aimed delta itself is seeded above, unconditionally and once — it is the group's, not any
+      // member's, so no per-member bound may filter it away. (`push(pos + aimD)` would re-offer
+      // exactly `aimD` and read as if it did filter; it never could.)
       push(0);
       push(lim);
       for (const b of boxes) {

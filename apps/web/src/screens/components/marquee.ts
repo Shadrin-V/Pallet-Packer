@@ -19,7 +19,11 @@ export function normalizeRect(ax: number, ay: number, bx: number, by: number): M
   return { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay) };
 }
 
-/** Half-open interval overlap (touching edges do not overlap) — the engine's rule, edit.ts. */
+/** Half-open interval overlap for the marquee hit test: touching edges do not count as caught.
+ *  This is a UI question — "did the band reach this stack?" — not a placement rule; the engine
+ *  decides nothing here. It is half-open for the same reason the engine's own overlap test is:
+ *  pallets parked flush against each other share an edge, and a band that stopped exactly at one
+ *  stack's edge would otherwise also drag in its neighbour. */
 const overlaps1d = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 && b0 < a1;
 
 /**

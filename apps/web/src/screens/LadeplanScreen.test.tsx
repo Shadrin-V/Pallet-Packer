@@ -308,6 +308,61 @@ describe('LadeplanScreen — group selection', () => {
       expect(screen.getByTestId('edit-error')).toBeVisible();
     });
   });
+
+  it('drops a stale selection when a fresh plan is computed', () => {
+    // A selection is a list of floor coordinates. A recompute (loading mode, order grouping) repacks
+    // the hold underneath it, so those coordinates stop meaning the stacks the user picked — the
+    // frame would span one stack while the label still said two, and a later nudge would move
+    // whatever now stands there.
+    withStubbedGeometry({ left: 0, top: 0, width: 2000, height: 2000 }, () => {
+      const { container, rerender } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={load} layout={layout} />
+        </LocaleProvider>,
+      );
+      const svg = container.querySelector('svg[data-cutaway="top"]')!;
+      fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
+      fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
+      expect(screen.getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+
+      // The repacked plan keeps only one of the two selected columns.
+      const repacked: Layout = {
+        ...layout,
+        placements: layout.placements.filter((p) => p.x === 0 && p.y === 0),
+      };
+      rerender(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={load} layout={repacked} />
+        </LocaleProvider>,
+      );
+
+      expect(screen.queryByTestId('group-count')).toBeNull();
+      expect(screen.queryByTestId('group-frame')).toBeNull();
+      expect(container.querySelector('[stroke-dasharray="6 4"]')).toBeNull();
+    });
+  });
+
+  it('keeps the block selected through its own move — an edit is not a recompute', () => {
+    // The counterpart of the test above: manual edits never touch the `layout` prop, so the top view
+    // is NOT reset by them and the block can be nudged again without re-drawing the marquee.
+    const row: Load = {
+      vehicle: { id: 'v3', name: 'LKW', length: 3000, width: 1000, height: 1000 },
+      cargo: [{ ...load.cargo[0], quantity: 2, stacking: { stackable: false } }],
+    };
+    withStubbedGeometry({ left: 0, top: 0, width: 3000, height: 1000 }, () => {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={row} layout={calculateLayout(row)} />
+        </LocaleProvider>,
+      );
+      bandThenDrag(container, 'c1@0,0', 1500, 500); // one metre along the length
+
+      expect(screen.getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
+      // and it follows the block to where it now stands, rather than staying behind
+      expect(screen.getByTestId('group-frame')).toHaveAttribute('x', '1000');
+    });
+  });
 });
 
 describe('LadeplanScreen — figures (D1 + D3)', () => {
