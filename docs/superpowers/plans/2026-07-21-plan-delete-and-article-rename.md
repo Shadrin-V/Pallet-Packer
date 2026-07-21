@@ -33,7 +33,7 @@
 | `apps/web/src/screens/SetupScreen.tsx` | `armed` state + disarm effect, `removePosition` / `removeOrder`, `unboundFromErp`, prop threading |
 | `apps/web/src/App.tsx` | *untouched* — `orderColors` is rebuilt per calculate, nothing to prune |
 | `apps/web/src/ui/primitives.tsx` | `Button` gains a `danger` variant |
-| `packages/i18n/src/keys.ts`, `dictionaries/{de,ru}.ts` | five new keys |
+| `packages/i18n/src/keys.ts`, `dictionaries/{de,ru}.ts` | four new keys — 3 in Task 3, 1 in Task 4 |
 
 ---
 
