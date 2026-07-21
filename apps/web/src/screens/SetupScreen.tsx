@@ -30,14 +30,16 @@ import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { ArticleCombobox, type ArticleSuggestion } from './components/ArticleCombobox';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
-import type { Article, ArticleConstructiveField } from '@shadrin-v/contracts';
+import type { Article, ArticleErpField } from '@shadrin-v/contracts';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
 
-/** Which constructive fields are read-only because ERPNext supplied them for the bound article
- *  (Task 2 provenance) — never inferred from "value present", only from `ArticleSuggestion.erpFields`. */
-export type LockedFields = Partial<Record<ArticleConstructiveField, true>>;
+/** Which fields ERPNext supplied for the bound article, per ADR 022 provenance — never inferred
+ *  from "value present", only from `ArticleSuggestion.erpFields`. Dimensions read-only when locked
+ *  here; `name` is not wired to `readOnly` (Task 4) — the field doubles as the combobox's search
+ *  input, so typing must stay possible even when the name is ERP-owned. */
+export type LockedFields = Partial<Record<ArticleErpField, true>>;
 
 export interface PositionState {
   id: string;
@@ -207,7 +209,7 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
 /** Locked = exactly the constructive fields ERPNext supplied (Task 2 provenance). Never inferred
  *  from "value present": a value the user typed into a field ERPNext left blank must stay
  *  editable. Shared by picking a suggestion and by binding a row to the article a save returned. */
-export function lockedFieldsFrom(fields: readonly ArticleConstructiveField[]): LockedFields {
+export function lockedFieldsFrom(fields: readonly ArticleErpField[]): LockedFields {
   const locked: LockedFields = {};
   for (const f of fields) locked[f] = true;
   return locked;

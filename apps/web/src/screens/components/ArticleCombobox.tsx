@@ -2,7 +2,7 @@
 // come from the server catalogue via the DataProvider seam, plus the built-in pallet presets as a
 // static fallback that works offline and outside a provider.
 import { useEffect, useId, useRef, useState } from 'react';
-import type { Article, ArticleRules, ArticleConstructiveField } from '@shadrin-v/contracts';
+import type { Article, ArticleRules, ArticleErpField } from '@shadrin-v/contracts';
 import { useOptionalDataProvider } from '../../data/DataProviderContext';
 import { PALLET_PRESETS } from '../../data/presets';
 import { useT } from '../../i18n/LocaleContext';
@@ -16,8 +16,9 @@ export interface ArticleSuggestion {
   nestStepPairwise?: number;
   nestStepSequential?: number;
   rules?: Partial<ArticleRules>;
-  /** Constructive fields ERPNext actually supplied — these and only these are locked in the form. */
-  erpFields: readonly ArticleConstructiveField[];
+  /** Fields ERPNext actually supplied (dimensions and, per ADR 022, `name`) — these and only these
+   *  are locked in the form. */
+  erpFields: readonly ArticleErpField[];
   /** 'standard' = built-in EPAL preset: no article code, never saved to the catalogue. */
   origin: 'erp' | 'local' | 'standard';
 }

@@ -53,15 +53,61 @@ describe('article repo', () => {
     db.close();
   });
 
-  it('lets the user rename an ERP-sourced article', () => {
+  it('renames a LOCAL article — its name is nobody else’s', () => {
     const db = openDb(':memory:');
-    upsertFromErp(db, { itemCode: 'ABB101', name: 'Palette ERP', length: 800, width: 600, height: 144 }, { now: NOW });
-    const renamed = upsertArticle(
-      db,
-      { itemCode: 'ABB101', name: 'Meine Palette', length: 800, width: 600, height: 144, rules: { ...RULES } },
-      { now: '2026-07-20T11:00:00.000Z' },
-    );
-    expect(renamed.name).toBe('Meine Palette');
+    upsertArticle(db, { itemCode: 'LOC1', name: 'Alt', length: 1200, width: 800, height: 144, rules: RULES }, { now: NOW });
+
+    const out = upsertArticle(db, { itemCode: 'LOC1', name: 'Neu', length: 1200, width: 800, height: 144, rules: RULES }, { now: NOW });
+
+    expect(out.name).toBe('Neu');
+    expect(out.erpFields).not.toContain('name');
+    db.close();
+  });
+
+  it('refuses to rename an article whose name came from ERPNext', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'ABB101', name: 'Gitterbox', length: 1200, width: 800, height: 970 }, { now: NOW });
+
+    const out = upsertArticle(db, { itemCode: 'ABB101', name: 'Gitterbox NEU', length: 1200, width: 800, height: 970, rules: RULES }, { now: NOW });
+
+    expect(out.name).toBe('Gitterbox'); // the ERP name stands
+    expect(out.erpFields).toContain('name');
+    db.close();
+  });
+
+  it('records name in the provenance list on an ERP write', () => {
+    const db = openDb(':memory:');
+    const out = upsertFromErp(db, { itemCode: 'A', name: 'Palette', length: 1200 }, { now: NOW });
+    // ERPNext always supplies a name; dimensions it omitted stay unlocked.
+    expect([...out.erpFields].sort()).toEqual(['length', 'name']);
+    db.close();
+  });
+
+  it('lets a later ERP sync change the name — ERPNext owns it', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'A', name: 'Alt' }, { now: NOW });
+    const out = upsertFromErp(db, { itemCode: 'A', name: 'Neu' }, { now: NOW });
+    expect(out.name).toBe('Neu');
+    db.close();
+  });
+
+  it('keeps the name lock across a local edit of unlocked fields', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'A', name: 'ERP-Name', length: 1200 }, { now: NOW });
+
+    // the user fills a dimension ERPNext left blank, and tries to rename in the same write
+    const out = upsertArticle(db, { itemCode: 'A', name: 'Mein Name', length: 1200, width: 800, height: 144, rules: RULES }, { now: NOW });
+
+    expect(out.name).toBe('ERP-Name'); // rename refused
+    expect(out.width).toBe(800); // unlocked field accepted
+    expect(out.erpFields).toContain('name');
+    db.close();
+  });
+
+  it('does not lock the name of an article ERPNext has never touched', () => {
+    const db = openDb(':memory:');
+    const out = upsertArticle(db, { itemCode: 'LOC2', name: 'Eigen', length: 1000, width: 1000, height: 100, rules: RULES }, { now: NOW });
+    expect(out.erpFields).toEqual([]);
     db.close();
   });
 
@@ -153,8 +199,10 @@ describe('article repo', () => {
   it('reports the ERP-supplied field list on getArticle and searchArticles for an ERP-sourced article', () => {
     const db = openDb(':memory:');
     upsertFromErp(db, { itemCode: 'ERP1', name: 'Palette', length: 800, width: 600 }, { now: NOW });
-    expect(getArticle(db, 'ERP1')?.erpFields).toEqual(['length', 'width']);
-    expect(searchArticles(db, 'ERP1')[0].erpFields).toEqual(['length', 'width']);
+    // ERPNext always supplies a name (ADR 022), so it always joins the provenance list alongside
+    // whichever dimensions were sent.
+    expect(getArticle(db, 'ERP1')?.erpFields).toEqual(['length', 'width', 'name']);
+    expect(searchArticles(db, 'ERP1')[0].erpFields).toEqual(['length', 'width', 'name']);
     db.close();
   });
 
