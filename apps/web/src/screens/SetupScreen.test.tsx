@@ -810,4 +810,42 @@ describe('SetupScreen — removing from the calculation', () => {
 
     expect(onCalculate.mock.calls.at(-1)?.[1]?.orderColors).toEqual({ 'SO-2': 1 });
   });
+
+  // Finding 1: addOrder used to mint `SO-${os.length + 1}`, which is only collision-free while
+  // orders can never be removed. Delete the first of two orders, then add — the freed number
+  // ("2") must not be reused while SO-2 still exists, or the two orders collapse into one colour
+  // and one legend row downstream (buildOrderColors keys by orderId).
+  it('gives a new order an id distinct from every surviving order, even after deleting one (Finding 1)', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addOrder()); // SO-1, SO-2
+
+    await userEvent.click(orderTrashes()[0]); // delete SO-1 (the first)
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+    expect((orderIds()[0] as HTMLInputElement).value).toBe('SO-2');
+
+    await userEvent.click(addOrder());
+
+    const ids = orderIds().map((el) => (el as HTMLInputElement).value);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2); // distinct — no collision with the surviving SO-2
+  });
+
+  // Finding 3: ArmedDelete used to stopPropagation() on its own clicks, so arming a trash button
+  // never reached the document-level listener that collapses another row's OPEN details panel on
+  // any outside click. The narrower data-armed-delete fix must restore that collapse while still
+  // keeping the arming click from disarming itself (covered by ArmedDelete.test.tsx).
+  it('arming a trash on one row still collapses another row\'s open details panel', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition()); // two position rows in the same order
+
+    const detailsButtons = () => screen.getAllByRole('button', { name: 'details' });
+    await userEvent.click(detailsButtons()[0]); // open row 0's panel
+    expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(trashes()[1]); // arm row 1's trash — a click "elsewhere" for row 0
+
+    expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'false');
+    // …and the arming itself still held — the same click didn't disarm what it just armed
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+  });
 });

@@ -25,6 +25,8 @@ export const de: Dictionary = {
   'setup.demo.overloadHint': 'Mehr Ladung als hineinpasst — nicht platzierte Paletten und Gabelzugang von 2 Seiten.',
   'setup.demoLoaded': 'Demo {n}/{total}: {name} —',
   'setup.demoNext': 'Nochmal klicken für die nächste Demo.',
+  'setup.deletePosition': 'Position aus der Berechnung entfernen',
+  'setup.deleteOrder': 'Auftrag aus der Berechnung entfernen',
   'warehouse.title': 'Lager',
   'warehouse.hint':
     'Nicht platzierte Stapel, im Maßstab 1:1 wie im Laderaum. Einen Stapel in den Laderaum ziehen, um ihn zu setzen — oder einen Stapel aus dem Laderaum hierher ziehen, um Platz zu schaffen (z. B. zum Drehen).',
@@ -41,9 +43,6 @@ export const de: Dictionary = {
   'article.update': 'Artikel aktualisieren',
   'article.lockedHint': 'Wird in ERPNext geändert, Artikel {code}',
   'article.saveError': 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
-  'action.confirmDelete': 'Löschen bestätigen',
-  'setup.deletePosition': 'Position aus der Berechnung entfernen',
-  'setup.deleteOrder': 'Auftrag aus der Berechnung entfernen',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
@@ -134,6 +133,7 @@ export const de: Dictionary = {
   'action.exportFailed': 'Export fehlgeschlagen. Bitte erneut versuchen.',
   'action.reset': 'Zurücksetzen',
   'action.demo': 'Demo',
+  'action.confirmDelete': 'Löschen bestätigen',
   'setup.resetConfirm': 'Alle Eingaben und den Ladeplan zurücksetzen?',
 
   'results.totalPlaced': 'Platziert gesamt',

@@ -1,5 +1,5 @@
 // Token-only UI primitives (design-system §5). No hex in JSX — Tailwind classes map to CSS vars.
-import { useState, type ReactNode } from 'react';
+import { forwardRef, useState, type ReactNode } from 'react';
 
 /** Small "i" info button that reveals a hint popover on click (keyboard-accessible). */
 export function InfoHint({
@@ -179,19 +179,16 @@ export function Select<T extends string>({
   );
 }
 
-export function Button({
-  children,
-  onClick,
-  variant = 'secondary',
-  type = 'button',
-  disabled = false,
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
-  type?: 'button' | 'submit';
-  disabled?: boolean;
-}) {
+export const Button = forwardRef<
+  HTMLButtonElement,
+  {
+    children: ReactNode;
+    onClick?: () => void;
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+    type?: 'button' | 'submit';
+    disabled?: boolean;
+  }
+>(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false }, ref) {
   const base =
     'rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed';
   const styles = {
@@ -201,11 +198,11 @@ export function Button({
     danger: 'bg-danger text-[color:var(--danger-ink)] hover:opacity-90',
   }[variant];
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
+    <button ref={ref} type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
       {children}
     </button>
   );
-}
+});
 
 export function Chip({ children, tone = 'default' }: { children: ReactNode; tone?: 'default' | 'mint' }) {
   const styles =

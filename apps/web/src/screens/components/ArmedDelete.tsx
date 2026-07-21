@@ -4,6 +4,7 @@
 //
 // This component owns no arming state — the screen does, as a single value, so "exactly one button
 // is armed" holds by construction rather than by keeping per-row flags in step.
+import { useEffect, useRef } from 'react';
 import { Button } from '../../ui/primitives';
 
 export function ArmedDelete({
@@ -21,12 +22,25 @@ export function ArmedDelete({
   /** Visible text and accessible name once armed. */
   confirmLabel: string;
 }) {
+  // Review fix (Finding 2): arming swaps the trash <button> for a different <Button>, which drops
+  // keyboard focus to <body> — a keyboard/screen-reader user would have to tab from the top of the
+  // document to reach "Löschen bestätigen" inside the 4s arm window. Move focus onto it instead;
+  // its accessible name IS the announcement, so no separate aria-live region is needed.
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (armed) confirmRef.current?.focus();
+  }, [armed]);
+
   return (
-    // The screen disarms on any document click. Stopping propagation here keeps the very click that
-    // armed this button from travelling on and disarming it again in the same gesture.
-    <span onClick={(e) => e.stopPropagation()} className="inline-flex shrink-0">
+    // Review fix (Finding 3): this used to be `onClick={stopPropagation}`, which also swallowed the
+    // arming click before it could reach the document-level listener (SetupScreen) that collapses
+    // another row's open details panel on ANY outside click — so arming a trash stopped collapsing
+    // other rows. `data-armed-delete` is a narrower hook: SetupScreen's disarm-on-any-click listener
+    // ignores clicks inside it (same `closest(...)` idiom as SetupScreen.tsx's own rootRef check and
+    // ArticleCombobox.tsx), so the arming click still bubbles for everything else it should affect.
+    <span data-armed-delete="" className="inline-flex shrink-0">
       {armed ? (
-        <Button variant="danger" onClick={onConfirm}>
+        <Button ref={confirmRef} variant="danger" onClick={onConfirm}>
           {confirmLabel}
         </Button>
       ) : (

@@ -35,17 +35,34 @@ describe('ArmedDelete', () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
-  it('keeps its own clicks from reaching the document, so arming does not immediately disarm', async () => {
-    const onDocClick = vi.fn();
+  it('marks its wrapper with data-armed-delete so a parent disarm-on-any-click listener can exempt the arming click — arming does not disarm itself', async () => {
+    // Mirrors the real caller (SetupScreen): a document click listener that disarms on any click
+    // EXCEPT one that lands inside [data-armed-delete]. The arming click must not trip it, or the
+    // very click that arms the control would immediately disarm it again in the same gesture.
+    const disarm = vi.fn();
+    const onDocClick = (e: MouseEvent) => {
+      if ((e.target as Element).closest?.('[data-armed-delete]')) return;
+      disarm();
+    };
     document.addEventListener('click', onDocClick);
     try {
       render(<ArmedDelete armed={false} onArm={vi.fn()} onConfirm={vi.fn()} {...props} />);
 
       await userEvent.click(screen.getByRole('button', { name: 'Entfernen' }));
 
-      expect(onDocClick).not.toHaveBeenCalled();
+      expect(disarm).not.toHaveBeenCalled();
     } finally {
       document.removeEventListener('click', onDocClick);
     }
+  });
+
+  it('moves keyboard focus to the confirm button once arming makes it appear', () => {
+    const { rerender } = render(
+      <ArmedDelete armed={false} onArm={vi.fn()} onConfirm={vi.fn()} {...props} />,
+    );
+
+    rerender(<ArmedDelete armed onArm={vi.fn()} onConfirm={vi.fn()} {...props} />);
+
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toHaveFocus();
   });
 });

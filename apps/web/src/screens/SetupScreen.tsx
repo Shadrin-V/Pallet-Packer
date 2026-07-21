@@ -156,9 +156,22 @@ const emptyPosition = (): PositionState => ({
 const emptyOrder = (n: number): OrderState => ({
   key: uid(),
   orderId: `SO-${n}`,
-  colorIndex: n - 1, // 1-based n → 0-based palette slot; addOrder passes os.length + 1
+  colorIndex: n - 1, // 1-based n → 0-based palette slot; addOrder passes nextOrderNumber(os)
   positions: [emptyPosition()],
 });
+
+/** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
+ *  Deleting an order frees no number for reuse while others survive it — otherwise a later
+ *  addOrder can mint an id (and, via emptyOrder, a colorIndex) that collides with a surviving
+ *  order (Finding 1: create SO-1/SO-2, delete SO-1, add → both `os.length + 1` formulas would
+ *  land on 2 again). Orders renamed to non-`SO-n` ids are simply not counted. */
+function nextOrderNumber(os: OrderState[]): number {
+  const nums = os
+    .map((o) => /^SO-(\d+)$/.exec(o.orderId)?.[1])
+    .filter((s): s is string => s !== undefined)
+    .map(Number);
+  return (nums.length ? Math.max(...nums) : 0) + 1;
+}
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
 
@@ -274,12 +287,19 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') disarm();
     };
-    // ArmedDelete stops its own clicks, so this only ever sees clicks somewhere else.
-    document.addEventListener('click', disarm);
+    // The arming click itself bubbles to the document (Finding 3 review fix: ArmedDelete no longer
+    // stops propagation), so ignore clicks inside the armed-delete control — otherwise the very
+    // click that arms a button would disarm it again in the same gesture. Same `closest(...)` idiom
+    // as the rootRef checks at SetupScreen.tsx (PositionRow's own listener) and ArticleCombobox.tsx.
+    const onDocClick = (e: MouseEvent) => {
+      if ((e.target as Element).closest?.('[data-armed-delete]')) return;
+      disarm();
+    };
+    document.addEventListener('click', onDocClick);
     document.addEventListener('keydown', onKey);
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('click', disarm);
+      document.removeEventListener('click', onDocClick);
       document.removeEventListener('keydown', onKey);
     };
   }, [armed]);
@@ -342,7 +362,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       ),
     );
 
-  const addOrder = () => setOrders((os) => [...os, emptyOrder(os.length + 1)]);
+  const addOrder = () => setOrders((os) => [...os, emptyOrder(nextOrderNumber(os))]);
   // Reorder an order in the list. List order = order priority → zones (strict) and packing queue
   // (densityFirst) follow it; the engine/contract are untouched (ADR 017). 4bj.11.
   const moveOrder = (key: string, dir: -1 | 1) =>
@@ -365,9 +385,12 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   const removePosition = (okey: string, pid: string) => {
     setArmed(null);
     setOrders((os) => {
+      // Drop-if-now-empty applies only to the order being edited (`okey`) — filtering ALL orders
+      // would also delete an unrelated order that happened to already be empty (Finding 4; not
+      // reachable through the UI today, since the screen never lets an order go empty).
       const next = os
         .map((o) => (o.key === okey ? { ...o, positions: o.positions.filter((p) => p.id !== pid) } : o))
-        .filter((o) => o.positions.length > 0);
+        .filter((o) => o.key !== okey || o.positions.length > 0);
       return next.length > 0 ? next : [emptyOrder(1)];
     });
   };
