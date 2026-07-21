@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
-import { SetupScreen } from './SetupScreen';
+import { SetupScreen, keepsArmed } from './SetupScreen';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
 import type { Article, ArticleInput } from '@shadrin-v/contracts';
@@ -904,6 +904,66 @@ describe('SetupScreen — removing from the calculation', () => {
   // prop via `rerender` on the isolated component — a prop flip, not a real gesture. Arm the trash
   // button here by an actual KEYBOARD activation (Enter on the focused button, as a real user
   // would) on the live SetupScreen, and check focus lands on the confirm button that replaces it.
+  // LKWkalk-yxn — the browser-only arming defect. In Chrome the click that arms a trash button has
+  // the <svg> as its target; React 18 flushes discrete-event updates synchronously, so the trash and
+  // its <svg> are already unmounted by the time the click reaches the document-level disarm
+  // listener. `closest()` on a DETACHED node walks only its own orphan subtree, finds no
+  // `[data-armed-delete]`, and the guard concludes "clicked outside" — the gesture that armed the
+  // control disarmed it in the same breath, so it could never be armed at all outside jsdom (where
+  // `act()` defers the re-render until after dispatch, hiding the race from every existing test).
+  //
+  // Reproduce the condition head-on: press a node that is attached at dispatch time and detach it
+  // mid-dispatch (a capture-phase listener stands in for React's synchronous flush), leaving its
+  // `[data-armed-delete]` wrapper in place exactly as React does. The armed control must survive.
+  // A hand-built DOM stand-in, not the live row, so that nothing React owns is yanked out from
+  // under it — the guard cannot tell the difference, only attachment matters.
+  const pressAndDetachMidDispatch = (type: 'pointerDown' | 'click') => {
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-armed-delete', '');
+    const button = document.createElement('button');
+    const icon = document.createElement('span'); // stands in for the trash <svg>
+    button.append(icon);
+    wrapper.append(button);
+    document.body.append(wrapper);
+    const detach = () => button.remove(); // React swaps the wrapper's child, keeping the wrapper
+    document.addEventListener(type === 'pointerDown' ? 'pointerdown' : 'click', detach, true);
+    try {
+      fireEvent[type](icon);
+    } finally {
+      document.removeEventListener(type === 'pointerDown' ? 'pointerdown' : 'click', detach, true);
+      wrapper.remove();
+    }
+  };
+
+  it.each(['pointerDown', 'click'] as const)(
+    'stays armed when the %s that would disarm it has a target detached mid-dispatch (LKWkalk-yxn)',
+    async (type) => {
+      renderSetup(() => {});
+      await userEvent.click(trashes()[0]);
+      expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+
+      await act(async () => {
+        pressAndDetachMidDispatch(type);
+      });
+
+      expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+    },
+  );
+
+  // …while a press on a node that really is outside still disarms — the detached-target exemption
+  // must not turn the guard into "never disarm".
+  it('a pointerdown outside the control still disarms it', async () => {
+    renderSetup(() => {});
+    await userEvent.click(trashes()[0]);
+
+    await act(async () => {
+      fireEvent.pointerDown(screen.getAllByLabelText('Länge')[0]);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(rows()).toHaveLength(1); // …and disarming is not deleting
+  });
+
   it('arming a trash button by keyboard (Enter) moves focus to the confirm button', async () => {
     renderSetup(() => {});
     trashes()[0].focus();
@@ -911,6 +971,46 @@ describe('SetupScreen — removing from the calculation', () => {
     await userEvent.keyboard('{Enter}');
 
     expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toHaveFocus();
+  });
+});
+
+// The guard is exported (rather than inline in the effect) so the detached-target rule can be
+// stated once, plainly, next to the integration test above that exercises it through a real
+// dispatch. Both layers matter: this one names the rule, that one proves it is wired up.
+describe('keepsArmed — the disarm guard', () => {
+  const build = () => {
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-armed-delete', '');
+    const inner = document.createElement('span');
+    wrapper.append(inner);
+    document.body.append(wrapper);
+    return { wrapper, inner };
+  };
+
+  it('keeps the control armed for a press inside an armed-delete wrapper', () => {
+    const { wrapper, inner } = build();
+    expect(keepsArmed(inner)).toBe(true);
+    wrapper.remove();
+  });
+
+  it('lets a press on an unrelated attached element disarm', () => {
+    const outside = document.createElement('div');
+    document.body.append(outside);
+    expect(keepsArmed(outside)).toBe(false);
+    outside.remove();
+  });
+
+  it('keeps the control armed for a target detached mid-dispatch, where closest() goes blind', () => {
+    const { wrapper, inner } = build();
+    inner.remove(); // detached: closest() now walks an orphan subtree with no wrapper in it
+    expect(inner.closest('[data-armed-delete]')).toBeNull(); // the trap the old guard fell into
+    expect(keepsArmed(inner)).toBe(true);
+    wrapper.remove();
+  });
+
+  it('keeps the control armed for a target that is not an Element (no closest) or is null', () => {
+    expect(keepsArmed(null)).toBe(true);
+    expect(keepsArmed(document)).toBe(true);
   });
 });
 

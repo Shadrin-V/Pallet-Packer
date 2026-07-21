@@ -137,6 +137,27 @@ function saveSetup(s: PersistedSetup): void {
 /** How long an armed delete waits before disarming itself (ADR 022). */
 const ARM_TIMEOUT_MS = 4000;
 
+/**
+ * Guard for the document-level disarm listener: `true` means this event must NOT disarm the armed
+ * delete. Exported only so a test can pin the detached-target case (LKWkalk-yxn) without having to
+ * reach into a closure.
+ *
+ * Two ways an event is exempt:
+ *  - it landed inside an armed-delete control (`[data-armed-delete]`) — same `closest(...)` idiom as
+ *    the rootRef checks in PositionRow and ArticleCombobox;
+ *  - its target is no longer connected to the document. A node detached mid-dispatch (React 18
+ *    flushes discrete-event updates synchronously, so the trash button unmounts while its own click
+ *    is still bubbling) carries no usable ancestry: `closest` walks the orphan subtree only and
+ *    returns null, which would read as "clicked outside" and disarm. A detached target never proves
+ *    an outside press, so the safe answer is to keep the control armed.
+ */
+export function keepsArmed(target: EventTarget | null): boolean {
+  const el = target as (Element & { isConnected?: boolean }) | null;
+  if (!el || typeof el.closest !== 'function') return true;
+  if (el.isConnected === false) return true;
+  return el.closest('[data-armed-delete]') !== null;
+}
+
 const uid = () => crypto.randomUUID();
 
 const emptyPosition = (): PositionState => ({
@@ -312,19 +333,26 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') disarm();
     };
-    // The arming click itself bubbles to the document (Finding 3 review fix: ArmedDelete no longer
-    // stops propagation), so ignore clicks inside the armed-delete control — otherwise the very
-    // click that arms a button would disarm it again in the same gesture. Same `closest(...)` idiom
-    // as the rootRef checks at SetupScreen.tsx (PositionRow's own listener) and ArticleCombobox.tsx.
-    const onDocClick = (e: MouseEvent) => {
-      if ((e.target as Element).closest?.('[data-armed-delete]')) return;
+    const onOutside = (e: Event) => {
+      if (keepsArmed(e.target)) return;
       disarm();
     };
-    document.addEventListener('click', onDocClick);
+    // LKWkalk-yxn: disarm on POINTERDOWN, not on click. In a real browser the click that arms a
+    // trash button carries the <svg> as its target; React 18 flushes discrete-event state updates
+    // synchronously, so the trash (and its <svg>) is already unmounted by the time the click
+    // reaches this document listener — the guard saw a detached node, `closest` found nothing, and
+    // the very gesture that armed the control disarmed it again. Nobody could ever arm it outside
+    // jsdom, where `act()` defers the re-render until after dispatch. A pointerdown is evaluated
+    // before that re-render (and, for the arming press, before `armed` is even set — so this
+    // listener does not exist yet). The click listener stays as a keyboard-activation fallback
+    // (Enter on some other button fires click but no pointerdown); `keepsArmed` makes both safe.
+    document.addEventListener('pointerdown', onOutside);
+    document.addEventListener('click', onOutside);
     document.addEventListener('keydown', onKey);
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('pointerdown', onOutside);
+      document.removeEventListener('click', onOutside);
       document.removeEventListener('keydown', onKey);
     };
   }, [armed]);
