@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import type { CargoType, Layout, Load } from '../model/index';
 import { calculateLayout } from '../api/api';
 import { findGeometryViolations } from '../geometry/geometry';
-import { moveStack, rotateStack, unplaceStack, placeStack, stackBuffer } from './edit';
+import { moveStack, rotateStack, unplaceStack, placeStack, stackBuffer, unplaceStacks, moveStacks } from './edit';
+import type { StackRef } from './edit';
 
 const cargo = (over: Partial<CargoType> & Pick<CargoType, 'id' | 'name'>): CargoType => ({
   length: 1200,
@@ -355,5 +356,188 @@ describe('stackBuffer', () => {
       y: layout.placements[0].y,
     });
     expect(stackBuffer(cubes, next)).toEqual([{ cargoTypeId: 'c', units: 1 }]);
+  });
+});
+
+describe('unplaceStacks', () => {
+  it('takes every named column off the floor in one call', () => {
+    const layout = calculateLayout(cubes);
+    const before = totalUnits(cubes, layout, 'c');
+    const refs = layout.placements.slice(0, 2).map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+
+    const { layout: next, error } = unplaceStacks(cubes, layout, refs);
+
+    expect(error).toBeUndefined();
+    expect(next.placements).toHaveLength(layout.placements.length - 2);
+    expect(next.unplaced.find((u) => u.cargoTypeId === 'c')?.count).toBe(2);
+    expect(totalUnits(cubes, next, 'c')).toBe(before); // nothing invented or lost
+    expect(findGeometryViolations(cubes, next)).toEqual([]);
+  });
+
+  it('treats a repeated ref as one stack — a selection is a set', () => {
+    const layout = calculateLayout(cubes);
+    const p = layout.placements[0];
+    const ref = { cargoTypeId: 'c', x: p.x, y: p.y };
+
+    const { layout: next, error } = unplaceStacks(cubes, layout, [ref, ref]);
+
+    expect(error).toBeUndefined();
+    expect(next.placements).toHaveLength(layout.placements.length - 1);
+    expect(next.unplaced.find((u) => u.cargoTypeId === 'c')?.count).toBe(1);
+  });
+
+  it('is a no-op for an empty selection', () => {
+    const layout = calculateLayout(cubes);
+    const { layout: next, error } = unplaceStacks(cubes, layout, []);
+    expect(error).toBeUndefined();
+    expect(next).toBe(layout);
+  });
+
+  it('refuses the WHOLE call when one ref names no column', () => {
+    const layout = calculateLayout(cubes);
+    const good = { cargoTypeId: 'c', x: layout.placements[0].x, y: layout.placements[0].y };
+
+    const { layout: next, error } = unplaceStacks(cubes, layout, [good, { cargoTypeId: 'c', x: 12345, y: 0 }]);
+
+    expect(error?.code).toBe('ERR_EDIT_NO_STACK');
+    expect(next).toBe(layout); // the good ref was NOT applied
+  });
+});
+
+describe('moveStacks', () => {
+  /** 4×2 m hold, 1×1 m cubes: 8 floor positions, so a group has room to shift by one cell. */
+  const wide: Load = {
+    vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 1000 },
+    cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 4 })],
+  };
+
+  /** Every pairwise offset within a set of points — the shape of the group, position-independent. */
+  const shape = (pts: { x: number; y: number }[]): string =>
+    pts
+      .map((a) => pts.map((b) => `${a.x - b.x},${a.y - b.y}`).join('|'))
+      .sort()
+      .join(';');
+
+  it('preserves the mutual arrangement of the group', () => {
+    const layout = calculateLayout(wide);
+    // The dense-floor packer fills a full shelf across the WIDTH before starting a new one along the
+    // length (ADR 017), so `wide`'s 4 cubes land as a 2×2 block flush against both side walls — width
+    // has no slack at all. The only free floor is further along the LENGTH, past the far shelf: pick
+    // the shelf at the largest x and slide it one cell deeper.
+    const refs = [...layout.placements]
+      .sort((a, b) => a.x - b.x || a.y - b.y)
+      .slice(-2)
+      .map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+    const before = shape(refs);
+
+    const { layout: next, error } = moveStacks(wide, layout, refs, 1000, 0);
+
+    expect(error).toBeUndefined();
+    // Read the moved columns back OUT of the resulting layout — asserting on the refs we passed in
+    // would only re-check our own arithmetic, not what moveStacks actually did.
+    const moved = refs.map((r) => {
+      const p = next.placements.find((q) => q.x === r.x + 1000 && q.y === r.y);
+      expect(p).toBeDefined();
+      return { x: p!.x, y: p!.y };
+    });
+    expect(shape(moved)).toBe(before);
+    expect(findGeometryViolations(wide, next)).toEqual([]);
+  });
+
+  it('shifts every placement of every selected column, including upper tiers', () => {
+    const tall: Load = {
+      vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 3000 },
+      cargo: [cargo({ id: 's', name: 'Stackable', length: 1000, width: 1000, height: 1000, quantity: 6, stacking: { stackable: true } })],
+    };
+    const layout = calculateLayout(tall);
+    const first = layout.placements[0];
+    const ref = { cargoTypeId: 's', x: first.x, y: first.y };
+    const tiers = layout.placements.filter((p) => p.x === ref.x && p.y === ref.y).length;
+    expect(tiers).toBeGreaterThan(1);
+
+    // Same shelf-filling behaviour as above: the two columns of `tall` sit side by side across the
+    // full width (y = 0 and y = 1000), so a shift along y would land the first column on the second,
+    // unselected one. Shift along the length instead, into genuinely free floor.
+    const { layout: next, error } = moveStacks(tall, layout, [ref], 1000, 0);
+
+    expect(error).toBeUndefined();
+    expect(next.placements.filter((p) => p.x === ref.x + 1000 && p.y === ref.y)).toHaveLength(tiers);
+    expect(next.placements.filter((p) => p.x === ref.x && p.y === ref.y)).toHaveLength(0);
+  });
+
+  it('refuses the whole move when ONE member would leave the hold, leaving the layout untouched', () => {
+    const layout = calculateLayout(wide);
+    const refs = layout.placements.map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+
+    const { layout: next, error } = moveStacks(wide, layout, refs, 100000, 0);
+
+    expect(error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
+    expect(next).toBe(layout); // identity: not a rebuilt copy, the ORIGINAL object
+  });
+
+  /**
+   * A hold with a free cell to the right of the last stack: 3 cubes in a 4 m row. Width is exactly
+   * ONE cell (1 m) — with any more width the shelf packer (ADR 017) would fill across width before
+   * length, giving an L-shape instead of a single-file row.
+   */
+  const row: Load = {
+    vehicle: { id: 'v', name: 'V', length: 4000, width: 1000, height: 1000 },
+    cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 3 })],
+  };
+  /** The stacks of `row`, left to right. */
+  const rowRefs = (layout: Layout): StackRef[] =>
+    [...new Map(layout.placements.map((p) => [`${p.x},${p.y}`, p])).values()]
+      .sort((a, b) => a.x - b.x || a.y - b.y)
+      .map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+
+  it('refuses the whole move when a member would land on an unselected stack', () => {
+    const layout = calculateLayout(row);
+    const refs = rowRefs(layout);
+    // Neighbours one cell apart, and only the LEFT one moves — so it lands on a stack that stays.
+    const step = refs[1].x - refs[0].x;
+    expect(step).toBeGreaterThan(0);
+    expect(refs[1].y).toBe(refs[0].y);
+
+    const { layout: next, error } = moveStacks(row, layout, [refs[0]], step, 0);
+
+    expect(error?.code).toBe('ERR_EDIT_OVERLAP');
+    expect(next).toBe(layout);
+  });
+
+  it('lets the group slide THROUGH its own members — they move together', () => {
+    const layout = calculateLayout(row);
+    const refs = rowRefs(layout);
+    const step = refs[1].x - refs[0].x;
+    // The SAME shift that was just refused for one stack is legal for the whole row: each member
+    // lands where the next one stood, and that one is moving too.
+    const { layout: next, error } = moveStacks(row, layout, refs, step, 0);
+
+    expect(error).toBeUndefined();
+    expect(findGeometryViolations(row, next)).toEqual([]);
+    expect(next.placements.some((p) => p.x === refs[refs.length - 1].x + step)).toBe(true);
+  });
+
+  it('is a no-op for an empty selection and for a zero delta', () => {
+    const layout = calculateLayout(wide);
+    const refs = [{ cargoTypeId: 'c', x: layout.placements[0].x, y: layout.placements[0].y }];
+    expect(moveStacks(wide, layout, [], 500, 500).layout).toBe(layout);
+    expect(moveStacks(wide, layout, refs, 0, 0).layout).toBe(layout);
+    expect(moveStacks(wide, layout, [], 500, 500).error).toBeUndefined();
+    expect(moveStacks(wide, layout, refs, 0, 0).error).toBeUndefined();
+  });
+
+  it('refuses when a ref names no column', () => {
+    const layout = calculateLayout(wide);
+    const { layout: next, error } = moveStacks(wide, layout, [{ cargoTypeId: 'c', x: 12345, y: 0 }], 0, 1000);
+    expect(error?.code).toBe('ERR_EDIT_NO_STACK');
+    expect(next).toBe(layout);
+  });
+
+  it('conserves units — a move never invents or drops cargo', () => {
+    const layout = calculateLayout(wide);
+    const before = totalUnits(wide, layout, 'c');
+    const refs = layout.placements.slice(0, 2).map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+    const { layout: next } = moveStacks(wide, layout, refs, 0, 0);
+    expect(totalUnits(wide, next, 'c')).toBe(before);
   });
 });
