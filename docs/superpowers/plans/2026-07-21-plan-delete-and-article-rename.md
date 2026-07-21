@@ -1005,8 +1005,10 @@ Read the most recent entry at the top of `docs/CHANGELOG.md` and match its headi
 - Имя артикула вошло в провенанс ERPNext ([ADR 022](adr/022-article-name-provenance-and-confirm-patterns.md)):
   правка имени в форме больше не создаёт молча второй артикул, а объясняет, что имя меняется в
   ERPNext. Переименование локального артикула по-прежнему работает.
-- Контракт `0.15.0` — ломающее переименование типа: `ArticleConstructiveField` → `ArticleErpField`,
-  `ARTICLE_CONSTRUCTIVE_FIELDS` → `ARTICLE_ERP_FIELDS`, в списке появилось `'name'`.
+- DTO каталога (`packages/contracts`) — ломающее переименование типа:
+  `ArticleConstructiveField` → `ArticleErpField`, `ARTICLE_CONSTRUCTIVE_FIELDS` → `ARTICLE_ERP_FIELDS`,
+  в списке появилось `'name'`. Контракт движка (`docs/api-contract.md`) НЕ меняется — он остаётся
+  `0.14.0`, и его версия обязана и дальше совпадать с `ENGINE_CONTRACT_VERSION`.
 ```
 
 - [ ] **Step 2: Verify**
