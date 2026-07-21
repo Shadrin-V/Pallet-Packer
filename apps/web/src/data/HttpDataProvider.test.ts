@@ -66,4 +66,26 @@ describe('HttpDataProvider', () => {
       expect.objectContaining({ method: 'PUT', body: JSON.stringify(a) }),
     );
   });
+
+  // LKWkalk-7wb: in a browser `fetch` must be called with `window` as its receiver — a bare method
+  // call passes the provider instead and Chrome answers "Illegal invocation", so every catalogue
+  // request died before a single byte hit the network. Node's fetch does not check the receiver,
+  // which is why this went unnoticed under jsdom; the stand-in below reproduces the browser rule.
+  it('calls the global fetch with the global object as receiver', async () => {
+    const realFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = function (this: unknown, input: string) {
+      if (this !== globalThis && this !== undefined) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      calls.push(input);
+      return Promise.resolve(new Response('[]', { status: 200 }));
+    } as unknown as typeof fetch;
+    try {
+      await expect(new HttpDataProvider().searchArticles('QA')).resolves.toEqual([]);
+      expect(calls).toEqual(['/api/articles?q=QA']);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });
