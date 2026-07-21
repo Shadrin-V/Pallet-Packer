@@ -67,6 +67,7 @@ export const de: Dictionary = {
   'ladeplan.pltAbbr': 'Pal.',
   'ladeplan.notPlaced': '{n} nicht platziert',
   'ladeplan.rotateStack': 'Stapel drehen',
+  'ladeplan.selection.count': '{n} Stapel ausgewählt',
   'ladeplan.discardEditsConfirm':
     'Manuelle Änderungen an der Anordnung gehen beim Strategiewechsel verloren. Fortfahren?',
   'ladeplan.emptyHint': 'Aufträge ausfüllen und «Berechnen» drücken — der Ladeplan erscheint hier.',
