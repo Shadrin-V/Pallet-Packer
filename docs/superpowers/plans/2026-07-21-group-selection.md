@@ -36,7 +36,7 @@
 - Produces: `ENGINE_CONTRACT_VERSION === '0.14.0'`. Documents the signatures Tasks 2 and 3 implement:
   - `unplaceStacks(load: Load, layout: Layout, refs: StackRef[]): EditResult`
   - `moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: number, dy: number): EditResult`
-  - `resolveGroupDrop(load: Load, layout: Layout, refs: StackRef[], aim: GroupAim, opts?: ResolveDropOptions): GroupDropResolution`
+  - `resolveGroupDrop(load: Load, layout: Layout, refs: StackRef[], aim: GroupAim, opts?: GroupDropOptions): GroupDropResolution`
   - `interface GroupAim { dx: number; dy: number }`
   - `interface GroupDropResolution { dx: number; dy: number; ok: boolean; error?: EngineError; blocking: StackRef[] }`
 
@@ -522,9 +522,10 @@ git commit -m "feat(engine): unplaceStacks and moveStacks — rigid group edits 
 - Test: `packages/engine/src/packing/resolveDrop.test.ts` (append a new describe block)
 
 **Interfaces:**
-- Consumes: `refKey` from `./edit` (Task 2). Existing `resolveDrop.ts` internals: `overlaps1d`, `err`, `Box`, `ResolveDropOptions`.
+- Consumes: `refKey` from `./edit` (Task 2). Existing `resolveDrop.ts` internals: `overlaps1d`, `err`, `Box`, `floorBoxes`.
 - Produces:
   - `interface GroupAim { dx: number; dy: number }`
+  - `interface GroupDropOptions { tolerance?: number }`
   - `interface GroupDropResolution { dx: number; dy: number; ok: boolean; error?: EngineError; blocking: StackRef[] }`
   - `resolveGroupDrop(load, layout, refs, aim, opts?): GroupDropResolution`
 
@@ -694,6 +695,17 @@ export interface GroupAim {
   dy: number;
 }
 
+/**
+ * Options for the group magnet. Deliberately NOT ResolveDropOptions: that type's `exclude` names the
+ * one stack a single-stack drag must not trip over, and a group excludes its own members
+ * structurally — there is no second meaning for it here, so the field is not offered at all.
+ */
+export interface GroupDropOptions {
+  /** How far the magnet may pull, in mm. Applied identically to every member; the group is rigid.
+   *  Default: the tightest member's own default (half its shorter side). */
+  tolerance?: number;
+}
+
 /** Where the whole group would land, and whether it may. */
 export interface GroupDropResolution {
   dx: number;
@@ -721,7 +733,7 @@ export function resolveGroupDrop(
   layout: Layout,
   refs: StackRef[],
   aim: GroupAim,
-  opts: ResolveDropOptions = {},
+  opts: GroupDropOptions = {},
 ): GroupDropResolution {
   const refuse = (error: EngineError, blocking: StackRef[] = []): GroupDropResolution => ({
     dx: aim.dx,
@@ -863,7 +875,7 @@ In `packages/engine/src/index.ts`, extend the resolveDrop lines:
 
 ```ts
 export { resolveDrop, resolveGroupDrop } from './packing/resolveDrop';
-export type { DropResolution, ResolveDropOptions, GroupAim, GroupDropResolution } from './packing/resolveDrop';
+export type { DropResolution, ResolveDropOptions, GroupAim, GroupDropOptions, GroupDropResolution } from './packing/resolveDrop';
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
