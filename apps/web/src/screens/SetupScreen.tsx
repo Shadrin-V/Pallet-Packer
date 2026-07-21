@@ -410,8 +410,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // fell to <body> and a keyboard user lost their place. The "+ Auftrag hinzufügen" button above
   // the order list (`addOrderRef`) is the target: it is the one control guaranteed to survive
   // every delete outcome (a single position, a whole order, or the cascade that replaces the last
-  // order/position with a fresh empty one), unlike a specific row's own "+ Position" button, which
-  // may itself have just been removed along with its order.
+  // order/position with a fresh empty one). A row-local target would have to differ per outcome —
+  // after a position delete the order's own "+ Position" survives, but after an order delete or a
+  // cascade it does not — and one stable landing point beats three conditional ones.
   const addOrderRef = useRef<HTMLButtonElement>(null);
 
   /** Remove one position from the calculation. The catalogue article is untouched — this says
