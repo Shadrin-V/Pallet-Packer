@@ -150,6 +150,11 @@ Add a new section after the magnet section (`### Магнит постановк
 ```ts
 interface GroupAim { dx: number; dy: number }
 
+interface GroupDropOptions {
+  /** Насколько далеко магнит может подтянуть, мм. Применяется одинаково ко всем участницам. */
+  tolerance?: number;
+}
+
 interface GroupDropResolution {
   dx: number;
   dy: number;
@@ -166,7 +171,7 @@ resolveGroupDrop(
   layout: Layout,
   refs: StackRef[],
   aim: GroupAim,
-  opts?: ResolveDropOptions,
+  opts?: GroupDropOptions,
 ): GroupDropResolution
 ```
 
