@@ -926,6 +926,11 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     const box = screen.getByLabelText('Artikel');
     await userEvent.type(box, 'Eig');
     await userEvent.click(await screen.findByText('Eigenbau'));
+    // The notice lives inside the details/nesting panel, which picking a suggestion auto-collapses
+    // (rules.state 'entschachtelt' here too) — reopen it, same idiom as the sibling tests above,
+    // otherwise this assertion is vacuous: queryByText finds nothing whether or not the notice's
+    // condition holds, because the panel containing it is simply not rendered.
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
     await userEvent.type(box, ' 2');
 
     expect(screen.queryByText(/ERPNext/)).toBeNull();
@@ -968,5 +973,24 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     await userEvent.click(screen.getByRole('button', { name: 'details' }));
 
     expect(screen.queryByText(/ERPNext/)).toBeNull();
+  });
+
+  it('keeps warning after retyping the exact ERP name back, so the row is not silently re-forked (Finding 2)', async () => {
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' NEU');
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+
+    // Retype the exact original ERP name. The row is STILL unbound from ERPNext — a Save here would
+    // create a brand-new article reusing the ERP article's name — so the notice must not disappear
+    // just because the text happens to match again.
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Gitterbox');
+
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
   });
 });

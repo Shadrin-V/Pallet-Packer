@@ -950,7 +950,12 @@ function PositionRow({
               {tt(p.articleCode ? 'article.update' : 'article.save')}
             </Button>
             {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
-            {p.unboundFromErp && p.name.trim() !== p.unboundFromErp.name && (
+            {/* Finding 2 (review): show whenever the row is unbound from an ERP-named article, not
+                only while the typed text still differs from the remembered name. Typing the exact
+                ERP name back does not re-bind the row — Save still creates a brand-new article — so
+                hiding the notice the moment the text matches again would silently re-open the very
+                duplicate-fork bug this notice exists to prevent. */}
+            {p.unboundFromErp && (
               <p className="text-caption text-muted">{tt('article.renameInErp')}</p>
             )}
           </div>
