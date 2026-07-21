@@ -3,7 +3,8 @@
 - Статус: принято
 - Дата: 2026-07-21
 - Задача: `LKWkalk-yxn`
-- Контракт: `0.15.0` (ломающее: переименование типа)
+- Контракт: не движковый. Меняются DTO артикулов в `packages/contracts` (пакет без версии,
+  `0.0.0`); `docs/api-contract.md` и `ENGINE_CONTRACT_VERSION` (`0.14.0`) не затрагиваются.
 - Связано: `docs/superpowers/specs/2026-07-20-article-autocomplete-design.md`
 
 ## Контекст
