@@ -27,6 +27,8 @@ export const TRANSLATION_KEYS = [
   'setup.demo.overloadHint',
   'setup.demoLoaded',
   'setup.demoNext',
+  'setup.deletePosition',
+  'setup.deleteOrder',
   'warehouse.title',
   'warehouse.hint',
   'warehouse.count',
@@ -42,6 +44,7 @@ export const TRANSLATION_KEYS = [
   'article.update',
   'article.lockedHint',
   'article.saveError',
+  'article.renameInErp',
 
   // Ladeplan / result screen
   'ladeplan.title',
@@ -132,6 +135,7 @@ export const TRANSLATION_KEYS = [
   'action.exportFailed',
   'action.reset',
   'action.demo',
+  'action.confirmDelete',
   'setup.resetConfirm',
 
   // Results / report metrics

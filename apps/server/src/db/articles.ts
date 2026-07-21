@@ -1,8 +1,8 @@
 import type Database from 'better-sqlite3';
 import {
-  ARTICLE_CONSTRUCTIVE_FIELDS as CONSTRUCTIVE_FIELDS,
+  ARTICLE_ERP_FIELDS as ERP_FIELDS,
   type Article,
-  type ArticleConstructiveField as ConstructiveField,
+  type ArticleErpField as ErpField,
   type ArticleInput,
   type ArticleRules,
   type ArticleSource,
@@ -29,12 +29,12 @@ interface Row {
   source: string;
   synced_at: string | null;
   updated_at: string;
-  /** JSON array of ConstructiveField names ERPNext actually supplied — the field-level lock set. */
+  /** JSON array of ErpField names ERPNext actually supplied — the field-level lock set. */
   erp_fields_json: string;
 }
 
-const erpFieldsOf = (row: Row | undefined): ConstructiveField[] =>
-  row ? (JSON.parse(row.erp_fields_json) as ConstructiveField[]) : [];
+const erpFieldsOf = (row: Row | undefined): ErpField[] =>
+  row ? (JSON.parse(row.erp_fields_json) as ErpField[]) : [];
 
 const num = (v: number | null): number | undefined => (v === null ? undefined : v);
 const orNull = (v: number | undefined): number | null => (v === undefined ? null : v);
@@ -101,18 +101,22 @@ function write(db: Database.Database, a: Article): Article {
  * ERPNext left blank accepts the user's value and stays editable indefinitely, even after being
  * filled once (spec: "пустое поле принимает значение пользователя без ошибки — и остаётся
  * редактируемым дальше"). Nesting increments are never supplied by ERPNext (see
- * `ErpArticleFields`), so they are always locally editable regardless of source, and so is the
- * name — it is not a constructive field. Rules are always taken from the input.
+ * `ErpArticleFields`), so they are always locally editable regardless of source. The name follows
+ * the same lock as a dimension (ADR 022): an article whose name ERPNext supplied cannot be renamed
+ * locally; a purely local article still renames freely. Rules are always taken from the input.
  */
 export function upsertArticle(db: Database.Database, input: ArticleInput, opts: { now: string }): Article {
   const prevRow = getRow(db, input.itemCode);
   const prev = prevRow ? toArticle(prevRow) : undefined;
   const locked = new Set(erpFieldsOf(prevRow));
-  const keep = (field: ConstructiveField, stored: number | undefined, incoming: number | undefined): number | undefined =>
+  const keep = (field: ErpField, stored: number | undefined, incoming: number | undefined): number | undefined =>
     locked.has(field) ? stored : incoming;
+  // The name is ERPNext's when ERPNext supplied it (ADR 022): a local write may not rename such an
+  // article. A local article has no 'name' in its provenance, so renaming it still works.
+  const name = locked.has('name') && prev ? prev.name : input.name;
   return write(db, {
     itemCode: input.itemCode,
-    name: input.name,
+    name,
     length: keep('length', prev?.length, input.length),
     width: keep('width', prev?.width, input.width),
     height: keep('height', prev?.height, input.height),
@@ -137,13 +141,19 @@ export function upsertArticle(db: Database.Database, input: ArticleInput, opts: 
 export function upsertFromErp(db: Database.Database, erp: ErpArticleFields, opts: { now: string }): Article {
   const prevRow = getRow(db, erp.itemCode);
   const prev = prevRow ? toArticle(prevRow) : undefined;
-  const supplied = CONSTRUCTIVE_FIELDS.filter((f) => erp[f] !== undefined);
+  // An empty/whitespace-only name is "ERPNext did not actually supply a name", the same way an
+  // absent dimension is "not filled in over there" (see isPositive in erpnext/adapter.ts for the
+  // dimension equivalent). Without this guard, ErpArticleFields.name being typed `string` (not
+  // `string | undefined`) would let a blank item_name join `erpFields` and permanently lock the
+  // article's name to '' — nothing could ever rename it again, including a later, correct sync.
+  const nameSupplied = erp.name.trim() !== '';
+  const supplied = ERP_FIELDS.filter((f) => (f === 'name' ? nameSupplied : erp[f] !== undefined));
   const erpFields = [...new Set([...erpFieldsOf(prevRow), ...supplied])];
   const take = (incoming: number | undefined, stored: number | undefined): number | undefined =>
     incoming ?? stored;
   return write(db, {
     itemCode: erp.itemCode,
-    name: erp.name,
+    name: nameSupplied ? erp.name : (prev?.name ?? erp.name),
     length: take(erp.length, prev?.length),
     width: take(erp.width, prev?.width),
     height: take(erp.height, prev?.height),

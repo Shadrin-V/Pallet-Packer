@@ -25,6 +25,8 @@ export const ru: Dictionary = {
   'setup.demo.overloadHint': 'Груза больше, чем влезает — неразмещённые поддоны и заход вил с 2 сторон.',
   'setup.demoLoaded': 'Демо {n}/{total}: {name} —',
   'setup.demoNext': 'Нажмите ещё раз для следующего варианта.',
+  'setup.deletePosition': 'Убрать позицию из расчёта',
+  'setup.deleteOrder': 'Убрать заказ из расчёта',
   'warehouse.title': 'Склад',
   'warehouse.hint':
     'Неразмещённые стопки в масштабе 1:1, как в кузове. Перетащите стопку в кузов, чтобы поставить — или вытащите стопку из кузова сюда, чтобы освободить место (например, для поворота).',
@@ -41,6 +43,7 @@ export const ru: Dictionary = {
   'article.update': 'Обновить артикул',
   'article.lockedHint': 'Меняется в ERPNext, артикул {code}',
   'article.saveError': 'Не удалось сохранить. Попробуйте ещё раз.',
+  'article.renameInErp': 'Имя меняется в ERPNext. Сохранение создаст НОВЫЙ артикул.',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',
@@ -131,6 +134,7 @@ export const ru: Dictionary = {
   'action.exportFailed': 'Экспорт не удался. Попробуйте ещё раз.',
   'action.reset': 'Сбросить',
   'action.demo': 'Демо',
+  'action.confirmDelete': 'Подтвердить удаление',
   'setup.resetConfirm': 'Сбросить все данные и план загрузки?',
 
   'results.totalPlaced': 'Всего размещено',

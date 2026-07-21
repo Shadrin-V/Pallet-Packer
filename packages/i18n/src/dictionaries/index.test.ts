@@ -56,4 +56,16 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
     expect(DICTIONARIES.de.ERR_EMPTY_LOAD).toBe('Die Ladeliste ist leer.');
     expect(DICTIONARIES.ru.ERR_EMPTY_LOAD).toBe('Список груза пуст.');
   });
+
+  // ADR 022: removing a position/order only takes it out of THIS calculation — the catalogue
+  // article is untouched. The label must say so and must never read as "delete the article",
+  // which would misstate what the action does.
+  it('pins the "remove from the calculation" wording — never "delete the article" (ADR 022)', () => {
+    for (const key of ['setup.deletePosition', 'setup.deleteOrder'] as const) {
+      expect(DICTIONARIES.de[key]).toContain('aus der Berechnung');
+      expect(DICTIONARIES.ru[key]).toContain('из расчёта');
+      expect(DICTIONARIES.de[key]).not.toMatch(/Artikel löschen/i);
+      expect(DICTIONARIES.ru[key]).not.toMatch(/удалить артикул/i);
+    }
+  });
 });

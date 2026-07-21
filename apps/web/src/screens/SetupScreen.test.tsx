@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
-import { SetupScreen } from './SetupScreen';
+import { SetupScreen, keepsArmed } from './SetupScreen';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
 import type { Article, ArticleInput } from '@shadrin-v/contracts';
@@ -677,5 +677,468 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(secondCombobox, 'NEU-42');
 
     expect(await screen.findByRole('option', { name: /NEU-42/ })).toBeInTheDocument();
+  });
+});
+
+// Removing a position / an order takes it out of THIS calculation only — the catalogue article in
+// SQLite (and ERPNext) is untouched. Deletion is armed-confirm, not window.confirm (ADR 022).
+describe('SetupScreen — removing from the calculation', () => {
+  const trashes = () => screen.getAllByRole('button', { name: 'Position aus der Berechnung entfernen' });
+  const orderTrashes = () => screen.getAllByRole('button', { name: 'Auftrag aus der Berechnung entfernen' });
+  /** One combobox per position row — the row's identity control, so its count is the row count. */
+  const rows = () => screen.getAllByRole('combobox', { name: 'Artikel' });
+  const orderIds = () => screen.getAllByLabelText('Auftrags-ID');
+  const addPosition = () => screen.getByRole('button', { name: /Position hinzufügen/ });
+  const addOrder = () => screen.getAllByRole('button', { name: /Auftrag hinzufügen/ })[0];
+
+  it('does NOT delete on the first press — that press only arms', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    const before = rows().length;
+    expect(before).toBe(2);
+
+    await userEvent.click(trashes()[0]);
+
+    expect(rows()).toHaveLength(before);
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+  });
+
+  it('deletes on the second press', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    const before = rows().length;
+
+    await userEvent.click(trashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(rows()).toHaveLength(before - 1);
+  });
+
+  it('arms exactly one button at a time', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+
+    await userEvent.click(trashes()[0]);
+    // row 0's trash is now the armed button, so trashes()[0] is the SECOND row's
+    await userEvent.click(trashes()[0]);
+
+    expect(screen.getAllByRole('button', { name: 'Löschen bestätigen' })).toHaveLength(1);
+  });
+
+  it('disarms on Escape', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    await userEvent.click(trashes()[0]);
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(rows()).toHaveLength(2); // …and disarming is not deleting
+  });
+
+  it('disarms on a click elsewhere', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    await userEvent.click(trashes()[0]);
+
+    await userEvent.click(screen.getAllByLabelText('Länge')[0]); // the vehicle length field
+
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(rows()).toHaveLength(2);
+  });
+
+  it('disarms itself after the timeout', async () => {
+    // fireEvent, not userEvent: userEvent's internal awaits never settle under a frozen clock, so
+    // its very first click hangs. fireEvent dispatches synchronously and still bubbles to document.
+    // Only the two timer functions the arming effect uses are faked.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      renderSetup(() => {});
+      fireEvent.click(addPosition());
+      fireEvent.click(trashes()[0]);
+      expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+      });
+
+      expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+      expect(rows()).toHaveLength(2); // timing out is not deleting
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('removing the last position takes the order with it — no empty order can exist', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addOrder());
+    expect(orderIds()).toHaveLength(2);
+
+    // the second order has exactly one position
+    const t = trashes();
+    await userEvent.click(t[t.length - 1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(orderIds()).toHaveLength(1);
+    expect((orderIds()[0] as HTMLInputElement).value).toBe('SO-1');
+    expect(rows()).toHaveLength(1);
+  });
+
+  it('removing the last order leaves a fresh empty one — the screen is never empty', async () => {
+    renderSetup(() => {});
+    await userEvent.type(rows()[0], 'Sonderkiste');
+    expect((rows()[0] as HTMLInputElement).value).toBe('Sonderkiste');
+
+    await userEvent.click(orderTrashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(orderIds()).toHaveLength(1);
+    expect(rows()).toHaveLength(1);
+    expect((rows()[0] as HTMLInputElement).value).toBe(''); // a fresh order, not the old one
+  });
+
+  // Finding 5 (final review wave): the confirm button ArmedDelete focused while armed unmounts the
+  // instant it is clicked; without an explicit refocus, focus falls to <body> and a keyboard user
+  // loses their place. Both delete paths (position, order) must land focus on a surviving control.
+  it('moves focus to "+ Auftrag hinzufügen" after confirming a position delete', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+
+    await userEvent.click(trashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(addOrder()).toHaveFocus();
+  });
+
+  it('moves focus to "+ Auftrag hinzufügen" after confirming an order delete', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addOrder());
+
+    await userEvent.click(orderTrashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(addOrder()).toHaveFocus();
+  });
+
+  it('a surviving order keeps its colour slot when another order is removed', async () => {
+    // buildOrderColors is rebuilt from the CURRENT list on every calculate, so a removed order
+    // cannot leave an entry behind — and the survivor keeps the slot it was created with.
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.click(addOrder());
+
+    await userEvent.click(orderTrashes()[0]); // remove the FIRST order (SO-1, slot 0)
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    expect(onCalculate.mock.calls.at(-1)?.[1]?.orderColors).toEqual({ 'SO-2': 1 });
+  });
+
+  // Finding 1: addOrder used to mint `SO-${os.length + 1}`, which is only collision-free while
+  // orders can never be removed. Delete the first of two orders, then add — the freed number
+  // ("2") must not be reused while SO-2 still exists, or the two orders collapse into one colour
+  // and one legend row downstream (buildOrderColors keys by orderId).
+  it('gives a new order an id distinct from every surviving order, even after deleting one (Finding 1)', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addOrder()); // SO-1, SO-2
+
+    await userEvent.click(orderTrashes()[0]); // delete SO-1 (the first)
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+    expect((orderIds()[0] as HTMLInputElement).value).toBe('SO-2');
+
+    await userEvent.click(addOrder());
+
+    const ids = orderIds().map((el) => (el as HTMLInputElement).value);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2); // distinct — no collision with the surviving SO-2
+  });
+
+  // Finding 1 (wave 2): emptyOrder used to derive colorIndex from the SAME number nextOrderNumber
+  // computed for the id — but nextOrderNumber only recognizes ids matching /^SO-(\d+)$/, so a
+  // renamed order is invisible to it and its slot gets handed out again. `Auftrags-ID` is a freely
+  // editable field whose whole purpose is to carry the real order number, so "rename the default
+  // order, then add a second" is the ordinary first-use flow, not an edge case — pins the first row
+  // of the reviewer's table (rename SO-1 → AB-4711, then add → colours must stay distinct).
+  it('a newly added order gets a colour slot distinct from a renamed order (Finding 1 colour regression)', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    const orderIdField = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
+    await userEvent.clear(orderIdField);
+    await userEvent.type(orderIdField, 'AB-4711');
+
+    await userEvent.click(addOrder());
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const orderColors = onCalculate.mock.calls.at(-1)?.[1]?.orderColors as Record<string, number>;
+    const values = Object.values(orderColors);
+    expect(values).toHaveLength(2);
+    expect(new Set(values).size).toBe(2); // distinct — no shared palette slot
+  });
+
+  // Finding 3: ArmedDelete used to stopPropagation() on its own clicks, so arming a trash button
+  // never reached the document-level listener that collapses another row's OPEN details panel on
+  // any outside click. The narrower data-armed-delete fix must restore that collapse.
+  // Review fix (wave 2, Finding 2): this test does NOT also exercise "the arming click can't
+  // disarm itself" — the disarm listener is attached by an effect keyed on `armed`, and `armed`
+  // is null going into this click (row 1's trash has never been armed before), so the listener is
+  // not registered yet when this click dispatches; it cannot fire either way. The genuine
+  // self-disarm-resistance case is the RE-arm path (arm row A, then arm row B while the listener
+  // from row A's arming is already attached) — see "arms exactly one button at a time" above.
+  it('arming a trash on one row still collapses another row\'s open details panel', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition()); // two position rows in the same order
+
+    const detailsButtons = () => screen.getAllByRole('button', { name: 'details' });
+    await userEvent.click(detailsButtons()[0]); // open row 0's panel
+    expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(trashes()[1]); // arm row 1's trash — a click "elsewhere" for row 0
+
+    expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'false');
+    // …and the click's own onArm ran: row 1 shows the confirm button (not a test of the
+    // disarm-listener guard — see comment above).
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+  });
+
+  // Finding 3 (wave 2): the shipped focus-fix test (ArmedDelete.test.tsx) only flips the `armed`
+  // prop via `rerender` on the isolated component — a prop flip, not a real gesture. Arm the trash
+  // button here by an actual KEYBOARD activation (Enter on the focused button, as a real user
+  // would) on the live SetupScreen, and check focus lands on the confirm button that replaces it.
+  // LKWkalk-yxn — the browser-only arming defect. In Chrome the click that arms a trash button has
+  // the <svg> as its target; React 18 flushes discrete-event updates synchronously, so the trash and
+  // its <svg> are already unmounted by the time the click reaches the document-level disarm
+  // listener. `closest()` on a DETACHED node walks only its own orphan subtree, finds no
+  // `[data-armed-delete]`, and the guard concludes "clicked outside" — the gesture that armed the
+  // control disarmed it in the same breath, so it could never be armed at all outside jsdom (where
+  // `act()` defers the re-render until after dispatch, hiding the race from every existing test).
+  //
+  // Reproduce the condition head-on: press a node that is attached at dispatch time and detach it
+  // mid-dispatch (a capture-phase listener stands in for React's synchronous flush), leaving its
+  // `[data-armed-delete]` wrapper in place exactly as React does. The armed control must survive.
+  // A hand-built DOM stand-in, not the live row, so that nothing React owns is yanked out from
+  // under it — the guard cannot tell the difference, only attachment matters.
+  const pressAndDetachMidDispatch = (type: 'pointerDown' | 'click') => {
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-armed-delete', '');
+    const button = document.createElement('button');
+    const icon = document.createElement('span'); // stands in for the trash <svg>
+    button.append(icon);
+    wrapper.append(button);
+    document.body.append(wrapper);
+    const detach = () => button.remove(); // React swaps the wrapper's child, keeping the wrapper
+    document.addEventListener(type === 'pointerDown' ? 'pointerdown' : 'click', detach, true);
+    try {
+      fireEvent[type](icon);
+    } finally {
+      document.removeEventListener(type === 'pointerDown' ? 'pointerdown' : 'click', detach, true);
+      wrapper.remove();
+    }
+  };
+
+  it.each(['pointerDown', 'click'] as const)(
+    'stays armed when the %s that would disarm it has a target detached mid-dispatch (LKWkalk-yxn)',
+    async (type) => {
+      renderSetup(() => {});
+      await userEvent.click(trashes()[0]);
+      expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+
+      await act(async () => {
+        pressAndDetachMidDispatch(type);
+      });
+
+      expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+    },
+  );
+
+  // …while a press on a node that really is outside still disarms — the detached-target exemption
+  // must not turn the guard into "never disarm".
+  it('a pointerdown outside the control still disarms it', async () => {
+    renderSetup(() => {});
+    await userEvent.click(trashes()[0]);
+
+    await act(async () => {
+      fireEvent.pointerDown(screen.getAllByLabelText('Länge')[0]);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(rows()).toHaveLength(1); // …and disarming is not deleting
+  });
+
+  it('arming a trash button by keyboard (Enter) moves focus to the confirm button', async () => {
+    renderSetup(() => {});
+    trashes()[0].focus();
+
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toHaveFocus();
+  });
+});
+
+// The guard is exported (rather than inline in the effect) so the detached-target rule can be
+// stated once, plainly, next to the integration test above that exercises it through a real
+// dispatch. Both layers matter: this one names the rule, that one proves it is wired up.
+describe('keepsArmed — the disarm guard', () => {
+  const build = () => {
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-armed-delete', '');
+    const inner = document.createElement('span');
+    wrapper.append(inner);
+    document.body.append(wrapper);
+    return { wrapper, inner };
+  };
+
+  it('keeps the control armed for a press inside an armed-delete wrapper', () => {
+    const { wrapper, inner } = build();
+    expect(keepsArmed(inner)).toBe(true);
+    wrapper.remove();
+  });
+
+  it('lets a press on an unrelated attached element disarm', () => {
+    const outside = document.createElement('div');
+    document.body.append(outside);
+    expect(keepsArmed(outside)).toBe(false);
+    outside.remove();
+  });
+
+  it('keeps the control armed for a target detached mid-dispatch, where closest() goes blind', () => {
+    const { wrapper, inner } = build();
+    inner.remove(); // detached: closest() now walks an orphan subtree with no wrapper in it
+    expect(inner.closest('[data-armed-delete]')).toBeNull(); // the trap the old guard fell into
+    expect(keepsArmed(inner)).toBe(true);
+    wrapper.remove();
+  });
+
+  it('keeps the control armed for a target that is not an Element (no closest) or is null', () => {
+    expect(keepsArmed(null)).toBe(true);
+    expect(keepsArmed(document)).toBe(true);
+  });
+});
+
+describe('SetupScreen — the name belongs to ERPNext', () => {
+  const ERP_NAMED = {
+    itemCode: 'ABB101',
+    name: 'Gitterbox',
+    length: 1200,
+    width: 800,
+    height: 970,
+    rules: { state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+    source: 'erp',
+    updatedAt: '2026-07-21T00:00:00.000Z',
+    erpFields: ['length', 'width', 'height', 'name'],
+  } as const;
+
+  // Finding 3 (final review wave): length/width/height each get an InfoHint next to the field the
+  // moment they are locked; the name combobox got none — the only explanation was the
+  // unboundFromErp notice, which only appears AFTER the user starts retyping, inside the collapsed
+  // details panel. This pins the missing affordance: a hint next to the combobox itself, present as
+  // soon as the row is bound, before any retyping.
+  it('shows a lock hint next to the article combobox for an ERP-named article, and none for a local one', async () => {
+    // erpFields: ['name'] only (no dimensions locked) isolates the name hint from the pre-existing
+    // per-dimension hints, which reuse the very same accessible name ('Artikel', via lockedHint) —
+    // a fixture that also locks length/width/height would make getByRole ambiguous for a reason
+    // unrelated to this finding.
+    const NAME_ONLY = { ...ERP_NAMED, erpFields: ['name'] as const };
+    const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([NAME_ONLY, LOCAL]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    expect(screen.getByRole('button', { name: 'Artikel' })).toBeInTheDocument(); // the hint toggle
+
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Eig');
+    await userEvent.click(await screen.findByText('Eigenbau'));
+    expect(screen.queryByRole('button', { name: 'Artikel' })).toBeNull();
+  });
+
+  it('explains where the name is changed once the user edits it away from an ERP article', async () => {
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    // The notice lives in the details/nesting panel next to the save button it explains the
+    // consequence of — picking ERP_NAMED (rules.state 'entschachtelt') auto-collapses that panel,
+    // so open it explicitly (same idiom as "saves a typed-in article to the catalogue" above).
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' NEU');
+
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+  });
+
+  it('says nothing for an article whose name ERPNext never supplied', async () => {
+    const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([LOCAL]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'Eig');
+    await userEvent.click(await screen.findByText('Eigenbau'));
+    // The notice lives inside the details/nesting panel, which picking a suggestion auto-collapses
+    // (rules.state 'entschachtelt' here too) — reopen it, same idiom as the sibling tests above,
+    // otherwise this assertion is vacuous: queryByText finds nothing whether or not the notice's
+    // condition holds, because the panel containing it is simply not rendered.
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' 2');
+
+    expect(screen.queryByText(/ERPNext/)).toBeNull();
+  });
+
+  it('still lets a brand-new local article be created from free text', async () => {
+    const upsertArticle = vi.fn().mockImplementation(async (a) => ({ ...a, source: 'local', updatedAt: 'x', erpFields: [] }));
+    renderSetupWithCatalogue({ upsertArticle, searchArticles: vi.fn().mockResolvedValue([]) });
+
+    // getAllByLabelText, index [1]: the vehicle bar (index [0]) has its own Länge/Breite/Höhe
+    // fields with the same aria-labels, same idiom as the other saveArticle tests in this file.
+    await userEvent.type(screen.getByLabelText('Artikel'), 'Sonderpalette');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1340');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '890');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '178');
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+
+    expect(upsertArticle).toHaveBeenCalledOnce();
+    expect(upsertArticle.mock.calls[0][0].itemCode).toBe('Sonderpalette');
+  });
+
+  it('picking a suggestion clears a previous ERPNext notice', async () => {
+    const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED, LOCAL]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    // Picking auto-collapses the panel (rules.state 'entschachtelt' for both fixtures here) —
+    // reopen it each time so the notice (and its absence) is actually observable, not merely
+    // hidden by the accordion being closed.
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' NEU');
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Eig');
+    await userEvent.click(await screen.findByText('Eigenbau'));
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+
+    expect(screen.queryByText(/ERPNext/)).toBeNull();
+  });
+
+  it('keeps warning after retyping the exact ERP name back, so the row is not silently re-forked (Finding 2)', async () => {
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.type(box, ' NEU');
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+
+    // Retype the exact original ERP name. The row is STILL unbound from ERPNext — a Save here would
+    // create a brand-new article reusing the ERP article's name — so the notice must not disappear
+    // just because the text happens to match again.
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Gitterbox');
+
+    expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
   });
 });

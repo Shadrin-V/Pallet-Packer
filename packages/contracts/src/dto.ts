@@ -88,23 +88,25 @@ export interface ArticleRules {
 /**
  * 'erp' — this article has been synced from ERPNext at least once; 'local' — created in the app
  * and never synced. This is provenance of the *record*, not of any individual field: an 'erp'
- * article can still have dimensions the user is free to edit (see `Article` below) — whether a
- * given constructive field is locked is decided per field on the server, not by this flag alone.
+ * article can still have dimensions (and, per ADR 022, a name) the user is free to edit (see
+ * `Article` below) — whether a given field is locked is decided per field on the server, not by
+ * this flag alone.
  */
 export const ARTICLE_SOURCES = ['erp', 'local'] as const;
 export type ArticleSource = (typeof ARTICLE_SOURCES)[number];
 
-/** The constructive (dimension) fields ERPNext is able to supply for an article. */
-export const ARTICLE_CONSTRUCTIVE_FIELDS = ['length', 'width', 'height'] as const;
-export type ArticleConstructiveField = (typeof ARTICLE_CONSTRUCTIVE_FIELDS)[number];
+/** The fields ERPNext is able to supply for an article. `name` included: ERPNext owns it. */
+export const ARTICLE_ERP_FIELDS = ['length', 'width', 'height', 'name'] as const;
+export type ArticleErpField = (typeof ARTICLE_ERP_FIELDS)[number];
 
 /**
  * A catalogue article. A constructive field (length, width, height) is locked in the UI only when
  * ERPNext actually supplied a value for *that field* on this article — never inferred from
  * `source` or from the field merely being non-empty. A field ERPNext has left blank accepts the
  * user's value with no error and stays editable indefinitely, including after being filled once;
- * correcting it a second time must not be silently discarded. Nesting increments and `name` are
- * never supplied by ERPNext, so they are always locally editable regardless of `source`.
+ * correcting it a second time must not be silently discarded. Nesting increments are never
+ * supplied by ERPNext, so they are always locally editable regardless of `source`. A name ERPNext
+ * supplied is locked like any other supplied field, and is changed in ERPNext only (ADR 022).
  * `undefined` means "not filled in yet" — the user may enter it by hand, no error.
  */
 export interface Article {
@@ -122,13 +124,14 @@ export interface Article {
   syncedAt?: string;
   updatedAt: string;
   /**
-   * Which constructive fields ERPNext actually supplied for this article — these and only these
-   * are locked against local edits; a field absent from this list is always user-editable, even
-   * on an ERP-sourced article. The server decides this list; the client must never re-derive it
-   * from `source` plus "value is present" (that inference is wrong: see the `Article` doc above).
-   * Always present, defaulting to an empty array for articles ERPNext has never touched.
+   * Which fields ERPNext actually supplied for this article (dimensions and, per ADR 022, `name`)
+   * — these and only these are locked against local edits; a field absent from this list is always
+   * user-editable, even on an ERP-sourced article. The server decides this list; the client must
+   * never re-derive it from `source` plus "value is present" (that inference is wrong: see the
+   * `Article` doc above). Always present, defaulting to an empty array for articles ERPNext has
+   * never touched.
    */
-  erpFields: readonly ArticleConstructiveField[];
+  erpFields: readonly ArticleErpField[];
 }
 
 /** What the client sends to PUT /api/articles/:itemCode — the server stamps source/syncedAt/updatedAt/erpFields. */

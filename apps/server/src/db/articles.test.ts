@@ -53,15 +53,61 @@ describe('article repo', () => {
     db.close();
   });
 
-  it('lets the user rename an ERP-sourced article', () => {
+  it('renames a LOCAL article — its name is nobody else’s', () => {
     const db = openDb(':memory:');
-    upsertFromErp(db, { itemCode: 'ABB101', name: 'Palette ERP', length: 800, width: 600, height: 144 }, { now: NOW });
-    const renamed = upsertArticle(
-      db,
-      { itemCode: 'ABB101', name: 'Meine Palette', length: 800, width: 600, height: 144, rules: { ...RULES } },
-      { now: '2026-07-20T11:00:00.000Z' },
-    );
-    expect(renamed.name).toBe('Meine Palette');
+    upsertArticle(db, { itemCode: 'LOC1', name: 'Alt', length: 1200, width: 800, height: 144, rules: RULES }, { now: NOW });
+
+    const out = upsertArticle(db, { itemCode: 'LOC1', name: 'Neu', length: 1200, width: 800, height: 144, rules: RULES }, { now: NOW });
+
+    expect(out.name).toBe('Neu');
+    expect(out.erpFields).not.toContain('name');
+    db.close();
+  });
+
+  it('refuses to rename an article whose name came from ERPNext', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'ABB101', name: 'Gitterbox', length: 1200, width: 800, height: 970 }, { now: NOW });
+
+    const out = upsertArticle(db, { itemCode: 'ABB101', name: 'Gitterbox NEU', length: 1200, width: 800, height: 970, rules: RULES }, { now: NOW });
+
+    expect(out.name).toBe('Gitterbox'); // the ERP name stands
+    expect(out.erpFields).toContain('name');
+    db.close();
+  });
+
+  it('records name in the provenance list on an ERP write', () => {
+    const db = openDb(':memory:');
+    const out = upsertFromErp(db, { itemCode: 'A', name: 'Palette', length: 1200 }, { now: NOW });
+    // ERPNext always supplies a name; dimensions it omitted stay unlocked.
+    expect([...out.erpFields].sort()).toEqual(['length', 'name']);
+    db.close();
+  });
+
+  it('lets a later ERP sync change the name — ERPNext owns it', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'A', name: 'Alt' }, { now: NOW });
+    const out = upsertFromErp(db, { itemCode: 'A', name: 'Neu' }, { now: NOW });
+    expect(out.name).toBe('Neu');
+    db.close();
+  });
+
+  it('keeps the name lock across a local edit of unlocked fields', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'A', name: 'ERP-Name', length: 1200 }, { now: NOW });
+
+    // the user fills a dimension ERPNext left blank, and tries to rename in the same write
+    const out = upsertArticle(db, { itemCode: 'A', name: 'Mein Name', length: 1200, width: 800, height: 144, rules: RULES }, { now: NOW });
+
+    expect(out.name).toBe('ERP-Name'); // rename refused
+    expect(out.width).toBe(800); // unlocked field accepted
+    expect(out.erpFields).toContain('name');
+    db.close();
+  });
+
+  it('does not lock the name of an article ERPNext has never touched', () => {
+    const db = openDb(':memory:');
+    const out = upsertArticle(db, { itemCode: 'LOC2', name: 'Eigen', length: 1000, width: 1000, height: 100, rules: RULES }, { now: NOW });
+    expect(out.erpFields).toEqual([]);
     db.close();
   });
 
@@ -153,8 +199,11 @@ describe('article repo', () => {
   it('reports the ERP-supplied field list on getArticle and searchArticles for an ERP-sourced article', () => {
     const db = openDb(':memory:');
     upsertFromErp(db, { itemCode: 'ERP1', name: 'Palette', length: 800, width: 600 }, { now: NOW });
-    expect(getArticle(db, 'ERP1')?.erpFields).toEqual(['length', 'width']);
-    expect(searchArticles(db, 'ERP1')[0].erpFields).toEqual(['length', 'width']);
+    // ERPNext always supplies a name (ADR 022), so it always joins the provenance list alongside
+    // whichever dimensions were sent. Sort both sides: this pins the *set* of required members,
+    // not the declaration order of ARTICLE_ERP_FIELDS.
+    expect([...(getArticle(db, 'ERP1')?.erpFields ?? [])].sort()).toEqual(['length', 'name', 'width']);
+    expect([...searchArticles(db, 'ERP1')[0].erpFields].sort()).toEqual(['length', 'name', 'width']);
     db.close();
   });
 
@@ -166,6 +215,27 @@ describe('article repo', () => {
     db.close();
   });
 
+  // Finding 4 (final review wave): ErpArticleFields.name is typed `string`, not `string |
+  // undefined` — an empty item_name from ERPNext would otherwise pass the `erp[f] !== undefined`
+  // supplied-check and permanently lock the article's name to ''. An empty/whitespace name must be
+  // treated the same as an absent dimension: "ERPNext did not actually supply this".
+  it('does not lock the name when ERPNext supplies an empty/whitespace name', () => {
+    const db = openDb(':memory:');
+    const out = upsertFromErp(db, { itemCode: 'EMPTY1', name: '   ', length: 800 }, { now: NOW });
+    expect(out.erpFields).not.toContain('name');
+    expect(out.erpFields).toEqual(['length']);
+    db.close();
+  });
+
+  it('does not overwrite a stored name with an empty/whitespace name from ERPNext', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'EMPTY2', name: 'Palette', length: 800 }, { now: NOW });
+    const out = upsertFromErp(db, { itemCode: 'EMPTY2', name: '', length: 900 }, { now: '2026-07-20T11:00:00.000Z' });
+    expect(out.name).toBe('Palette'); // the blank sync must not wipe the real name
+    expect(out.length).toBe(900); // meanwhile a genuinely supplied dimension still updates
+    db.close();
+  });
+
   it('maps a row written before erp_fields_json existed (falling back to the column DEFAULT) to an empty list', () => {
     const db = openDb(':memory:');
     // Simulate a pre-migration row: insert without erp_fields_json, relying on the schema DEFAULT '[]'.
@@ -174,6 +244,22 @@ describe('article repo', () => {
        VALUES ('OLD1', 'Alte Palette', '{}', 'local', @updated_at)`,
     ).run({ updated_at: NOW });
     expect(getArticle(db, 'OLD1')?.erpFields).toEqual([]);
+    db.close();
+  });
+
+  it('a row seeded before this change (source erp, no name in provenance) still renames', () => {
+    const db = openDb(':memory:');
+    // Pre-ADR-022 row: source is 'erp' (it came from an old sync) but erp_fields_json is the
+    // column DEFAULT '[]' — ERPNext never recorded having supplied a name for it (ADR 022
+    // §Последствия: no migration backfills this, so it stays renameable until the next import).
+    // The forbidden rule `source === 'erp' && name` would lock this row's name; the correct rule
+    // (name only locks when 'name' is actually in erp_fields_json) must not.
+    db.prepare(
+      `INSERT INTO article (item_code, name, rules_json, source, updated_at)
+       VALUES ('OLD2', 'Alte ERP-Palette', '{}', 'erp', @updated_at)`,
+    ).run({ updated_at: NOW });
+    const out = upsertArticle(db, { itemCode: 'OLD2', name: 'Neu', rules: { ...RULES } }, { now: NOW });
+    expect(out.name).toBe('Neu');
     db.close();
   });
 });

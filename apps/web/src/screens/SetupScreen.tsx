@@ -21,6 +21,7 @@ import {
   type OrientationChoice,
 } from './components/orientationChoice';
 import { StackDiagram } from './components/StackDiagram';
+import { ArmedDelete } from './components/ArmedDelete';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { orderColorToken } from '../lib/orderColor';
@@ -30,14 +31,16 @@ import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { ArticleCombobox, type ArticleSuggestion } from './components/ArticleCombobox';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
-import type { Article, ArticleConstructiveField } from '@shadrin-v/contracts';
+import type { Article, ArticleErpField } from '@shadrin-v/contracts';
 
 // ---- state model ----------------------------------------------------------
 type Num = number | '';
 
-/** Which constructive fields are read-only because ERPNext supplied them for the bound article
- *  (Task 2 provenance) — never inferred from "value present", only from `ArticleSuggestion.erpFields`. */
-export type LockedFields = Partial<Record<ArticleConstructiveField, true>>;
+/** Which fields ERPNext supplied for the bound article, per ADR 022 provenance — never inferred
+ *  from "value present", only from `ArticleSuggestion.erpFields`. Dimensions read-only when locked
+ *  here; `name` is not wired to `readOnly` (Task 4) — the field doubles as the combobox's search
+ *  input, so typing must stay possible even when the name is ERP-owned. */
+export type LockedFields = Partial<Record<ArticleErpField, true>>;
 
 export interface PositionState {
   id: string;
@@ -62,6 +65,10 @@ export interface PositionState {
   articleCode?: string;
   /** Constructive fields ERPNext already filled — read-only in the form (spec Q5). */
   locked?: LockedFields;
+  /** Where this row was bound when the user started editing the name, and only when that article's
+   *  name came from ERPNext. Drives the "the name is changed in ERPNext" notice — without it the
+   *  row would simply look like free text and a save would fork a second article silently. */
+  unboundFromErp?: { itemCode: string; name: string };
 }
 
 export interface OrderState {
@@ -127,6 +134,30 @@ function saveSetup(s: PersistedSetup): void {
 }
 
 
+/** How long an armed delete waits before disarming itself (ADR 022). */
+const ARM_TIMEOUT_MS = 4000;
+
+/**
+ * Guard for the document-level disarm listener: `true` means this event must NOT disarm the armed
+ * delete. Exported only so a test can pin the detached-target case (LKWkalk-yxn) without having to
+ * reach into a closure.
+ *
+ * Two ways an event is exempt:
+ *  - it landed inside an armed-delete control (`[data-armed-delete]`) — same `closest(...)` idiom as
+ *    the rootRef checks in PositionRow and ArticleCombobox;
+ *  - its target is no longer connected to the document. A node detached mid-dispatch (React 18
+ *    flushes discrete-event updates synchronously, so the trash button unmounts while its own click
+ *    is still bubbling) carries no usable ancestry: `closest` walks the orphan subtree only and
+ *    returns null, which would read as "clicked outside" and disarm. A detached target never proves
+ *    an outside press, so the safe answer is to keep the control armed.
+ */
+export function keepsArmed(target: EventTarget | null): boolean {
+  const el = target as (Element & { isConnected?: boolean }) | null;
+  if (!el || typeof el.closest !== 'function') return true;
+  if (el.isConnected === false) return true;
+  return el.closest('[data-armed-delete]') !== null;
+}
+
 const uid = () => crypto.randomUUID();
 
 const emptyPosition = (): PositionState => ({
@@ -147,12 +178,45 @@ const emptyPosition = (): PositionState => ({
   maxTiers: '',
 });
 
-const emptyOrder = (n: number): OrderState => ({
+/** `colorIndex` defaults to `n - 1` (1-based n → 0-based palette slot) for the single-order
+ *  call sites (initial state, reset, "collapsed to empty") where a fresh list of exactly one
+ *  order always wants slot 0. `addOrder` passes an explicit slot from `nextColorIndex` instead —
+ *  see that function for why the id number cannot supply it. */
+const emptyOrder = (n: number, colorIndex: number = n - 1): OrderState => ({
   key: uid(),
   orderId: `SO-${n}`,
-  colorIndex: n - 1, // 1-based n → 0-based palette slot; addOrder passes os.length + 1
+  colorIndex,
   positions: [emptyPosition()],
 });
+
+/** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
+ *  Deleting an order frees no number for reuse while others survive it — otherwise a later
+ *  addOrder can mint an id that collides with a surviving order (Finding 1: create SO-1/SO-2,
+ *  delete SO-1, add → both `os.length + 1` formulas would land on 2 again). Orders renamed to
+ *  non-`SO-n` ids are simply not counted. Colour slots are a separate concern — see
+ *  `nextColorIndex` — because an id is user-editable text and a slot is not. */
+function nextOrderNumber(os: OrderState[]): number {
+  const nums = os
+    .map((o) => /^SO-(\d+)$/.exec(o.orderId)?.[1])
+    .filter((s): s is string => s !== undefined)
+    .map(Number);
+  return (nums.length ? Math.max(...nums) : 0) + 1;
+}
+
+/** Next unused palette slot: the lowest non-negative integer not already held by any surviving
+ *  order's `colorIndex`. Review fix (Finding 1, wave 2): deriving colorIndex from the order's id
+ *  number (as `nextOrderNumber(os) - 1` once did, via emptyOrder's `n - 1` default) reused a slot
+ *  the moment an order was renamed away from `SO-n` — `nextOrderNumber` cannot see it any more, so
+ *  the freed-looking number it hands out can already be taken by the renamed order's OWN slot.
+ *  `Auftrags-ID` is freely editable (its whole purpose is to carry the real order number), so
+ *  "rename the default order, then add a second" is the ordinary first-use flow, not an edge case.
+ *  Slots must therefore be tracked independently of what the id currently says. */
+function nextColorIndex(os: OrderState[]): number {
+  const used = new Set(os.map((o) => o.colorIndex));
+  let slot = 0;
+  while (used.has(slot)) slot++;
+  return slot;
+}
 
 const numOr0 = (v: Num): number => (v === '' ? 0 : v);
 
@@ -204,10 +268,11 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
   };
 }
 
-/** Locked = exactly the constructive fields ERPNext supplied (Task 2 provenance). Never inferred
- *  from "value present": a value the user typed into a field ERPNext left blank must stay
- *  editable. Shared by picking a suggestion and by binding a row to the article a save returned. */
-export function lockedFieldsFrom(fields: readonly ArticleConstructiveField[]): LockedFields {
+/** Locked = exactly the fields ERPNext supplied (Task 2 provenance; ADR 022 adds `name` to the
+ *  set). Never inferred from "value present": a value the user typed into a field ERPNext left
+ *  blank must stay editable. Shared by picking a suggestion and by binding a row to the article a
+ *  save returned. */
+export function lockedFieldsFrom(fields: readonly ArticleErpField[]): LockedFields {
   const locked: LockedFields = {};
   for (const f of fields) locked[f] = true;
   return locked;
@@ -233,6 +298,7 @@ export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
     ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
     ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
     locked: lockedFieldsFrom(s.erpFields),
+    unboundFromErp: undefined,
   };
 }
 
@@ -256,6 +322,40 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   /** Which variant the form currently holds (index into DEMO_VARIANTS), or null for the user's own
    *  input. Drives the caption; cleared as soon as the user edits anything. */
   const [loadedDemo, setLoadedDemo] = useState<number | null>(null);
+
+  // Exactly one delete may be armed at a time — one value for the whole screen, so that invariant
+  // holds by construction instead of by keeping a flag per row in step (ADR 022).
+  const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const disarm = () => setArmed(null);
+    const timer = setTimeout(disarm, ARM_TIMEOUT_MS);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') disarm();
+    };
+    const onOutside = (e: Event) => {
+      if (keepsArmed(e.target)) return;
+      disarm();
+    };
+    // LKWkalk-yxn: disarm on POINTERDOWN, not on click. In a real browser the click that arms a
+    // trash button carries the <svg> as its target; React 18 flushes discrete-event state updates
+    // synchronously, so the trash (and its <svg>) is already unmounted by the time the click
+    // reaches this document listener — the guard saw a detached node, `closest` found nothing, and
+    // the very gesture that armed the control disarmed it again. Nobody could ever arm it outside
+    // jsdom, where `act()` defers the re-render until after dispatch. A pointerdown is evaluated
+    // before that re-render (and, for the arming press, before `armed` is even set — so this
+    // listener does not exist yet). The click listener stays as a keyboard-activation fallback
+    // (Enter on some other button fires click but no pointerdown); `keepsArmed` makes both safe.
+    document.addEventListener('pointerdown', onOutside);
+    document.addEventListener('click', onOutside);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', onOutside);
+      document.removeEventListener('click', onOutside);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [armed]);
 
   // Persist the working draft on every change so a page refresh does not lose input.
   useEffect(() => {
@@ -315,7 +415,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       ),
     );
 
-  const addOrder = () => setOrders((os) => [...os, emptyOrder(os.length + 1)]);
+  const addOrder = () =>
+    setOrders((os) => [...os, emptyOrder(nextOrderNumber(os), nextColorIndex(os))]);
   // Reorder an order in the list. List order = order priority → zones (strict) and packing queue
   // (densityFirst) follow it; the engine/contract are untouched (ADR 017). 4bj.11.
   const moveOrder = (key: string, dir: -1 | 1) =>
@@ -331,6 +432,43 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     patchOrder(okey, {
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
     });
+
+  // Finding 5 (final review wave): ArmedDelete focuses its confirm button while armed, but that
+  // button unmounts the instant a delete is confirmed — nothing claimed focus afterwards, so it
+  // fell to <body> and a keyboard user lost their place. The "+ Auftrag hinzufügen" button above
+  // the order list (`addOrderRef`) is the target: it is the one control guaranteed to survive
+  // every delete outcome (a single position, a whole order, or the cascade that replaces the last
+  // order/position with a fresh empty one). A row-local target would have to differ per outcome —
+  // after a position delete the order's own "+ Position" survives, but after an order delete or a
+  // cascade it does not — and one stable landing point beats three conditional ones.
+  const addOrderRef = useRef<HTMLButtonElement>(null);
+
+  /** Remove one position from the calculation. The catalogue article is untouched — this says
+   *  "not on this truck", not "no such article". An order that loses its last position goes too:
+   *  an order with no positions is a state nothing can compute (ADR 022). */
+  const removePosition = (okey: string, pid: string) => {
+    setArmed(null);
+    setOrders((os) => {
+      // Drop-if-now-empty applies only to the order being edited (`okey`) — filtering ALL orders
+      // would also delete an unrelated order that happened to already be empty (Finding 4; not
+      // reachable through the UI today, since the screen never lets an order go empty).
+      const next = os
+        .map((o) => (o.key === okey ? { ...o, positions: o.positions.filter((p) => p.id !== pid) } : o))
+        .filter((o) => o.key !== okey || o.positions.length > 0);
+      return next.length > 0 ? next : [emptyOrder(1)];
+    });
+    addOrderRef.current?.focus();
+  };
+
+  /** Remove a whole order. The last one is replaced by a fresh empty order, never left empty. */
+  const removeOrder = (okey: string) => {
+    setArmed(null);
+    setOrders((os) => {
+      const next = os.filter((o) => o.key !== okey);
+      return next.length > 0 ? next : [emptyOrder(1)];
+    });
+    addOrderRef.current?.focus();
+  };
 
   // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
   // provider. Returns the saved Article so the caller (PositionRow) can bind the row to it —
@@ -406,7 +544,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
-          <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
+          <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
         </div>
       </div>
       {loadedDemo !== null && (
@@ -438,6 +576,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
             onAddPosition={() => addPosition(o.key)}
             onSaveArticle={saveArticle}
+            armed={armed}
+            onArm={(a) => setArmed(a)}
+            onRemoveOrder={() => removeOrder(o.key)}
+            onRemovePosition={(pid) => removePosition(o.key, pid)}
           />
         ))}
       </div>
@@ -482,6 +624,10 @@ function OrderCard({
   onPositionChange,
   onAddPosition,
   onSaveArticle,
+  armed,
+  onArm,
+  onRemoveOrder,
+  onRemovePosition,
 }: {
   order: OrderState;
   index: number;
@@ -495,13 +641,21 @@ function OrderCard({
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
   onSaveArticle: (p: PositionState) => Promise<Article | undefined>;
+  armed: { kind: 'position' | 'order'; key: string } | null;
+  onArm: (a: { kind: 'position' | 'order'; key: string }) => void;
+  onRemoveOrder: () => void;
+  onRemovePosition: (pid: string) => void;
 }) {
   // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
   const [openId, setOpenId] = useState<string | null>(null);
   const colorVar = `var(--s${((index % 8) + 1)})`;
   return (
     <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
-      <div className="flex items-center gap-3 bg-sub px-4 py-2.5">
+      {/* flex-wrap (Finding 6, final review wave): this header only survived unwrapped because the
+          order-ID field carries min-w-0 — an accident, not a guarantee. Wrap explicitly so the wide
+          armed confirm button (ArmedDelete) has somewhere to go instead of overflowing the
+          overflow-hidden section, same fix already applied to the position row below. */}
+      <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
         <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
         <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
         <span className="ml-auto text-caption text-muted">
@@ -531,6 +685,14 @@ function OrderCard({
             </button>
           </div>
         )}
+        {/* Remove the whole order from THIS calculation — the catalogue is untouched (ADR 022). */}
+        <ArmedDelete
+          armed={armed?.kind === 'order' && armed.key === order.key}
+          onArm={() => onArm({ kind: 'order', key: order.key })}
+          onConfirm={onRemoveOrder}
+          label={tt('setup.deleteOrder')}
+          confirmLabel={tt('action.confirmDelete')}
+        />
       </div>
 
       {/* Column headings for the position fields (rgv.6). The vehicle bar has always had them; the
@@ -558,6 +720,9 @@ function OrderCard({
             onSetOpen={(o) => setOpenId(o ? p.id : null)}
             onChange={(patch) => onPositionChange(p.id, patch)}
             onSaveArticle={() => onSaveArticle(p)}
+            armed={armed?.kind === 'position' && armed.key === p.id}
+            onArm={() => onArm({ kind: 'position', key: p.id })}
+            onRemove={() => onRemovePosition(p.id)}
           />
         ))}
       </div>
@@ -586,6 +751,9 @@ function PositionRow({
   onSetOpen,
   onChange,
   onSaveArticle,
+  armed,
+  onArm,
+  onRemove,
 }: {
   position: PositionState;
   index: number;
@@ -595,6 +763,9 @@ function PositionRow({
   onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
   onSaveArticle: () => Promise<Article | undefined>;
+  armed: boolean;
+  onArm: () => void;
+  onRemove: () => void;
 }) {
   // Task 8 review fix: a failed save must be visible and must never escape as an unhandled
   // rejection. This is the panel that owns the save button, so it owns the message too — cleared
@@ -606,7 +777,12 @@ function PositionRow({
       setSaveError(null);
       // Finding 1: bind the row to what the server actually stored — otherwise articleCode stays
       // unset and the button keeps reading "save" instead of flipping to "update".
-      if (saved) onChange({ articleCode: saved.itemCode, locked: lockedFieldsFrom(saved.erpFields) });
+      if (saved)
+        onChange({
+          articleCode: saved.itemCode,
+          locked: lockedFieldsFrom(saved.erpFields),
+          unboundFromErp: undefined,
+        });
     } catch {
       setSaveError(tt('article.saveError'));
     }
@@ -652,11 +828,21 @@ function PositionRow({
         {/* Article combobox replaces the old preset select + separate name field (Task 8, closes
             rgv.8): one control both names the row and, when a suggestion is picked, fills its
             dimensions/rules and locks the fields ERPNext actually supplied. */}
-        <span className="w-64 shrink-0">
+        <span className="inline-flex w-64 shrink-0 items-center gap-1">
           <ArticleCombobox
             ariaLabel={tt('article.label')}
             value={p.name}
-            onChange={(name) => onChange({ name, articleCode: undefined, locked: {} })}
+            onChange={(name) =>
+              onChange({
+                name,
+                articleCode: undefined,
+                locked: {},
+                // Keep the first binding we left, not the latest keystroke's.
+                unboundFromErp:
+                  p.unboundFromErp ??
+                  (p.articleCode && p.locked?.name ? { itemCode: p.articleCode, name: p.name } : undefined),
+              })
+            }
             onPick={(s) => {
               const patch = applySuggestion(s);
               // Picking another article collapses the nesting panel (E16) — unless the article's
@@ -667,6 +853,13 @@ function PositionRow({
             }}
             className="w-full"
           />
+          {/* Finding 3 (final review wave): the name lock (ADR 022 §3) was only explained AFTER the
+              user started retyping (the unboundFromErp notice), and only inside the collapsed
+              details panel. length/width/height each get an InfoHint right next to the field the
+              moment they are locked — the name combobox got none. It must stay editable (no
+              readOnly — that is the search input), so the affordance is the same InfoHint pattern,
+              not a lock. */}
+          {p.locked?.name && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
         </span>
         <span className="inline-flex w-24 items-center gap-1">
           <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
@@ -733,6 +926,14 @@ function PositionRow({
         <button type="button" aria-label="details" aria-expanded={open} onClick={() => onSetOpen(!open)} className="ml-auto text-muted hover:text-brand">
           {open ? '⌃' : '⌄'}
         </button>
+        {/* Drop this position from THIS calculation; the catalogue article stays (ADR 022). */}
+        <ArmedDelete
+          armed={armed}
+          onArm={onArm}
+          onConfirm={onRemove}
+          label={tt('setup.deletePosition')}
+          confirmLabel={tt('action.confirmDelete')}
+        />
       </div>
 
       {open && (
@@ -800,6 +1001,14 @@ function PositionRow({
               {tt(p.articleCode ? 'article.update' : 'article.save')}
             </Button>
             {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
+            {/* Finding 2 (review): show whenever the row is unbound from an ERP-named article, not
+                only while the typed text still differs from the remembered name. Typing the exact
+                ERP name back does not re-bind the row — Save still creates a brand-new article — so
+                hiding the notice the moment the text matches again would silently re-open the very
+                duplicate-fork bug this notice exists to prevent. */}
+            {p.unboundFromErp && (
+              <p className="text-caption text-muted">{tt('article.renameInErp')}</p>
+            )}
           </div>
 
           {/* validation hint + live formula */}
