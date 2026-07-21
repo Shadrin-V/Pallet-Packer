@@ -41,6 +41,9 @@ export const ru: Dictionary = {
   'article.update': 'Обновить артикул',
   'article.lockedHint': 'Меняется в ERPNext, артикул {code}',
   'article.saveError': 'Не удалось сохранить. Попробуйте ещё раз.',
+  'action.confirmDelete': 'Подтвердить удаление',
+  'setup.deletePosition': 'Убрать позицию из расчёта',
+  'setup.deleteOrder': 'Убрать заказ из расчёта',
 
   'ladeplan.title': 'План загрузки',
   'ladeplan.top': 'Вид сверху',

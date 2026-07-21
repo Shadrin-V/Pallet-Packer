@@ -42,6 +42,9 @@ export const TRANSLATION_KEYS = [
   'article.update',
   'article.lockedHint',
   'article.saveError',
+  'action.confirmDelete',
+  'setup.deletePosition',
+  'setup.deleteOrder',
 
   // Ladeplan / result screen
   'ladeplan.title',

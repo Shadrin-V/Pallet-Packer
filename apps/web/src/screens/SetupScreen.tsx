@@ -21,6 +21,7 @@ import {
   type OrientationChoice,
 } from './components/orientationChoice';
 import { StackDiagram } from './components/StackDiagram';
+import { ArmedDelete } from './components/ArmedDelete';
 import { useT } from '../i18n/LocaleContext';
 import { OrderSwatch } from '../lib/swatch';
 import { orderColorToken } from '../lib/orderColor';
@@ -128,6 +129,9 @@ function saveSetup(s: PersistedSetup): void {
   }
 }
 
+
+/** How long an armed delete waits before disarming itself (ADR 022). */
+const ARM_TIMEOUT_MS = 4000;
 
 const uid = () => crypto.randomUUID();
 
@@ -260,6 +264,26 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
    *  input. Drives the caption; cleared as soon as the user edits anything. */
   const [loadedDemo, setLoadedDemo] = useState<number | null>(null);
 
+  // Exactly one delete may be armed at a time — one value for the whole screen, so that invariant
+  // holds by construction instead of by keeping a flag per row in step (ADR 022).
+  const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const disarm = () => setArmed(null);
+    const timer = setTimeout(disarm, ARM_TIMEOUT_MS);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') disarm();
+    };
+    // ArmedDelete stops its own clicks, so this only ever sees clicks somewhere else.
+    document.addEventListener('click', disarm);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', disarm);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [armed]);
+
   // Persist the working draft on every change so a page refresh does not lose input.
   useEffect(() => {
     if (skipNextSaveRef.current) {
@@ -334,6 +358,28 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     patchOrder(okey, {
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
     });
+
+  /** Remove one position from the calculation. The catalogue article is untouched — this says
+   *  "not on this truck", not "no such article". An order that loses its last position goes too:
+   *  an order with no positions is a state nothing can compute (ADR 022). */
+  const removePosition = (okey: string, pid: string) => {
+    setArmed(null);
+    setOrders((os) => {
+      const next = os
+        .map((o) => (o.key === okey ? { ...o, positions: o.positions.filter((p) => p.id !== pid) } : o))
+        .filter((o) => o.positions.length > 0);
+      return next.length > 0 ? next : [emptyOrder(1)];
+    });
+  };
+
+  /** Remove a whole order. The last one is replaced by a fresh empty order, never left empty. */
+  const removeOrder = (okey: string) => {
+    setArmed(null);
+    setOrders((os) => {
+      const next = os.filter((o) => o.key !== okey);
+      return next.length > 0 ? next : [emptyOrder(1)];
+    });
+  };
 
   // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
   // provider. Returns the saved Article so the caller (PositionRow) can bind the row to it —
@@ -441,6 +487,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
             onAddPosition={() => addPosition(o.key)}
             onSaveArticle={saveArticle}
+            armed={armed}
+            onArm={(a) => setArmed(a)}
+            onRemoveOrder={() => removeOrder(o.key)}
+            onRemovePosition={(pid) => removePosition(o.key, pid)}
           />
         ))}
       </div>
@@ -485,6 +535,10 @@ function OrderCard({
   onPositionChange,
   onAddPosition,
   onSaveArticle,
+  armed,
+  onArm,
+  onRemoveOrder,
+  onRemovePosition,
 }: {
   order: OrderState;
   index: number;
@@ -498,6 +552,10 @@ function OrderCard({
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
   onSaveArticle: (p: PositionState) => Promise<Article | undefined>;
+  armed: { kind: 'position' | 'order'; key: string } | null;
+  onArm: (a: { kind: 'position' | 'order'; key: string }) => void;
+  onRemoveOrder: () => void;
+  onRemovePosition: (pid: string) => void;
 }) {
   // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
   const [openId, setOpenId] = useState<string | null>(null);
@@ -534,6 +592,14 @@ function OrderCard({
             </button>
           </div>
         )}
+        {/* Remove the whole order from THIS calculation — the catalogue is untouched (ADR 022). */}
+        <ArmedDelete
+          armed={armed?.kind === 'order' && armed.key === order.key}
+          onArm={() => onArm({ kind: 'order', key: order.key })}
+          onConfirm={onRemoveOrder}
+          label={tt('setup.deleteOrder')}
+          confirmLabel={tt('action.confirmDelete')}
+        />
       </div>
 
       {/* Column headings for the position fields (rgv.6). The vehicle bar has always had them; the
@@ -561,6 +627,9 @@ function OrderCard({
             onSetOpen={(o) => setOpenId(o ? p.id : null)}
             onChange={(patch) => onPositionChange(p.id, patch)}
             onSaveArticle={() => onSaveArticle(p)}
+            armed={armed?.kind === 'position' && armed.key === p.id}
+            onArm={() => onArm({ kind: 'position', key: p.id })}
+            onRemove={() => onRemovePosition(p.id)}
           />
         ))}
       </div>
@@ -589,6 +658,9 @@ function PositionRow({
   onSetOpen,
   onChange,
   onSaveArticle,
+  armed,
+  onArm,
+  onRemove,
 }: {
   position: PositionState;
   index: number;
@@ -598,6 +670,9 @@ function PositionRow({
   onSetOpen: (open: boolean) => void;
   onChange: (patch: Partial<PositionState>) => void;
   onSaveArticle: () => Promise<Article | undefined>;
+  armed: boolean;
+  onArm: () => void;
+  onRemove: () => void;
 }) {
   // Task 8 review fix: a failed save must be visible and must never escape as an unhandled
   // rejection. This is the panel that owns the save button, so it owns the message too — cleared
@@ -736,6 +811,14 @@ function PositionRow({
         <button type="button" aria-label="details" aria-expanded={open} onClick={() => onSetOpen(!open)} className="ml-auto text-muted hover:text-brand">
           {open ? '⌃' : '⌄'}
         </button>
+        {/* Drop this position from THIS calculation; the catalogue article stays (ADR 022). */}
+        <ArmedDelete
+          armed={armed}
+          onArm={onArm}
+          onConfirm={onRemove}
+          label={tt('setup.deletePosition')}
+          confirmLabel={tt('action.confirmDelete')}
+        />
       </div>
 
       {open && (

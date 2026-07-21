@@ -188,7 +188,7 @@ export function Button({
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   type?: 'button' | 'submit';
   disabled?: boolean;
 }) {
@@ -198,6 +198,7 @@ export function Button({
     primary: 'bg-brand text-brand-ink hover:bg-brand-strong',
     secondary: 'border border-line-strong bg-card text-ink hover:border-brand hover:text-brand',
     ghost: 'border border-dashed border-line-strong text-muted hover:text-brand',
+    danger: 'bg-danger text-[color:var(--danger-ink)] hover:opacity-90',
   }[variant];
   return (
     <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>

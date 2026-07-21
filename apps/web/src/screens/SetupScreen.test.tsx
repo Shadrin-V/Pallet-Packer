@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
@@ -677,5 +677,137 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(secondCombobox, 'NEU-42');
 
     expect(await screen.findByRole('option', { name: /NEU-42/ })).toBeInTheDocument();
+  });
+});
+
+// Removing a position / an order takes it out of THIS calculation only — the catalogue article in
+// SQLite (and ERPNext) is untouched. Deletion is armed-confirm, not window.confirm (ADR 022).
+describe('SetupScreen — removing from the calculation', () => {
+  const trashes = () => screen.getAllByRole('button', { name: 'Position aus der Berechnung entfernen' });
+  const orderTrashes = () => screen.getAllByRole('button', { name: 'Auftrag aus der Berechnung entfernen' });
+  /** One combobox per position row — the row's identity control, so its count is the row count. */
+  const rows = () => screen.getAllByRole('combobox', { name: 'Artikel' });
+  const orderIds = () => screen.getAllByLabelText('Auftrags-ID');
+  const addPosition = () => screen.getByRole('button', { name: /Position hinzufügen/ });
+  const addOrder = () => screen.getAllByRole('button', { name: /Auftrag hinzufügen/ })[0];
+
+  it('does NOT delete on the first press — that press only arms', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    const before = rows().length;
+    expect(before).toBe(2);
+
+    await userEvent.click(trashes()[0]);
+
+    expect(rows()).toHaveLength(before);
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+  });
+
+  it('deletes on the second press', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    const before = rows().length;
+
+    await userEvent.click(trashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(rows()).toHaveLength(before - 1);
+  });
+
+  it('arms exactly one button at a time', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+
+    await userEvent.click(trashes()[0]);
+    // row 0's trash is now the armed button, so trashes()[0] is the SECOND row's
+    await userEvent.click(trashes()[0]);
+
+    expect(screen.getAllByRole('button', { name: 'Löschen bestätigen' })).toHaveLength(1);
+  });
+
+  it('disarms on Escape', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    await userEvent.click(trashes()[0]);
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(rows()).toHaveLength(2); // …and disarming is not deleting
+  });
+
+  it('disarms on a click elsewhere', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    await userEvent.click(trashes()[0]);
+
+    await userEvent.click(screen.getAllByLabelText('Länge')[0]); // the vehicle length field
+
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(rows()).toHaveLength(2);
+  });
+
+  it('disarms itself after the timeout', async () => {
+    // fireEvent, not userEvent: userEvent's internal awaits never settle under a frozen clock, so
+    // its very first click hangs. fireEvent dispatches synchronously and still bubbles to document.
+    // Only the two timer functions the arming effect uses are faked.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      renderSetup(() => {});
+      fireEvent.click(addPosition());
+      fireEvent.click(trashes()[0]);
+      expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+      });
+
+      expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+      expect(rows()).toHaveLength(2); // timing out is not deleting
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('removing the last position takes the order with it — no empty order can exist', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addOrder());
+    expect(orderIds()).toHaveLength(2);
+
+    // the second order has exactly one position
+    const t = trashes();
+    await userEvent.click(t[t.length - 1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(orderIds()).toHaveLength(1);
+    expect((orderIds()[0] as HTMLInputElement).value).toBe('SO-1');
+    expect(rows()).toHaveLength(1);
+  });
+
+  it('removing the last order leaves a fresh empty one — the screen is never empty', async () => {
+    renderSetup(() => {});
+    await userEvent.type(rows()[0], 'Sonderkiste');
+    expect((rows()[0] as HTMLInputElement).value).toBe('Sonderkiste');
+
+    await userEvent.click(orderTrashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(orderIds()).toHaveLength(1);
+    expect(rows()).toHaveLength(1);
+    expect((rows()[0] as HTMLInputElement).value).toBe(''); // a fresh order, not the old one
+  });
+
+  it('a surviving order keeps its colour slot when another order is removed', async () => {
+    // buildOrderColors is rebuilt from the CURRENT list on every calculate, so a removed order
+    // cannot leave an entry behind — and the survivor keeps the slot it was created with.
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    await userEvent.click(addOrder());
+
+    await userEvent.click(orderTrashes()[0]); // remove the FIRST order (SO-1, slot 0)
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    expect(onCalculate.mock.calls.at(-1)?.[1]?.orderColors).toEqual({ 'SO-2': 1 });
   });
 });

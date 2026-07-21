@@ -41,6 +41,9 @@ export const de: Dictionary = {
   'article.update': 'Artikel aktualisieren',
   'article.lockedHint': 'Wird in ERPNext geändert, Artikel {code}',
   'article.saveError': 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
+  'action.confirmDelete': 'Löschen bestätigen',
+  'setup.deletePosition': 'Position aus der Berechnung entfernen',
+  'setup.deleteOrder': 'Auftrag aus der Berechnung entfernen',
 
   'ladeplan.title': 'Ladeplan',
   'ladeplan.top': 'Draufsicht',
