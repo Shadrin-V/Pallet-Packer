@@ -277,6 +277,13 @@ interface GroupDropResolution {
   blocking: StackRef[];
 }
 
+/** Опции группового магнита. */
+interface GroupDropOptions {
+  /** Насколько далеко магнит может подтянуть, мм. Применяется одинаково ко всем участницам —
+   *  группа жёсткая. По умолчанию: значение самой тесной стопки (половина её короткой стороны). */
+  tolerance?: number;
+}
+
 unplaceStacks(load: Load, layout: Layout, refs: StackRef[]): EditResult
 moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: number, dy: number): EditResult
 resolveGroupDrop(
@@ -284,7 +291,7 @@ resolveGroupDrop(
   layout: Layout,
   refs: StackRef[],
   aim: GroupAim,
-  opts?: ResolveDropOptions,
+  opts?: GroupDropOptions,
 ): GroupDropResolution
 ```
 
@@ -335,8 +342,8 @@ resolveGroupDrop(
 
 ### История версий
 - `0.14.0` — добавлены групповые правки: `unplaceStacks`, `moveStacks`, `resolveGroupDrop`,
-  типы `GroupAim`, `GroupDropResolution`. Аддитивно: одиночные операции и их поведение не
-  менялись. `ENGINE_CONTRACT_VERSION` → `0.14.0` (`LKWkalk-dwc.6`).
+  типы `GroupAim`, `GroupDropResolution`, `GroupDropOptions`. Аддитивно: одиночные операции и их
+  поведение не менялись. `ENGINE_CONTRACT_VERSION` → `0.14.0` (`LKWkalk-dwc.6`).
 - `0.13.0` — добавлен магнит постановки: `resolveDrop`, типы `DropResolution`, `ResolveDropOptions`
   ([ADR 020](adr/020-magnet-drop-resolution.md)). Аддитивно: существующие операции и типы не менялись,
   `placeStack`/`moveStack` остаются строгими. `ENGINE_CONTRACT_VERSION` → `0.13.0` (`LKWkalk-crb`).
