@@ -536,8 +536,85 @@ describe('moveStacks', () => {
   it('conserves units — a move never invents or drops cargo', () => {
     const layout = calculateLayout(wide);
     const before = totalUnits(wide, layout, 'c');
-    const refs = layout.placements.slice(0, 2).map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
-    const { layout: next } = moveStacks(wide, layout, refs, 0, 0);
+    // A zero delta would hit the no-op short-circuit and return the identical object, making the
+    // assertion below pass no matter what moveStacks does — so this uses the same non-zero,
+    // genuinely-free shift as the "preserves the mutual arrangement" test above, to actually exercise
+    // the placement-rebuilding path.
+    const refs = [...layout.placements]
+      .sort((a, b) => a.x - b.x || a.y - b.y)
+      .slice(-2)
+      .map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+    const { layout: next, error } = moveStacks(wide, layout, refs, 1000, 0);
+    expect(error).toBeUndefined();
     expect(totalUnits(wide, next, 'c')).toBe(before);
+  });
+
+  it('refuses a bogus ref even at zero delta, instead of short-circuiting past validation', () => {
+    // moveStack (singular) validates the ref before its zero-delta short-circuit; moveStacks must
+    // match that order — a (0, 0) move is only a no-op for a REF THAT EXISTS.
+    const layout = calculateLayout(wide);
+    const { layout: next, error } = moveStacks(wide, layout, [{ cargoTypeId: 'c', x: 12345, y: 0 }], 0, 0);
+    expect(error?.code).toBe('ERR_EDIT_NO_STACK');
+    expect(next).toBe(layout);
+  });
+
+  describe('mixed selections — the group refuses as a WHOLE, not per-ref', () => {
+    // ADR 021's central invariant: a selection with one good member and one bad one must refuse
+    // entirely, and the good member must not have moved even transiently. A per-ref loop that applies
+    // good members before hitting a bad one would pass every other test in this file but fail these.
+
+    it('refuses when one member stays in bounds and another would leave the hold', () => {
+      const layout = calculateLayout(wide);
+      const sorted = [...layout.placements].sort((a, b) => a.x - b.x || a.y - b.y);
+      const good = sorted[0]; // smallest x — the 2×2 block's near wall
+      const bad = sorted[sorted.length - 1]; // largest x — the far wall
+      const refs = [
+        { cargoTypeId: 'c', x: good.x, y: good.y },
+        { cargoTypeId: 'c', x: bad.x, y: bad.y },
+      ];
+      // Land BAD exactly on the far wall (dx + its footprint overshoots by construction), while GOOD —
+      // starting closer to the near wall — still has room: a delta derived from the packer's own
+      // output, not a hardcoded distance.
+      const dx = wide.vehicle.length - bad.x;
+      // sanity: GOOD's target footprint (cube is 1000 mm on a side) stays inside the hold
+      expect(good.x + dx + wide.cargo[0].length).toBeLessThanOrEqual(wide.vehicle.length);
+
+      const { layout: next, error } = moveStacks(wide, layout, refs, dx, 0);
+
+      expect(error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
+      expect(next).toBe(layout); // identity: nothing applied
+      expect(next.placements.some((p) => p.x === good.x && p.y === good.y)).toBe(true); // good member untouched
+    });
+
+    it('refuses when one member lands free and another lands on an unselected stack', () => {
+      const layout = calculateLayout(row);
+      const refs = rowRefs(layout);
+      const step = refs[1].x - refs[0].x;
+      // Move the FIRST two stacks together: refs[0] -> refs[1]'s old spot (fine, refs[1] is moving
+      // too), but refs[1] -> a spot occupied by refs[2], which is NOT selected.
+      const selection = [refs[0], refs[1]];
+
+      const { layout: next, error } = moveStacks(row, layout, selection, step, 0);
+
+      expect(error?.code).toBe('ERR_EDIT_OVERLAP');
+      expect(next).toBe(layout);
+      // refs[0], the member whose own target was free, did NOT move.
+      expect(next.placements.some((p) => p.x === refs[0].x && p.y === refs[0].y)).toBe(true);
+    });
+
+    it('refuses when the selection combines a valid ref with one that names no column', () => {
+      const layout = calculateLayout(wide);
+      const good = layout.placements[0];
+      const refs = [
+        { cargoTypeId: 'c', x: good.x, y: good.y },
+        { cargoTypeId: 'c', x: 12345, y: 0 },
+      ];
+
+      const { layout: next, error } = moveStacks(wide, layout, refs, 1000, 0);
+
+      expect(error?.code).toBe('ERR_EDIT_NO_STACK');
+      expect(next).toBe(layout);
+      expect(next.placements.some((p) => p.x === good.x && p.y === good.y)).toBe(true); // good member untouched
+    });
   });
 });

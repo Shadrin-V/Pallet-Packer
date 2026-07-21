@@ -124,7 +124,7 @@ function withUnplaced(layout: Layout, cargoTypeId: string, delta: number): Unpla
 
 /** Rebuild a layout around new placements/unplaced, with metrics recomputed by the core. */
 function retally(load: Load, layout: Layout, placements: Placement[], unplaced: UnplacedCount[]): Layout {
-  const columns = new Set(placements.map((p) => `${p.cargoTypeId}@${p.x},${p.y}`));
+  const columns = new Set(placements.map((p) => refKey(p)));
   const next: Layout = { ...layout, placements, unplaced };
   return {
     ...next,
@@ -274,6 +274,9 @@ export function unplaceStacks(load: Load, layout: Layout, refs: StackRef[]): Edi
   }
   let cur = layout;
   for (const ref of unique.values()) {
+    // .error is safe to drop: this ref was already checked against the ORIGINAL layout above, and
+    // unplaceStack can only refuse with ERR_EDIT_NO_STACK — a column, once found, cannot un-exist
+    // partway through this loop, so every call here succeeds.
     cur = unplaceStack(load, cur, ref).layout;
   }
   return { layout: cur };
@@ -289,14 +292,16 @@ export function unplaceStacks(load: Load, layout: Layout, refs: StackRef[]): Edi
  */
 export function moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: number, dy: number): EditResult {
   const unique = [...new Map(refs.map((r) => [refKey(r), r])).values()];
-  if (unique.length === 0 || (dx === 0 && dy === 0)) return { layout };
+  if (unique.length === 0) return { layout };
 
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
   const keys = new Set(unique.map(refKey));
   const moving = (p: Placement) => keys.has(refKey(p));
 
   // Every check runs against the original layout before anything is built — bounds for all members
-  // first (the more fundamental answer, as elsewhere in this module), then overlap.
+  // first (the more fundamental answer, as elsewhere in this module), then overlap. Refs are
+  // validated here, BEFORE the zero-delta short-circuit below, so a bogus ref is refused even at
+  // (0, 0) — the same order the singular moveStack uses.
   const footprints: { ref: StackRef; w: number; h: number }[] = [];
   for (const ref of unique) {
     const column = layout.placements.filter(isRef(ref));
@@ -305,6 +310,7 @@ export function moveStacks(load: Load, layout: Layout, refs: StackRef[], dx: num
     const [w, h] = orientedDims(cargo.length, cargo.width, cargo.height, column[0].orientation);
     footprints.push({ ref, w, h });
   }
+  if (dx === 0 && dy === 0) return { layout };
   for (const { ref, w, h } of footprints) {
     if (outOfBounds(load, ref.x + dx, ref.y + dy, w, h)) {
       return { layout, error: err('ERR_EDIT_OUT_OF_BOUNDS', { ...ref, dx, dy }) };
