@@ -550,8 +550,8 @@ describe('moveStacks', () => {
   });
 
   it('refuses a bogus ref even at zero delta, instead of short-circuiting past validation', () => {
-    // moveStack (singular) validates the ref before its zero-delta short-circuit; moveStacks must
-    // match that order — a (0, 0) move is only a no-op for a REF THAT EXISTS.
+    // A (0, 0) move is only a no-op for a REF THAT EXISTS: validation runs first, so a selection
+    // naming nothing is refused rather than quietly reported as a successful no-op.
     const layout = calculateLayout(wide);
     const { layout: next, error } = moveStacks(wide, layout, [{ cargoTypeId: 'c', x: 12345, y: 0 }], 0, 0);
     expect(error?.code).toBe('ERR_EDIT_NO_STACK');
