@@ -93,7 +93,11 @@ export function ArticleCombobox({
       let fromCatalogue: ArticleSuggestion[] = [];
       try {
         fromCatalogue = dp ? (await dp.searchArticles(query)).map(toSuggestion) : [];
-      } catch {
+      } catch (err) {
+        // Staying silent for the user is deliberate (see above), but staying silent for the
+        // developer cost hours in LKWkalk-7wb: the catalogue was dead in the browser and nothing
+        // said so anywhere. The console keeps the next breakage one glance away.
+        console.warn('[ArticleCombobox] catalogue lookup failed, showing built-in presets only', err);
         fromCatalogue = [];
       }
       if (cancelled) return;
