@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { LadeplanScreen } from './LadeplanScreen';
+import { installSvgGeometry } from './components/svgTestGeometry';
 import * as exportPlan from '../lib/exportPlan';
 
 const V = { id: 'v1', name: 'LKW', length: 2000, width: 2000, height: 2000 };
@@ -190,6 +191,81 @@ describe('LadeplanScreen — warehouse floor', () => {
     expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10 });
     expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
+  });
+});
+
+// Group edits (dwc.6): the whole selection travels as one, and one edit puts it all in the buffer.
+describe('LadeplanScreen — group selection', () => {
+  /** Stub the geometry jsdom lacks, plus a buffer strip just below the cutaway, so a release at
+   *  y=2600 is outside the hold AND over the strip. Restores both, whatever the body does. */
+  const withStubbedGeometry = (
+    svgRect: { left: number; top: number; width: number; height: number },
+    run: () => void,
+  ) => {
+    const restoreSvg = installSvgGeometry(svgRect);
+    const origRect = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return {
+        left: 0, top: 2400, right: 4000, bottom: 3000,
+        width: 4000, height: 600, x: 0, y: 2400, toJSON: () => ({}),
+      } as DOMRect;
+    };
+    try {
+      run();
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  };
+
+  /** Rubber-band everything along y=0, then drag the stack at the origin to (toX, toY) client px. */
+  const bandThenDrag = (container: HTMLElement, ref: string, toX: number, toY: number) => {
+    const svg = container.querySelector('svg[data-cutaway="top"]')!;
+    fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
+    fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
+
+    fireEvent.pointerDown(svg.querySelector(`[data-stack-ref="${ref}"]`)!, { clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(svg, { clientX: toX, clientY: toY });
+    fireEvent.pointerUp(svg, { clientX: toX, clientY: toY });
+    return svg;
+  };
+
+  it('sends a whole group to the buffer in one gesture', () => {
+    // The 2×2 m hold holds four columns of two cubes; the band catches the two along y=0.
+    withStubbedGeometry({ left: 0, top: 0, width: 2000, height: 2000 }, () => {
+      const { container } = renderLadeplan();
+      expect(screen.queryByTestId('warehouse-count')).not.toBeInTheDocument(); // 8 of 8 placed
+
+      bandThenDrag(container, 'c1@0,0', 500, 2600); // released below the cutaway, over the strip
+
+      // Both stacks of the group are unplaced, i.e. all four cubes they carried — not just one stack.
+      expect(screen.getByTestId('warehouse-count')).toHaveTextContent('4 nicht platziert');
+    });
+  });
+
+  it('moves a whole group inside the hold with a single edit', () => {
+    // A 3 m single-file hold with two cubes at x=0 and x=1000 — room to shift the pair along.
+    const row: Load = {
+      vehicle: { id: 'v3', name: 'LKW', length: 3000, width: 1000, height: 1000 },
+      cargo: [{ ...load.cargo[0], quantity: 2, stacking: { stackable: false } }],
+    };
+    withStubbedGeometry({ left: 0, top: 0, width: 3000, height: 1000 }, () => {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={row} layout={calculateLayout(row)} />
+        </LocaleProvider>,
+      );
+      const svg = bandThenDrag(container, 'c1@0,0', 1500, 500); // one metre along the length
+
+      // The block landed as a block — nothing left at x=0, both members one cell further on — and
+      // the geometry invariant still holds, which is what a group move must never break.
+      expect(svg.querySelector('[data-stack-ref="c1@0,0"]')).toBeNull();
+      expect(svg.querySelector('[data-stack-ref="c1@1000,0"]')).not.toBeNull();
+      expect(svg.querySelector('[data-stack-ref="c1@2000,0"]')).not.toBeNull();
+      expect(container.querySelector('[data-violations]')).toHaveAttribute('data-violations', '0');
+      expect(screen.queryByTestId('edit-error')).not.toBeInTheDocument();
+    });
   });
 });
 
