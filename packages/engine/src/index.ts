@@ -2,7 +2,7 @@
 // Production exports are added test-first (TDD).
 
 /** Version of the engine JSON API contract (see docs/api-contract.md). */
-export const ENGINE_CONTRACT_VERSION = '0.13.0';
+export const ENGINE_CONTRACT_VERSION = '0.14.0';
 
 export * from './model/index';
 export { calculateLayout, getLayoutReport, computeStack } from './api/api';
