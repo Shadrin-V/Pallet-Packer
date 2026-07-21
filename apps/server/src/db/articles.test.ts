@@ -215,6 +215,27 @@ describe('article repo', () => {
     db.close();
   });
 
+  // Finding 4 (final review wave): ErpArticleFields.name is typed `string`, not `string |
+  // undefined` — an empty item_name from ERPNext would otherwise pass the `erp[f] !== undefined`
+  // supplied-check and permanently lock the article's name to ''. An empty/whitespace name must be
+  // treated the same as an absent dimension: "ERPNext did not actually supply this".
+  it('does not lock the name when ERPNext supplies an empty/whitespace name', () => {
+    const db = openDb(':memory:');
+    const out = upsertFromErp(db, { itemCode: 'EMPTY1', name: '   ', length: 800 }, { now: NOW });
+    expect(out.erpFields).not.toContain('name');
+    expect(out.erpFields).toEqual(['length']);
+    db.close();
+  });
+
+  it('does not overwrite a stored name with an empty/whitespace name from ERPNext', () => {
+    const db = openDb(':memory:');
+    upsertFromErp(db, { itemCode: 'EMPTY2', name: 'Palette', length: 800 }, { now: NOW });
+    const out = upsertFromErp(db, { itemCode: 'EMPTY2', name: '', length: 900 }, { now: '2026-07-20T11:00:00.000Z' });
+    expect(out.name).toBe('Palette'); // the blank sync must not wipe the real name
+    expect(out.length).toBe(900); // meanwhile a genuinely supplied dimension still updates
+    db.close();
+  });
+
   it('maps a row written before erp_fields_json existed (falling back to the column DEFAULT) to an empty list', () => {
     const db = openDb(':memory:');
     // Simulate a pre-migration row: insert without erp_fields_json, relying on the schema DEFAULT '[]'.

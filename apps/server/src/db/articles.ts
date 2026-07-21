@@ -141,13 +141,19 @@ export function upsertArticle(db: Database.Database, input: ArticleInput, opts: 
 export function upsertFromErp(db: Database.Database, erp: ErpArticleFields, opts: { now: string }): Article {
   const prevRow = getRow(db, erp.itemCode);
   const prev = prevRow ? toArticle(prevRow) : undefined;
-  const supplied = ERP_FIELDS.filter((f) => erp[f] !== undefined);
+  // An empty/whitespace-only name is "ERPNext did not actually supply a name", the same way an
+  // absent dimension is "not filled in over there" (see isPositive in erpnext/adapter.ts for the
+  // dimension equivalent). Without this guard, ErpArticleFields.name being typed `string` (not
+  // `string | undefined`) would let a blank item_name join `erpFields` and permanently lock the
+  // article's name to '' — nothing could ever rename it again, including a later, correct sync.
+  const nameSupplied = erp.name.trim() !== '';
+  const supplied = ERP_FIELDS.filter((f) => (f === 'name' ? nameSupplied : erp[f] !== undefined));
   const erpFields = [...new Set([...erpFieldsOf(prevRow), ...supplied])];
   const take = (incoming: number | undefined, stored: number | undefined): number | undefined =>
     incoming ?? stored;
   return write(db, {
     itemCode: erp.itemCode,
-    name: erp.name,
+    name: nameSupplied ? erp.name : (prev?.name ?? erp.name),
     length: take(erp.length, prev?.length),
     width: take(erp.width, prev?.width),
     height: take(erp.height, prev?.height),

@@ -405,6 +405,15 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       positions: [...(orders.find((o) => o.key === okey)?.positions ?? []), emptyPosition()],
     });
 
+  // Finding 5 (final review wave): ArmedDelete focuses its confirm button while armed, but that
+  // button unmounts the instant a delete is confirmed — nothing claimed focus afterwards, so it
+  // fell to <body> and a keyboard user lost their place. The "+ Auftrag hinzufügen" button above
+  // the order list (`addOrderRef`) is the target: it is the one control guaranteed to survive
+  // every delete outcome (a single position, a whole order, or the cascade that replaces the last
+  // order/position with a fresh empty one), unlike a specific row's own "+ Position" button, which
+  // may itself have just been removed along with its order.
+  const addOrderRef = useRef<HTMLButtonElement>(null);
+
   /** Remove one position from the calculation. The catalogue article is untouched — this says
    *  "not on this truck", not "no such article". An order that loses its last position goes too:
    *  an order with no positions is a state nothing can compute (ADR 022). */
@@ -419,6 +428,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         .filter((o) => o.key !== okey || o.positions.length > 0);
       return next.length > 0 ? next : [emptyOrder(1)];
     });
+    addOrderRef.current?.focus();
   };
 
   /** Remove a whole order. The last one is replaced by a fresh empty order, never left empty. */
@@ -428,6 +438,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       const next = os.filter((o) => o.key !== okey);
       return next.length > 0 ? next : [emptyOrder(1)];
     });
+    addOrderRef.current?.focus();
   };
 
   // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
@@ -504,7 +515,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
-          <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
+          <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
         </div>
       </div>
       {loadedDemo !== null && (
@@ -611,7 +622,11 @@ function OrderCard({
   const colorVar = `var(--s${((index % 8) + 1)})`;
   return (
     <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
-      <div className="flex items-center gap-3 bg-sub px-4 py-2.5">
+      {/* flex-wrap (Finding 6, final review wave): this header only survived unwrapped because the
+          order-ID field carries min-w-0 — an accident, not a guarantee. Wrap explicitly so the wide
+          armed confirm button (ArmedDelete) has somewhere to go instead of overflowing the
+          overflow-hidden section, same fix already applied to the position row below. */}
+      <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
         <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
         <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
         <span className="ml-auto text-caption text-muted">
@@ -784,7 +799,7 @@ function PositionRow({
         {/* Article combobox replaces the old preset select + separate name field (Task 8, closes
             rgv.8): one control both names the row and, when a suggestion is picked, fills its
             dimensions/rules and locks the fields ERPNext actually supplied. */}
-        <span className="w-64 shrink-0">
+        <span className="inline-flex w-64 shrink-0 items-center gap-1">
           <ArticleCombobox
             ariaLabel={tt('article.label')}
             value={p.name}
@@ -809,6 +824,13 @@ function PositionRow({
             }}
             className="w-full"
           />
+          {/* Finding 3 (final review wave): the name lock (ADR 022 §3) was only explained AFTER the
+              user started retyping (the unboundFromErp notice), and only inside the collapsed
+              details panel. length/width/height each get an InfoHint right next to the field the
+              moment they are locked — the name combobox got none. It must stay editable (no
+              readOnly — that is the search input), so the affordance is the same InfoHint pattern,
+              not a lock. */}
+          {p.locked?.name && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
         </span>
         <span className="inline-flex w-24 items-center gap-1">
           <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />

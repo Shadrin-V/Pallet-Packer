@@ -797,6 +797,29 @@ describe('SetupScreen — removing from the calculation', () => {
     expect((rows()[0] as HTMLInputElement).value).toBe(''); // a fresh order, not the old one
   });
 
+  // Finding 5 (final review wave): the confirm button ArmedDelete focused while armed unmounts the
+  // instant it is clicked; without an explicit refocus, focus falls to <body> and a keyboard user
+  // loses their place. Both delete paths (position, order) must land focus on a surviving control.
+  it('moves focus to "+ Auftrag hinzufügen" after confirming a position delete', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+
+    await userEvent.click(trashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(addOrder()).toHaveFocus();
+  });
+
+  it('moves focus to "+ Auftrag hinzufügen" after confirming an order delete', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addOrder());
+
+    await userEvent.click(orderTrashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(addOrder()).toHaveFocus();
+  });
+
   it('a surviving order keeps its colour slot when another order is removed', async () => {
     // buildOrderColors is rebuilt from the CURRENT list on every calculate, so a removed order
     // cannot leave an entry behind — and the survivor keeps the slot it was created with.
@@ -903,6 +926,31 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     updatedAt: '2026-07-21T00:00:00.000Z',
     erpFields: ['length', 'width', 'height', 'name'],
   } as const;
+
+  // Finding 3 (final review wave): length/width/height each get an InfoHint next to the field the
+  // moment they are locked; the name combobox got none — the only explanation was the
+  // unboundFromErp notice, which only appears AFTER the user starts retyping, inside the collapsed
+  // details panel. This pins the missing affordance: a hint next to the combobox itself, present as
+  // soon as the row is bound, before any retyping.
+  it('shows a lock hint next to the article combobox for an ERP-named article, and none for a local one', async () => {
+    // erpFields: ['name'] only (no dimensions locked) isolates the name hint from the pre-existing
+    // per-dimension hints, which reuse the very same accessible name ('Artikel', via lockedHint) —
+    // a fixture that also locks length/width/height would make getByRole ambiguous for a reason
+    // unrelated to this finding.
+    const NAME_ONLY = { ...ERP_NAMED, erpFields: ['name'] as const };
+    const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
+    renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([NAME_ONLY, LOCAL]) });
+
+    const box = screen.getByLabelText('Artikel');
+    await userEvent.type(box, 'ABB');
+    await userEvent.click(await screen.findByText('Gitterbox'));
+    expect(screen.getByRole('button', { name: 'Artikel' })).toBeInTheDocument(); // the hint toggle
+
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Eig');
+    await userEvent.click(await screen.findByText('Eigenbau'));
+    expect(screen.queryByRole('button', { name: 'Artikel' })).toBeNull();
+  });
 
   it('explains where the name is changed once the user edits it away from an ERP article', async () => {
     renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([ERP_NAMED]) });
