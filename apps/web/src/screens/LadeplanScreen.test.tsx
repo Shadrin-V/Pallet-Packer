@@ -363,6 +363,37 @@ describe('LadeplanScreen — group selection', () => {
       expect(screen.getByTestId('group-frame')).toHaveAttribute('x', '1000');
     });
   });
+
+  // The buffer verdict (dwc.6): `onDropOutside`'s return tells CrossSection whether the release
+  // actually took the stacks off the floor — only then may it drop the selection. Nothing here pins
+  // the `true` branch itself: round-trip a group through the buffer and back, onto the exact cell it
+  // vacated, and check the returning stack does NOT inherit the stale selection.
+  it('does not resurrect a stale selection on a stack returned to a vacated cell (buffer verdict)', () => {
+    // If `onDropOutside` did not clear the selection on a genuine buffer hit, the stale refs would
+    // still name (0,0)/(1000,0) — and a stack later placed back at (0,0) would silently render as
+    // part of a group the user never selected. `groupBBox` matches no drawn rect right after the
+    // drop, which is exactly why no existing assertion catches it — this test checks the return trip.
+    withStubbedGeometry({ left: 0, top: 0, width: 2000, height: 2000 }, () => {
+      const { container } = renderLadeplan(); // 8 cubes fill the hold exactly
+      const svg = bandThenDrag(container, 'c1@0,0', 500, 2600); // group → buffer strip
+      expect(screen.getByTestId('warehouse-count')).toHaveTextContent('4 nicht platziert');
+
+      // Drag the first buffered tile back onto the cell the group just vacated. The identity geometry
+      // stub makes client px == hold mm, and a tile is held by its centre, so aiming at (500, 500)
+      // resolves a 1000×1000 stack to (0, 0) — the exact ref the stale selection would still hold.
+      fireEvent.pointerDown(screen.getAllByTestId('warehouse-tile')[0], { clientX: 10, clientY: 10 });
+      fireEvent.pointerUp(window, { clientX: 500, clientY: 500 });
+
+      const returned = svg.querySelector('[data-stack-ref="c1@0,0"]');
+      expect(returned).not.toBeNull();
+      // Not selected: no dashed outline on the returning stack, and no group label anywhere. Coerced
+      // to boolean before the assertion — jsdom elements crash chai's failure-message pretty-printer
+      // (unrelated bug, unrelated to what we're pinning), which would otherwise mask a real failure
+      // here behind an opaque "Cannot read properties of undefined (reading 'name')".
+      expect(Boolean(returned!.querySelector('[stroke-dasharray="6 4"]'))).toBe(false);
+      expect(Boolean(screen.queryByTestId('group-count'))).toBe(false);
+    });
+  });
 });
 
 describe('LadeplanScreen — figures (D1 + D3)', () => {
