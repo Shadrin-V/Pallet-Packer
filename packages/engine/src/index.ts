@@ -14,5 +14,11 @@ export type { GeometryViolation } from './geometry/geometry';
 // Manual layout edits (ADR 019, contract 0.12.0) — the algebra of hand edits lives in the core.
 export { moveStack, rotateStack, unplaceStack, placeStack, stackBuffer, unplaceStacks, moveStacks } from './packing/edit';
 export type { StackRef, PlaceStackSpec, EditResult, BufferStack } from './packing/edit';
-export { resolveDrop } from './packing/resolveDrop';
-export type { DropResolution, ResolveDropOptions } from './packing/resolveDrop';
+export { resolveDrop, resolveGroupDrop } from './packing/resolveDrop';
+export type {
+  DropResolution,
+  ResolveDropOptions,
+  GroupAim,
+  GroupDropOptions,
+  GroupDropResolution,
+} from './packing/resolveDrop';

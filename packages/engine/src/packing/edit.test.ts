@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import type { CargoType, Layout, Load } from '../model/index';
 import { calculateLayout } from '../api/api';
 import { findGeometryViolations } from '../geometry/geometry';
@@ -635,5 +636,35 @@ describe('moveStacks', () => {
       expect(next).toBe(layout);
       expect({ x: next.placements[goodIndex].x, y: next.placements[goodIndex].y }).toEqual(goodBefore); // good member untouched
     });
+  });
+});
+
+describe('group edits — invariants', () => {
+  const grid: Load = {
+    vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 1000 },
+    cargo: [cargo({ id: 'c', name: 'Cube', length: 1000, width: 1000, height: 1000, quantity: 8 })],
+  };
+
+  it('any ACCEPTED group move leaves a geometrically valid layout', () => {
+    const layout = calculateLayout(grid);
+    const all = layout.placements.map((p) => ({ cargoTypeId: 'c', x: p.x, y: p.y }));
+
+    fc.assert(
+      fc.property(
+        fc.subarray(all, { minLength: 1 }),
+        fc.integer({ min: -4000, max: 4000 }),
+        fc.integer({ min: -2000, max: 2000 }),
+        (refs, dx, dy) => {
+          const { layout: next, error } = moveStacks(grid, layout, refs, dx, dy);
+          if (error) {
+            expect(next).toBe(layout); // refusal never mutates
+            return;
+          }
+          expect(findGeometryViolations(grid, next)).toEqual([]);
+          expect(totalUnits(grid, next, 'c')).toBe(totalUnits(grid, layout, 'c'));
+        },
+      ),
+      { numRuns: 300, seed: 20260721 },
+    );
   });
 });
