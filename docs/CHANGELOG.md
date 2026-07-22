@@ -24,6 +24,19 @@
 
 ## [Unreleased]
 
+### 2026-07-22 — корневой `npm run build` в порядке зависимостей (`LKWkalk-dsu`)
+
+- Исправлено: корневой `build` использовал `npm run build --workspaces`, который npm резолвит
+  **по алфавиту** — `@shadrin-v/contracts` собирался раньше `@shadrin-v/engine`, от которого зависит,
+  и на чистом чекауте `tsup --dts` для contracts выдавал `index.js` без годного `index.d.ts` →
+  `apps/web` падал на `TS7016`. Локально маскировалось устаревшим gitignored `dist/`; поймал CI.
+- Скрипт `build` теперь собирает воркспейсы в явном порядке зависимостей
+  (`i18n → engine → contracts → web → server`); тот же порядок, продублированный в `ci.yml` и
+  `Dockerfile`, схлопнут в один `npm run build` — единый источник истины.
+- Регрессионный тест `tests/build-order.test.ts` падает, если корневой скрипт откатится к
+  `--workspaces`, перестанет покрывать какой-то воркспейс с `build` или нарушит порядок
+  зависимостей — новый пакет нельзя молча пропустить или поставить не по порядку.
+
 ### 2026-07-22 — continuous deployment из `main` (`LKWkalk-7jg`)
 
 - Процесс: переход на continuous deployment из `main`; ветка `production` ретайрится; добавлен CI-гейт (GitHub Actions). ADR 023, LKWkalk-7jg.
