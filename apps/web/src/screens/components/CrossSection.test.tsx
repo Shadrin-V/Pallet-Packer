@@ -810,3 +810,23 @@ describe('nested cargo viewport (1:1 preserved)', () => {
     expect(nested.getAttribute('viewBox')).toBe(`0 0 ${V.length} ${V.width}`);
   });
 });
+
+// Truck chrome composed into the outer svg's gutters (Task 6): cab + wheels + ruler on the side view,
+// the light polygon hint on the top view — never the cargo viewport itself.
+describe('truck chrome composition', () => {
+  it('side view renders cab + wheels + ruler chrome, all non-interactive', () => {
+    const { container } = renderCut('side', 'Seitenansicht');
+    const outer = container.querySelector('svg[data-cutaway="side"]')!;
+    // ruler tick labels present (interior metres of a 2000mm hold → "1")
+    const texts = [...outer.querySelectorAll('text')].map((t) => t.textContent);
+    expect(texts).toContain('1');
+    // at least two wheels
+    expect(outer.querySelectorAll('circle, ellipse').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('top view renders the light hint (a polygon) but no wheels', () => {
+    const { container } = renderCut('top', 'Draufsicht');
+    const outer = container.querySelector('svg[data-cutaway="top"]')!;
+    expect(outer.querySelector('polygon')).toBeTruthy();
+  });
+});

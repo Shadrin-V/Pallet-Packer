@@ -25,6 +25,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
+import { GUTTER, CabProfile, Axles, GroundLine, TopHint, MetreRuler } from './truckChrome';
 
 /** Where a dragged stack would land, and whether it may — the engine's answer, drawn. */
 export interface DropPreview {
@@ -115,11 +116,11 @@ export function CrossSection({
   const rotatable = view === 'top' && !!onRotateStack;
 
   // Outer chrome gutters, in the cutaway's own mm units (front cab both views; wheels/ruler side
-  // only). These fractions MUST match GUTTER in truckChrome.tsx — Task 6 composes chrome into these
-  // gutters, so the cargo viewport keeps its exact 1:1 box.
-  const frontGutter = height * 0.75; // GUTTER.front
-  const wheelGutter = view === 'side' ? height * 0.22 : 0; // GUTTER.wheel (side only)
-  const rulerGutter = height * 0.16; // GUTTER.ruler
+  // only). Sourced from the same GUTTER constants truckChrome.tsx renders into, so the cargo
+  // viewport's exact 1:1 box and the chrome's footprint can never drift apart.
+  const frontGutter = height * GUTTER.front;
+  const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
+  const rulerGutter = height * GUTTER.ruler;
   const outerW = length + frontGutter;
   const outerH = spanY + wheelGutter + rulerGutter;
 
@@ -328,7 +329,6 @@ export function CrossSection({
         data-cutaway={view}
         style={{ background: 'var(--paper)', display: 'block' }}
       >
-        {/* chrome goes here in Task 6 */}
         <svg
           ref={svgRef}
           x={frontGutter}
@@ -501,6 +501,29 @@ export function CrossSection({
         })()}
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
         </svg>
+        {/* chrome: front cab gutter (both views), wheels+ground (side), ruler lane (both). Drawn AFTER
+            the nested cargo svg so that svg stays the outer svg's first <svg> descendant (existing
+            tests key off that), and so chrome — which lives only in the outer gutters — paints on top
+            without ever touching the cargo viewport's own 1:1 coordinate space. */}
+        <g pointerEvents="none">
+          {view === 'side' && (
+            <>
+              <g transform={`translate(0 0)`}><CabProfile height={spanY} /></g>
+              <g transform={`translate(${frontGutter} ${spanY})`}>
+                <Axles length={length} height={spanY} />
+              </g>
+              <GroundLine x1={frontGutter} x2={frontGutter + length} y={spanY + wheelGutter} />
+            </>
+          )}
+          {view === 'top' && (
+            <g transform={`translate(${frontGutter} 0)`}>
+              <TopHint length={length} width={spanY} front={frontGutter} />
+            </g>
+          )}
+          <g transform={`translate(${frontGutter} ${spanY + wheelGutter})`}>
+            <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} />
+          </g>
+        </g>
       </svg>
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both
           cutaways share the x axis (vehicle length), so one set of markers labels the pair — and
