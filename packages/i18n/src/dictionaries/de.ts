@@ -51,6 +51,7 @@ export const de: Dictionary = {
   'ladeplan.legend': 'Legende',
   'ladeplan.front': 'Vorne',
   'ladeplan.back': 'Hinten',
+  'ladeplan.rulerUnit': 'm',
   'ladeplan.kicker': 'Ladeplan · Ladungsplaner',
   'ladeplan.brandName': 'Schäfer',
   'ladeplan.brandTagline': 'Holz bewegt.',

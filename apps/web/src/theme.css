@@ -37,6 +37,7 @@
 
   /* ---- data-viz ---- */
   --grid: #d0dad4;         /* cutaway 1000mm grid */
+  --truck: #5b6b62;        /* cutaway truck chrome — neutral with a slight brand-green bias */
 
   /* ---- radii ---- */
   --r-card: 12px;  --r-ctl: 8px;  --r-pill: 18px;
