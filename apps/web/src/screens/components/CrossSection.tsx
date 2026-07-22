@@ -114,6 +114,15 @@ export function CrossSection({
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
 
+  // Outer chrome gutters, in the cutaway's own mm units (front cab both views; wheels/ruler side
+  // only). These fractions MUST match GUTTER in truckChrome.tsx — Task 6 composes chrome into these
+  // gutters, so the cargo viewport keeps its exact 1:1 box.
+  const frontGutter = height * 0.75; // GUTTER.front
+  const wheelGutter = view === 'side' ? height * 0.22 : 0; // GUTTER.wheel (side only)
+  const rulerGutter = height * 0.16; // GUTTER.ruler
+  const outerW = length + frontGutter;
+  const outerH = spanY + wheelGutter + rulerGutter;
+
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [sel, setSel] = useState<StackRef[]>([]);
@@ -307,21 +316,35 @@ export function CrossSection({
     <figure className="m-0 select-none">
       <figcaption className="mb-1 text-label uppercase font-semibold text-faint">{label}</figcaption>
       <svg
-        ref={svgRef}
-        viewBox={`0 0 ${length} ${spanY}`}
+        viewBox={`0 0 ${outerW} ${outerH}`}
         width="100%"
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={label}
         // Marks this svg as a projection of the plan: the PNG export picks the cutaways by this
-        // attribute. role="img" alone would also match legend swatches and the stack diagram.
+        // attribute. role="img" alone would also match legend swatches and the stack diagram. It
+        // stays on the OUTER svg so the export/print captures chrome + cargo together — the nested
+        // cargo svg must NOT also carry it.
         data-cutaway={view}
-        style={{ background: 'var(--paper)', display: 'block', touchAction: draggable ? 'none' : undefined }}
-        onPointerMove={draggable ? onMove : undefined}
-        onPointerUp={draggable ? onUp : undefined}
-        onPointerDown={draggable ? onBackgroundDown : undefined}
-        onPointerCancel={draggable ? onCancel : undefined}
+        style={{ background: 'var(--paper)', display: 'block' }}
       >
+        {/* chrome goes here in Task 6 */}
+        <svg
+          ref={svgRef}
+          x={frontGutter}
+          y={0}
+          width={length}
+          height={spanY}
+          // Its own viewBox is 0 0 length spanY, so getScreenCTM maps client px straight to cargo mm
+          // (origin at the cargo box, unshifted by the gutter) — drops land where the ghost previews.
+          viewBox={`0 0 ${length} ${spanY}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ overflow: 'visible', touchAction: draggable ? 'none' : undefined }}
+          onPointerMove={draggable ? onMove : undefined}
+          onPointerUp={draggable ? onUp : undefined}
+          onPointerDown={draggable ? onBackgroundDown : undefined}
+          onPointerCancel={draggable ? onCancel : undefined}
+        >
         {/* The grid is decoration, and must not be a hit target: a press landing on a stroke would
             otherwise reach neither the svg nor a stack, and start no band at all — a dead stripe
             every 1000 mm. Same pointerEvents="none" every other overlay here carries. */}
@@ -477,6 +500,7 @@ export function CrossSection({
           );
         })()}
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        </svg>
       </svg>
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both
           cutaways share the x axis (vehicle length), so one set of markers labels the pair — and
