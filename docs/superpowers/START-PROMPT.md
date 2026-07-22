@@ -23,7 +23,7 @@ https://ladungsplaner.holz-schaefer.de (Coolify/Hetzner, TLS, continuous deploym
 - Перед merge: `npm test` · `npm run lint` · `npm run typecheck` · `npm run build --workspace apps/web`.
   Правил `packages/engine`/`i18n` → **пересобери их dist** (web/server импортируют dist, он в .gitignore).
 - После merge в `main` → Coolify авто-деплоит (continuous deployment, ADR 023). Отдельной ветки `production` нет.
-  **Проверка выката:** `git ls-remote origin production` == HEAD И имя `/assets/index-*.js` на проде
+  **Проверка выката:** имя `/assets/index-*.js` на проде
   **сменилось** (хеш Coolify может НЕ совпасть с локальным). Сразу после смены имени возможна гонка:
   ассет ещё 404 и отдаётся SPA-фолбэк (~460 байт) — подождать ~20 с и перекачать.
 - **Проверка в реальном Chrome обязательна** для вёрстки, drag и canvas (jsdom не умеет ни то, ни другое):

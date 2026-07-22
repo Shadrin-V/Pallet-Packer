@@ -27,3 +27,4 @@
 | 020 | [Магнит постановки: поиск места в ядре, строгие операции остаются строгими](020-magnet-drop-resolution.md) | Принято |
 | 021 | [Групповые правки раскладки: жёсткий перенос и групповой магнит](021-group-layout-edits.md) | Принято |
 | 022 | [Имя артикула в провенансе ERPNext; два паттерна подтверждения](022-article-name-provenance-and-confirm-patterns.md) | Принято |
+| 023 | [Continuous deployment из ветки `main`](023-continuous-deploy-from-main.md)                             | Принято |
