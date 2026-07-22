@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Build packages in dependency order (mirrors Dockerfile). Root `npm run build`
+      # is `--workspaces`, which npm resolves alphabetically and would build
+      # @shadrin-v/contracts before @shadrin-v/engine it depends on, leaving contracts
+      # without a usable .d.ts on a clean checkout. See LKWkalk root-build-order follow-up.
+      - run: npm run build --workspace @shadrin-v/i18n
+      - run: npm run build --workspace @shadrin-v/engine
+      - run: npm run build --workspace @shadrin-v/contracts
+      - run: npm run build --workspace @app/web
+      - run: npm run build --workspace @app/server
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test

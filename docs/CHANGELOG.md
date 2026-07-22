@@ -24,6 +24,10 @@
 
 ## [Unreleased]
 
+### 2026-07-22 — continuous deployment из `main` (`LKWkalk-7jg`)
+
+- Процесс: переход на continuous deployment из `main`; ветка `production` ретайрится; добавлен CI-гейт (GitHub Actions). ADR 023, LKWkalk-7jg.
+
 ### 2026-07-21 — каталог артикулов снова доступен в браузере (`LKWkalk-7wb`)
 
 - Исправлено: ни один запрос к `/api/` из браузера не уходил, поэтому сохранённые артикулы никогда
