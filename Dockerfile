@@ -11,11 +11,9 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
 RUN npm ci
-RUN npm run build --workspace @shadrin-v/i18n \
-  && npm run build --workspace @shadrin-v/engine \
-  && npm run build --workspace @shadrin-v/contracts \
-  && npm run build --workspace @app/web \
-  && npm run build --workspace @app/server
+# Root build script builds workspaces in explicit dependency order
+# (i18n → engine → contracts → web → server); see package.json / LKWkalk-dsu.
+RUN npm run build
 # Drop dev dependencies from node_modules; keep the compiled better-sqlite3 binding.
 RUN npm prune --omit=dev
 
