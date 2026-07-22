@@ -13,7 +13,7 @@ https://ladungsplaner.holz-schaefer.de (Coolify/Hetzner, TLS, continuous deploym
    beads team-maintainer (авто commit/push/`bd dolt push`/close после зелёных гейтов), **ветка-на-задачу
    → merge в main сам**, docs-first, TDD, геометро-валидатор на каждом результате. Спрашивать ТОЛЬКО про
    ломающий контракт или продуктовое решение без очевидного дефолта (сразу с предложенным дефолтом).
-2. Прочитай **`docs/superpowers/HANDOVER-2026-07-17.md`** — свежий снимок (что сделано, статус,
+2. Прочитай **`docs/superpowers/HANDOVER-2026-07-22.md`** — свежий снимок (что сделано, статус,
    подводные камни). Архитектура целиком — в `HANDOVER-2026-07-16.md` §2–6 (не менялась).
 3. Проектный `CLAUDE.md` и `~/.claude/CLAUDE.md` — правила и связка скиллов. `bd ready` — задачи.
 
