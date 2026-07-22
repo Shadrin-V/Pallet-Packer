@@ -4,7 +4,7 @@
 // telescope (step < base), entschachtelt sit flush (step = base). Heights come from the engine's
 // StackPreview, never from tier counts.
 import type { StackPreview } from '@shadrin-v/engine';
-import { DX, DY, boxFaces, polyPoints, project, stackViewBox, tierStep } from './stack3d';
+import { DY, boxFaces, polyPoints, project, stackViewBox, tierStep } from './stack3d';
 
 /** Pallet-base band height cap, mm (a real EUR pallet is ~144). */
 const PALLET_MAX = 150;

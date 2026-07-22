@@ -1034,7 +1034,7 @@ function PositionRow({
               {preview.count > 0 && (
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-label uppercase font-semibold text-faint">{tt('stack.diagram')}</span>
-                  <StackDiagram preview={preview} length={numOr0(p.length)} label={tt('stack.diagram')} series={orderColorToken(index).series} />
+                  <StackDiagram preview={preview} length={numOr0(p.length)} width={numOr0(p.width)} label={tt('stack.diagram')} series={orderColorToken(index).series} />
                 </div>
               )}
             </div>
