@@ -76,6 +76,13 @@
 - i18n: локали **de, ru** (en — позже); движок возвращает коды ошибок ([ADR 006](docs/adr/006-i18n-de-ru-error-codes.md)).
 - Где выполняется расчёт: **в браузере** (движок-пакет вызывается из Lovable); REST/MCP — поверх того же ядра позже ([ADR 001](docs/adr/001-headless-ts-engine-in-browser.md)).
 
+## Деплой и релиз
+
+- **Continuous deployment из `main`** ([ADR 023](docs/adr/023-continuous-deploy-from-main.md)): Coolify собирает ветку `main`; мерж в `main` = выкладка на прод. Отдельной ветки `production` и отдельного шага релиза нет.
+- **Шаг релиза = мерж в `main`** при зелёном CI-гейте (`.github/workflows/ci.yml`, обязательный статус-чек `ci`) + проверка live на https://ladungsplaner.holz-schaefer.de.
+- **Откат** — redeploy предыдущего успешного деплоя в панели Coolify (ветки-буфера нет).
+- `main` всегда должен быть прод-готов: любой мерж уходит на прод немедленно.
+
 ## Доменные инварианты (соблюдать всегда)
 
 - Ни одна единица груза не выходит за пределы кузова и не пересекается с другой.
@@ -133,7 +140,7 @@ The managed Beads block is task-tracking guidance, not permission to override re
 This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
 
 1. **File issues for remaining work** - Create beads for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
+2. **Run quality gates** (if code changed) - Tests, linters, builds. Мерж в `main` = выкладка на прод (continuous deployment, ADR 023): убедись, что гейты зелёные до мержа.
 3. **Update issue status** - Close finished work, update in-progress items
 4. **Handle git/sync by active profile**:
    ```bash
