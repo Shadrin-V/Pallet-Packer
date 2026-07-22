@@ -12,3 +12,6 @@ dist/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Superpowers visual brainstorm companion (local mockups)
+.superpowers/
