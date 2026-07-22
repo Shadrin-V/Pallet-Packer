@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { render } from '@testing-library/react';
+import { CabProfile, Axles, TopHint, MetreRuler, GUTTER } from './truckChrome';
 
 // NOTE: deliberately not `new URL('...', import.meta.url)` — Vite's asset-URL
 // static analysis intercepts that literal pattern under the jsdom test
@@ -31,5 +33,39 @@ describe('truck-side-source.svg hygiene', () => {
     expect(src).toMatch(/currentColor/);
     expect(src).not.toMatch(/fill:#000000/);
     expect(src).toMatch(/viewBox="0 0 750 750"/);
+  });
+});
+
+describe('truck chrome fragments', () => {
+  it('CabProfile renders in currentColor/token and no external refs', () => {
+    const { container } = render(<svg><CabProfile height={2650} /></svg>);
+    const html = container.innerHTML;
+    expect(html).not.toMatch(/xlink:href|url\(http/);
+    expect(container.querySelector('g')).toBeTruthy();
+  });
+  it('Axles draws at least two wheels', () => {
+    const { container } = render(<svg><Axles length={13600} height={2650} /></svg>);
+    expect(container.querySelectorAll('circle, ellipse').length).toBeGreaterThanOrEqual(2);
+  });
+  it('MetreRuler labels interior metres', () => {
+    const { container } = render(<svg><MetreRuler length={3600} y={0} unit="m" /></svg>);
+    const texts = [...container.querySelectorAll('text')].map((t) => t.textContent);
+    expect(texts).toContain('1'); // interior metres of 3600 mm: 1, 2, 3
+    expect(texts).toContain('2');
+    expect(texts).toContain('3');
+  });
+  it('all chrome is non-interactive', () => {
+    const { container } = render(
+      <svg><TopHint length={2000} width={2000} front={500} /></svg>,
+    );
+    container.querySelectorAll('*').forEach((el) => {
+      const pe = (el as SVGElement).getAttribute('pointer-events');
+      if (pe) expect(pe).toBe('none');
+    });
+  });
+  it('GUTTER fractions are positive and small', () => {
+    expect(GUTTER.front).toBeGreaterThan(0);
+    expect(GUTTER.wheel).toBeGreaterThan(0);
+    expect(GUTTER.ruler).toBeGreaterThan(0);
   });
 });
