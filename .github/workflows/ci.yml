@@ -20,15 +20,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Build packages in dependency order (mirrors Dockerfile). Root `npm run build`
-      # is `--workspaces`, which npm resolves alphabetically and would build
+      # Root `npm run build` builds workspaces in explicit dependency order
+      # (i18n → engine → contracts → web → server), matching the Dockerfile. This
+      # avoids npm's alphabetical --workspaces order, which would build
       # @shadrin-v/contracts before @shadrin-v/engine it depends on, leaving contracts
-      # without a usable .d.ts on a clean checkout. See LKWkalk root-build-order follow-up.
-      - run: npm run build --workspace @shadrin-v/i18n
-      - run: npm run build --workspace @shadrin-v/engine
-      - run: npm run build --workspace @shadrin-v/contracts
-      - run: npm run build --workspace @app/web
-      - run: npm run build --workspace @app/server
+      # without a usable .d.ts on a clean checkout (LKWkalk-dsu).
+      - run: npm run build
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
