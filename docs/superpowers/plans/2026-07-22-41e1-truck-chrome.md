@@ -1,5 +1,12 @@
 # 41e.1 Truck Chrome Implementation Plan
 
+> ⚠️ SUPERSEDED (2026-07-23): Tasks 1, 2, 5 (token/i18n, ruler, nested-svg refactor) shipped as
+> planned. Tasks 3, 4, 6 (CC0 `truck-side-source.svg`, hand-drawn cab/wheels) were **abandoned** —
+> hand-authored SVG never reached reference quality. The truck ships from the **owner's vector
+> reference** instead (`docs/design/Reference/…svg` → `truck-front-{side,top}.svg`); `truck-side-source.svg`
+> and the `--truck: #5b6b62` shade below are historical (final `--truck` is `#3f4a44`). Actual outcome:
+> CHANGELOG 2026-07-23 + design-doc banner + memory `41e1-truck-chrome-source-vector`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the Ladeplan side/top cutaways read as a truck (sourced CC0 cab + wheels + metre ruler on the side, a light geometric hint on the top) without disturbing the exact 1:1 cargo drawing.

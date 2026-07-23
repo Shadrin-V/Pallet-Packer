@@ -1,5 +1,13 @@
 # 41e.1 — Recognizable truck chrome around the Ladeplan cutaways
 
+> ⚠️ PARTIALLY SUPERSEDED (2026-07-23): the **mechanism** shipped as designed (outer chrome svg +
+> nested 1:1 cargo svg, engine/contract untouched, metre ruler), but the **asset source changed**.
+> Hand-authoring/CC0 was rejected 3× ("ужасно"); the truck is now built from the **owner's own vector
+> reference** (`docs/design/Reference/truck_cargo_focus_top_side_aligned.svg`) — tractor (side) + cab-top
+> (top) extracted, recoloured to `--truck`, anchored to the cargo box and scaled uniformly. The
+> schematic "light top hint" became the reference cab-top. See CHANGELOG 2026-07-23 and memory
+> `41e1-truck-chrome-source-vector`. Sections below about CC0 sourcing / schematic top are historical.
+
 > Design doc (brainstorming phase, 2026-07-22). Epic **LKWkalk-41e** «Дизайн-батч», subtask
 > **LKWkalk-41e.1** «узнаваемая графика кузова (вид сверху и сбоку)». **Merged with LKWkalk-51m**
 > (realistic Sattelzug asset) per owner decision 2026-07-22 — see [Beads reconciliation](#beads-reconciliation).

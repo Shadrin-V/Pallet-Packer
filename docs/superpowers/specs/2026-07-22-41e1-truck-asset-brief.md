@@ -1,5 +1,10 @@
 # 41e.1 — Contract for the user-supplied truck SVG (side view)
 
+> ⚠️ SUPERSEDED (2026-07-23): this two-caps hand-draw contract was NOT the final route. The owner
+> supplied a **complete editable vector** (`docs/design/Reference/truck_cargo_focus_top_side_aligned.svg`,
+> cargo box + tractor + running gear as groups); the tractor (side) and cab-top (top) were extracted
+> from it directly — no hand-authored caps. Kept for history. Actual outcome: CHANGELOG 2026-07-23.
+
 > Brief for the asset the owner draws by hand (Illustrator/Inkscape/whatever). Fills the truck chrome
 > in the Ladeplan **side** cutaway. The cargo box itself is drawn by the app at exact 1:1 — your asset
 > is the **cab + wheels around it**, never the cargo area.
