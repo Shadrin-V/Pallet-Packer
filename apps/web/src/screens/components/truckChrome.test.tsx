@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { render } from '@testing-library/react';
-import { FrontCap, TrailerUnder, TopChrome, MetreRuler, GUTTER } from './truckChrome';
+import { FrontCap, TrailerUnder, TopChrome, MetreRuler, VerticalRuler, GUTTER } from './truckChrome';
 
 // NOTE: deliberately not `new URL('...', import.meta.url)` — Vite's asset-URL static analysis
 // intercepts that literal pattern under the jsdom test environment and rewrites it to an
@@ -56,6 +56,19 @@ describe('truck chrome', () => {
     expect(texts).toContain('12');
     expect(texts).not.toContain('13'); // 13 m sits within 800 mm of the 13.6 m total label
     expect(texts).toContain('13.6 m');
+  });
+  it('VerticalRuler marks interior whole metres up from the floor, non-interactive', () => {
+    // 2650 mm high → metres 1 and 2 (3 m is past the roof); metre 2 sits higher (smaller y) than 1.
+    const { container } = render(<svg><VerticalRuler span={2650} floorY={2650} boxX={1773} font={272} /></svg>);
+    const texts = [...container.querySelectorAll('text')];
+    const labels = texts.map((t) => t.textContent);
+    expect(labels).toContain('1');
+    expect(labels).toContain('2');
+    expect(labels).not.toContain('3');
+    const y = (n: string) => Number(texts.find((t) => t.textContent === n)!.getAttribute('y'));
+    expect(y('2')).toBeLessThan(y('1')); // metres count upward
+    expect(y('1')).toBe(2650 - 1000); // floor minus one metre
+    expect(container.querySelector('g')?.getAttribute('pointer-events')).toBe('none');
   });
   it('TopChrome re-hosts the top-view cab + rear fittings, non-interactive', () => {
     const { container } = render(<svg><TopChrome length={13600} width={2480} frontGutter={1773} /></svg>);
