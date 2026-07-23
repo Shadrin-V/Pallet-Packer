@@ -10,19 +10,23 @@ import { FrontCap, TrailerUnder, TopChrome, MetreRuler, GUTTER } from './truckCh
 // http://localhost dev-server URL instead of a file:// path. dirname/join keeps this a plain Node fs
 // read, independent of the bundler.
 const here = dirname(fileURLToPath(import.meta.url));
-const frontSrc = readFileSync(join(here, '../../assets/truck-front-side.svg'), 'utf8');
+const read = (name: string) => readFileSync(join(here, '../../assets', name), 'utf8');
 
-describe('truck-front-side.svg hygiene', () => {
+describe.each([
+  ['truck-front-side.svg', '53 520 372 400'],
+  ['truck-front-top.svg', '50 55 215 370'],
+])('%s hygiene', (name, viewBox) => {
+  const src = read(name);
   it('has no gradients, rasters, external refs, or editor cruft', () => {
-    expect(frontSrc).not.toMatch(/linearGradient|radialGradient/);
-    expect(frontSrc).not.toMatch(/<image|base64/);
-    expect(frontSrc).not.toMatch(/xlink:href|url\(http|\bhref\s*=\s*["']https?:\/\//);
-    expect(frontSrc).not.toMatch(/sodipodi|inkscape|<metadata/);
-    expect(frontSrc).not.toMatch(/<text/);
+    expect(src).not.toMatch(/linearGradient|radialGradient/);
+    expect(src).not.toMatch(/<image|base64/);
+    expect(src).not.toMatch(/xlink:href|url\(http|\bhref\s*=\s*["']https?:\/\//);
+    expect(src).not.toMatch(/sodipodi|inkscape|<metadata/);
+    expect(src).not.toMatch(/<text/);
   });
   it('themes via currentColor and keeps the contract viewBox', () => {
-    expect(frontSrc).toMatch(/currentColor/);
-    expect(frontSrc).toMatch(/viewBox="53 520 372 400"/);
+    expect(src).toMatch(/currentColor/);
+    expect(src).toMatch(new RegExp(`viewBox="${viewBox}"`));
   });
 });
 

@@ -9,11 +9,11 @@ import frontRaw from '../../assets/truck-front-side.svg?raw';
 import topRaw from '../../assets/truck-front-top.svg?raw';
 import { metreTicks } from './ruler';
 
-// Reference frame (units of the source vector, docs/design/Reference). The cargo box is y[TOP..FLOOR]
-// spanning x[FRONT..REAR]; wheels rest at GROUND. The cap asset's viewBox is "VBX VBY VBW VBH". Chrome
-// maps ref→outer at scale s = height/BOX_H so ref(FRONT,FLOOR) lands on (frontGutter, box bottom).
-const BOX_H = 335; // cargo box height in ref units (y530..865)
-const TOP = 530;
+// Reference frame (units of the source vector, docs/design/Reference). The cargo box is BOX_H tall
+// (top..FLOOR) spanning x[FRONT..REAR]; wheels rest at GROUND. The cap asset's viewBox is
+// "VBX VBY VBW VBH". Chrome maps ref→outer at scale s = height/BOX_H so ref(FRONT,FLOOR) lands on
+// (frontGutter, box bottom); the box is BOX_H above the floor, so its top lands at outer y=0.
+const BOX_H = 335; // cargo box height in ref units (y530..865, i.e. top..floor)
 const FLOOR = 865;
 const GROUND = 911;
 const FRONT = 260; // box front face (ref x)
@@ -31,12 +31,11 @@ export const GUTTER = {
   ruler: 0.16,
 };
 
-// TOP-view reference frame: cargo box y[T_TOP..T_BOT] (= vehicle width) spanning x[T_FRONT..T_REAR];
+// TOP-view reference frame: cargo box y[T_TOP..(T_TOP+BOX_W)] (= vehicle width), box front at T_FRONT;
 // the cab-top asset viewBox is "VBX_T VBY_T VBW_T VBH_T". Rear door fittings sit at the box rear.
 const BOX_W = 360; // cargo box height in top-view ref units (y60..420 = vehicle width)
 const T_TOP = 60;
 const T_FRONT = 260;
-const T_REAR = 1530;
 const VBX_T = 50;
 const VBY_T = 55;
 const VBW_T = 215;
@@ -48,7 +47,7 @@ const TOP_INNER = topRaw.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$
 /** The reference tractor re-hosted in a nested svg, scaled UNIFORMLY to the vehicle height and anchored
  *  so its box-front/floor land on the front gutter / box bottom. frontGutter = (FRONT-VBX)*s, so the
  *  cap's viewBox left (VBX) sits at outer x=0; overflow visible lets the drive axle reach under the box
- *  front. Note TOP is used implicitly: (FLOOR-VBY)-BOX_H = TOP-VBY, so the box top lands at outer y=0. */
+ *  front. The box is BOX_H above the floor, so mapping ref FLOOR→box bottom puts the box top at y=0. */
 export function FrontCap({ height }: { height: number }) {
   const s = height / BOX_H;
   return (

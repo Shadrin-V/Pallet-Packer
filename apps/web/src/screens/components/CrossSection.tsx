@@ -122,7 +122,10 @@ export function CrossSection({
   // Nothing is drawn past the box rear, so there is no rear gutter.
   const frontGutter = height * GUTTER.front;
   const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
-  const rulerGutter = height * GUTTER.ruler;
+  // The ruler's label font scales with length (MetreRuler: font = length*0.02), so its lane must be
+  // tall enough for that font (~2.2× baseline+descent) — a height-only gutter clips the digits on long
+  // trailers (length/height > ~4.2, i.e. every standard tractor). Widen to fit.
+  const rulerGutter = Math.max(height * GUTTER.ruler, length * 0.045);
   const outerW = frontGutter + length;
   const outerH = spanY + wheelGutter + rulerGutter;
 
