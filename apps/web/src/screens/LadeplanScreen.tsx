@@ -162,20 +162,29 @@ export function LadeplanScreen({
   // ---- buffer (dwc.3): stacks that are not in the hold — unplaced by the packer, or pulled out by
   // hand. Tiles keep their own yaw orientation, so a stack can be turned in the buffer and only then
   // dropped in — which is the way out of "no room to rotate in place".
-  // Orientation is held per cargo TYPE, not per tile: the buffer's stacks of one type are
-  // interchangeable, and their positions in the list shift on every edit — an index-keyed
-  // orientation would silently hand a rotation to whichever stack slid into that slot.
+  // Orientation is held per TILE (06w — owner: turn ONE, not the whole article). A buffer stack has no
+  // natural identity (BufferStack is just {cargoTypeId, units}), so the key is the cargo type plus its
+  // occurrence in the deterministic buffer order (stackBuffer follows Load.cargo, full stacks before
+  // the remainder). Stable while the buffer's composition holds; dropping a tile in or pulling one out
+  // re-indexes that type's later occurrences, which is harmless — the rotated tile is the one the user
+  // then drops, so its orientation is consumed before any re-index matters.
   const [tileOrientation, setTileOrientation] = useState<Record<string, 'lwh' | 'wlh'>>({});
-  const tiles: BufferTile[] = stackBuffer(load, edited).map((b) => ({
+  const buffer = stackBuffer(load, edited);
+  const seenOfType: Record<string, number> = {};
+  const tileKeys = buffer.map((b) => {
+    const occ = (seenOfType[b.cargoTypeId] = (seenOfType[b.cargoTypeId] ?? -1) + 1);
+    return `${b.cargoTypeId}#${occ}`;
+  });
+  const tiles: BufferTile[] = buffer.map((b, i) => ({
     ...b,
-    orientation: tileOrientation[b.cargoTypeId] ?? 'lwh',
+    orientation: tileOrientation[tileKeys[i]] ?? 'lwh',
   }));
   const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
 
   const rotateTile = (i: number) =>
     setTileOrientation((prev) => {
-      const id = tiles[i].cargoTypeId;
-      return { ...prev, [id]: (prev[id] ?? 'lwh') === 'lwh' ? 'wlh' : 'lwh' };
+      const key = tileKeys[i];
+      return { ...prev, [key]: (prev[key] ?? 'lwh') === 'lwh' ? 'wlh' : 'lwh' };
     });
 
   // Declared before its readers: the drop preview reads it DURING RENDER (not just from a handler),
