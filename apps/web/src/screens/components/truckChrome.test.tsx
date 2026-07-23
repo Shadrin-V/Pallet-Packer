@@ -59,7 +59,7 @@ describe('truck chrome', () => {
   });
   it('VerticalRuler marks interior whole metres up from the floor, non-interactive', () => {
     // 2650 mm high → metres 1 and 2 (3 m is past the roof); metre 2 sits higher (smaller y) than 1.
-    const { container } = render(<svg><VerticalRuler span={2650} floorY={2650} boxX={1773} font={272} /></svg>);
+    const { container } = render(<svg><VerticalRuler span={2650} floorY={2650} rearX={5000} font={200} /></svg>);
     const texts = [...container.querySelectorAll('text')];
     const labels = texts.map((t) => t.textContent);
     expect(labels).toContain('1');
@@ -68,6 +68,12 @@ describe('truck chrome', () => {
     const y = (n: string) => Number(texts.find((t) => t.textContent === n)!.getAttribute('y'));
     expect(y('2')).toBeLessThan(y('1')); // metres count upward
     expect(y('1')).toBe(2650 - 1000); // floor minus one metre
+    // engineering look: 2 whole-metre majors + 3 half-metre minors (0.5/1.5/2.5 m), all reaching IN
+    // from the rear wall (x2 < rearX). Minors are shorter, so they stop closer to the wall than majors.
+    const lines = [...container.querySelectorAll('line')];
+    expect(lines).toHaveLength(5);
+    const shortest = Math.max(...lines.map((l) => Number(l.getAttribute('x2'))));
+    expect(lines.filter((l) => Number(l.getAttribute('x2')) === shortest)).toHaveLength(3); // the minors
     expect(container.querySelector('g')?.getAttribute('pointer-events')).toBe('none');
   });
   it('TopChrome re-hosts the top-view cab + rear fittings, non-interactive', () => {

@@ -7,7 +7,11 @@
 // decoration: colour var(--truck), pointer-events none, print-safe (line-art currentColor + white cut-outs).
 import frontRaw from '../../assets/truck-front-side.svg?raw';
 import topRaw from '../../assets/truck-front-top.svg?raw';
-import { metreTicks } from './ruler';
+import { metreTicks, halfMetreTicks } from './ruler';
+
+// Ruler label height as a fraction of vehicle length, shared by both axes so they read at one size.
+// Engineering look (j81 follow-up): smaller numbers than the first pass, with half-metre minor ticks.
+export const RULER_FONT = 0.013;
 
 // Reference frame (units of the source vector, docs/design/Reference). The cargo box is BOX_H tall
 // (top..FLOOR) spanning x[FRONT..REAR]; wheels rest at GROUND. The cap asset's viewBox is
@@ -159,40 +163,58 @@ export function TopChrome({
   );
 }
 
-/** The vertical companion to MetreRuler: whole-metre ticks up the LEFT edge of the cargo box — height
- *  on the side view, width on the top. 0 and the box edges are the frame already, so only interior
- *  metres are marked. `font` is shared with MetreRuler so both axes read at one size; the floor sits at
- *  `floorY` and metres count upward from it. Ticks and numbers hang just outside the box (x < boxX). */
+/** The vertical companion to MetreRuler: whole-metre ticks up the REAR (right) edge of the cargo box —
+ *  height on the side view, width on the top — away from the cab so nothing crowds it. Major ticks are
+ *  numbered, half-metre minors are not (engineering look). `font` is shared with MetreRuler so both axes
+ *  read at one size; the floor sits at `floorY` and metres count upward. Ticks reach IN from the rear
+ *  wall (`rearX`), numbers just inside it — each with a paper halo so it reads over cargo below. */
 export function VerticalRuler({
   span,
   floorY,
-  boxX,
+  rearX,
   font,
 }: {
   span: number;
   floorY: number;
-  boxX: number;
+  rearX: number;
   font: number;
 }) {
-  const ticks = metreTicks(span);
-  const tick = font * 0.6;
+  const majors = metreTicks(span);
+  const minors = halfMetreTicks(span);
+  const tick = font * 0.55;
+  const minorTick = font * 0.28;
   return (
     <g pointerEvents="none" aria-hidden="true" fill="var(--faint)">
-      {ticks.map((t) => {
+      {minors.map((x) => {
+        const y = floorY - x;
+        return (
+          <line
+            key={`m${x}`}
+            x1={rearX}
+            y1={y}
+            x2={rearX - minorTick}
+            y2={y}
+            stroke="var(--grid)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
+      {majors.map((t) => {
         const y = floorY - t.x; // t.x is the metre distance in mm, measured up from the floor
         return (
           <g key={t.metre}>
             <line
-              x1={boxX}
+              x1={rearX}
               y1={y}
-              x2={boxX - tick}
+              x2={rearX - tick}
               y2={y}
               stroke="var(--grid)"
               strokeWidth={1}
               vectorEffect="non-scaling-stroke"
             />
             <text
-              x={boxX - tick - font * 0.3}
+              x={rearX - tick - font * 0.3}
               y={y}
               fontSize={font}
               textAnchor="end"
@@ -200,7 +222,7 @@ export function VerticalRuler({
               stroke="var(--paper)"
               strokeWidth={font * 0.2}
               strokeLinejoin="round"
-              // Paper halo behind the glyph so the number reads cleanly where it crosses the cab line-art.
+              // Paper halo behind the glyph so the number reads cleanly over any cargo at the rear.
               style={{ fontVariantNumeric: 'tabular-nums', paintOrder: 'stroke' }}
             >
               {t.metre}
@@ -223,16 +245,30 @@ export function MetreRuler({
 }) {
   // Drop interior ticks that would collide with the total-length label at the end (design 2026-07-22).
   const ticks = metreTicks(length).filter((t) => length - t.x > 800);
-  const font = length * 0.02;
+  // Half-metre minors, minus any that would sit under the total label — same clearance as the majors.
+  const minors = halfMetreTicks(length).filter((x) => length - x > 800);
+  const font = length * RULER_FONT;
   return (
     <g pointerEvents="none" aria-hidden="true" fill="var(--faint)">
+      {minors.map((x) => (
+        <line
+          key={`m${x}`}
+          x1={x}
+          y1={y}
+          x2={x}
+          y2={y + font * 0.28}
+          stroke="var(--grid)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
       {ticks.map((t) => (
         <g key={t.metre}>
           <line
             x1={t.x}
             y1={y}
             x2={t.x}
-            y2={y + font * 0.6}
+            y2={y + font * 0.55}
             stroke="var(--grid)"
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"

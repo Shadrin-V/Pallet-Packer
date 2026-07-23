@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { metreTicks } from './ruler';
+import { metreTicks, halfMetreTicks } from './ruler';
 
 describe('metreTicks', () => {
   it('one tick per interior whole metre', () => {
@@ -16,5 +16,17 @@ describe('metreTicks', () => {
   });
   it('empty below one metre', () => {
     expect(metreTicks(800)).toEqual([]);
+  });
+});
+
+describe('halfMetreTicks', () => {
+  it('one minor tick per interior half metre (500, 1500, 2500 …)', () => {
+    expect(halfMetreTicks(2650)).toEqual([500, 1500, 2500]);
+  });
+  it('excludes an exact edge half metre', () => {
+    expect(halfMetreTicks(1500)).toEqual([500]);
+  });
+  it('empty below the first half metre', () => {
+    expect(halfMetreTicks(400)).toEqual([]);
   });
 });
