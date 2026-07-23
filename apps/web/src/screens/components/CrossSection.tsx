@@ -281,9 +281,29 @@ export function CrossSection({
     if (!drag) return;
     // Dropped outside the hold? Hand it to whoever owns that space (the buffer strip) rather than
     // clamping it back onto the floor.
-    const box = svgRef.current?.getBoundingClientRect();
-    const outside =
-      !!box && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom);
+    // The hold's screen box is derived from its own viewBox corners (0,0)–(length,spanY) mapped through
+    // getScreenCTM — NOT from getBoundingClientRect. Under overflow:visible the nested cargo svg's
+    // bounding box grows to wrap the dragged ghost, so a release below the hold read as still inside it
+    // and every drag-out to the warehouse snapped back (nested-svg repro). The CTM carries only the
+    // svg's own position and scale, so this box stays put while a stack is carried past the floor edge.
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM?.();
+    let outside = false;
+    if (svg && ctm && svg.createSVGPoint) {
+      const toClient = (ux: number, uy: number) => {
+        const p = svg.createSVGPoint();
+        p.x = ux;
+        p.y = uy;
+        return p.matrixTransform(ctm);
+      };
+      const a = toClient(0, 0);
+      const b = toClient(length, spanY);
+      outside =
+        e.clientX < Math.min(a.x, b.x) ||
+        e.clientX > Math.max(a.x, b.x) ||
+        e.clientY < Math.min(a.y, b.y) ||
+        e.clientY > Math.max(a.y, b.y);
+    }
     if (outside && onDropOutside) {
       // Only the parent knows whether the release landed on something that takes cargo. It says so;
       // clear the selection only then — a release into empty page space moved nothing, and throwing

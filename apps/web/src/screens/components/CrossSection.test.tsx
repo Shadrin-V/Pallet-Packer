@@ -339,8 +339,11 @@ describe('group selection', () => {
     );
   }
 
-  const renderTop = (props: Partial<Parameters<typeof CrossSection>[0]> = {}) => {
-    restoreSvgGeometry = installSvgGeometry();
+  const renderTop = (
+    props: Partial<Parameters<typeof CrossSection>[0]> = {},
+    rect?: { left: number; top: number; width: number; height: number },
+  ) => {
+    restoreSvgGeometry = installSvgGeometry(rect);
     const utils = render(
       <LocaleProvider initial="de">
         <CrossSection
@@ -775,6 +778,25 @@ describe('group selection', () => {
 
     dragFirstStack(svg, container, 500, 2600);
 
+    expect(queryByTestId('group-frame')).toBeNull();
+  });
+
+  // Regression: "outside the hold" must be read from the hold's own viewBox box (via getScreenCTM),
+  // NOT its getBoundingClientRect — which, under overflow:visible, grows to wrap the dragged ghost.
+  // Here the bounding box reaches y=3000 (the inflated ghost box) while the hold really ends at
+  // spanY=2000; a release at y=2600 is over the buffer and MUST be handed over. With the old box it
+  // read as still inside the hold and every drag-out to the warehouse snapped back.
+  it('hands a stack to the buffer by the hold CTM box, not its ghost-inflated bounding box', () => {
+    const onDropOutside = vi.fn(() => true);
+    const { svg, container, queryByTestId } = renderTop(
+      { onDropOutside, onMoveStacks: vi.fn() },
+      { left: 0, top: 0, width: 4000, height: 3000 }, // bounding box taller than the real hold (spanY=2000)
+    );
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    dragFirstStack(svg, container, 500, 2600); // below the hold (2000) but inside the inflated box (3000)
+
+    expect(onDropOutside).toHaveBeenCalledTimes(1);
     expect(queryByTestId('group-frame')).toBeNull();
   });
 
