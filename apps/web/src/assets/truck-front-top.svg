@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="50 55 215 370" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Front tractor cap, TOP view (41e.1) — extracted from the owner's vector reference
+    (docs/design/Reference/truck_cargo_focus_top_side_aligned.svg, top view). Reference frame:
+    cargo box y60..420 (width), box front x260. Recoloured #111111 -> currentColor.
+  -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#ffffff" stroke-width="4" d="M62 124 Q62 84 98 70 Q120 61 154 61 L218 61 Q235 61 235 78 L235 402 Q235 419 218 419 L154 419 Q120 419 98 410 Q62 396 62 356 Z"/>
+    <path stroke-width="3" d="M76 132 Q104 99 145 94 L215 94"/>
+    <path stroke-width="3" d="M76 348 Q104 381 145 386 L215 386"/>
+    <path stroke-width="2.2" d="M92 153 L92 327"/>
+    <path stroke-width="2.2" d="M108 130 L108 350"/>
+    <rect fill="#ffffff" stroke-width="4" x="235" y="153" width="25" height="174" rx="4"/>
+    <path stroke-width="2.2" d="M72 185 L58 180 L54 193 L68 198"/>
+    <path stroke-width="2.2" d="M72 295 L58 300 L54 287 L68 282"/>
+  </g>
+</svg>

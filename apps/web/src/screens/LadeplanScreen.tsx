@@ -440,7 +440,7 @@ export function LadeplanScreen({
         {/* diagrams — near-full-bleed on print for maximum width.
             Order (owner's batch): side view, then top view, then the warehouse. The hold and the
             warehouse end up adjacent, which is where the work happens — stacks travel between them. */}
-        <div className="flex flex-col gap-5 px-6 py-5 print:gap-2 print:px-1 print:py-2">
+        <div className="flex flex-col gap-5 px-2 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
           </div>

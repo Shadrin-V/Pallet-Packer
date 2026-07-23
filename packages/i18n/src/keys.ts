@@ -53,6 +53,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.legend',
   'ladeplan.front',
   'ladeplan.back',
+  'ladeplan.rulerUnit',
   'ladeplan.kicker',
   'ladeplan.brandName',
   'ladeplan.brandTagline',

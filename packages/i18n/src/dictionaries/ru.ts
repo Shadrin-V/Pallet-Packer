@@ -51,6 +51,7 @@ export const ru: Dictionary = {
   'ladeplan.legend': 'Легенда',
   'ladeplan.front': 'Перёд',
   'ladeplan.back': 'Зад',
+  'ladeplan.rulerUnit': 'м',
   'ladeplan.kicker': 'План загрузки · Ladungsplaner',
   'ladeplan.brandName': 'Schäfer',
   'ladeplan.brandTagline': 'Holz bewegt.',

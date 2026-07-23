@@ -25,6 +25,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
+import { GUTTER, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler } from './truckChrome';
 
 /** Where a dragged stack would land, and whether it may — the engine's answer, drawn. */
 export interface DropPreview {
@@ -113,6 +114,20 @@ export function CrossSection({
   const countFont = width * 0.05;
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
+
+  // Outer chrome gutters, in the cutaway's own mm units. Sourced from the same GUTTER constants
+  // truckChrome.tsx renders into, so the cargo viewport's exact 1:1 box and the chrome's footprint can
+  // never drift apart. The front gutter is reserved in BOTH views (identical outerW → same mm→px scale
+  // → top and side stay column-aligned on vehicle length); wheels sit below the floor on the side only.
+  // Nothing is drawn past the box rear, so there is no rear gutter.
+  const frontGutter = height * GUTTER.front;
+  const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
+  // The ruler's label font scales with length (MetreRuler: font = length*0.02), so its lane must be
+  // tall enough for that font (~2.2× baseline+descent) — a height-only gutter clips the digits on long
+  // trailers (length/height > ~4.2, i.e. every standard tractor). Widen to fit.
+  const rulerGutter = Math.max(height * GUTTER.ruler, length * 0.045);
+  const outerW = frontGutter + length;
+  const outerH = spanY + wheelGutter + rulerGutter;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -307,21 +322,34 @@ export function CrossSection({
     <figure className="m-0 select-none">
       <figcaption className="mb-1 text-label uppercase font-semibold text-faint">{label}</figcaption>
       <svg
-        ref={svgRef}
-        viewBox={`0 0 ${length} ${spanY}`}
+        viewBox={`0 0 ${outerW} ${outerH}`}
         width="100%"
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={label}
         // Marks this svg as a projection of the plan: the PNG export picks the cutaways by this
-        // attribute. role="img" alone would also match legend swatches and the stack diagram.
+        // attribute. role="img" alone would also match legend swatches and the stack diagram. It
+        // stays on the OUTER svg so the export/print captures chrome + cargo together — the nested
+        // cargo svg must NOT also carry it.
         data-cutaway={view}
-        style={{ background: 'var(--paper)', display: 'block', touchAction: draggable ? 'none' : undefined }}
-        onPointerMove={draggable ? onMove : undefined}
-        onPointerUp={draggable ? onUp : undefined}
-        onPointerDown={draggable ? onBackgroundDown : undefined}
-        onPointerCancel={draggable ? onCancel : undefined}
+        style={{ background: 'var(--paper)', display: 'block' }}
       >
+        <svg
+          ref={svgRef}
+          x={frontGutter}
+          y={0}
+          width={length}
+          height={spanY}
+          // Its own viewBox is 0 0 length spanY, so getScreenCTM maps client px straight to cargo mm
+          // (origin at the cargo box, unshifted by the gutter) — drops land where the ghost previews.
+          viewBox={`0 0 ${length} ${spanY}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ overflow: 'visible', touchAction: draggable ? 'none' : undefined }}
+          onPointerMove={draggable ? onMove : undefined}
+          onPointerUp={draggable ? onUp : undefined}
+          onPointerDown={draggable ? onBackgroundDown : undefined}
+          onPointerCancel={draggable ? onCancel : undefined}
+        >
         {/* The grid is decoration, and must not be a hit target: a press landing on a stroke would
             otherwise reach neither the svg nor a stack, and start no band at all — a dead stripe
             every 1000 mm. Same pointerEvents="none" every other overlay here carries. */}
@@ -477,6 +505,26 @@ export function CrossSection({
           );
         })()}
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        </svg>
+        {/* chrome: front cab gutter (both views), wheels+ground (side), ruler lane (both). Drawn AFTER
+            the nested cargo svg so that svg stays the outer svg's first <svg> descendant (existing
+            tests key off that), and so chrome — which lives only in the outer gutters — paints on top
+            without ever touching the cargo viewport's own 1:1 coordinate space. */}
+        <g pointerEvents="none">
+          {view === 'side' && (
+            <>
+              <FrontCap height={spanY} />
+              <g transform={`translate(${frontGutter} 0)`}>
+                <TrailerUnder length={length} height={spanY} />
+              </g>
+              <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
+            </>
+          )}
+          {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
+          <g transform={`translate(${frontGutter} ${spanY + wheelGutter})`}>
+            <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} />
+          </g>
+        </g>
       </svg>
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both
           cutaways share the x axis (vehicle length), so one set of markers labels the pair — and

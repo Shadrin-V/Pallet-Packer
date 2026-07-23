@@ -354,7 +354,9 @@ describe('group selection', () => {
         />
       </LocaleProvider>,
     );
-    const svg = utils.container.querySelector('svg[data-cutaway="top"]')!;
+    // The nested cargo svg holds the pointer handlers now; events fired on the outer chrome svg
+    // would not reach them (they bubble up, not down). Target the nested one.
+    const svg = utils.container.querySelector('svg[data-cutaway="top"] svg')!;
     return { ...utils, svg };
   };
 
@@ -531,7 +533,7 @@ describe('group selection', () => {
         <MovableGroup />
       </LocaleProvider>,
     );
-    const svg = container.querySelector('svg[data-cutaway="top"]')!;
+    const svg = container.querySelector('svg[data-cutaway="top"] svg')!; // nested cargo svg holds the handlers
     rubberBand(svg, 0, 0, 1500, 500);
 
     dragFirstStack(svg, container, 500, 1500); // one metre down…
@@ -611,7 +613,7 @@ describe('group selection', () => {
         <MovableGroup />
       </LocaleProvider>,
     );
-    const svg = container.querySelector('svg[data-cutaway="top"]')!;
+    const svg = container.querySelector('svg[data-cutaway="top"] svg')!; // nested cargo svg holds the handlers
     rubberBand(svg, 0, 0, 1500, 500);
 
     // far past the 2000 mm-wide hold — out of the magnet's reach, so the refusal must be a no-op
@@ -783,5 +785,55 @@ describe('group selection', () => {
     fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
 
     expect(getByTestId('group-frame').closest('g')).toHaveClass('print:hidden');
+  });
+});
+
+// The nested-svg wrap (Task 5): chrome lives in the OUTER svg's gutters; the cargo keeps its own 1:1
+// viewport, unshifted, so no cargo coordinate moves. These pin that invariant directly.
+describe('nested cargo viewport (1:1 preserved)', () => {
+  it('cargo viewport stays exactly 1:1 (length × spanY) after the nested-svg wrap', () => {
+    const { container } = renderCut('side', 'Seitenansicht');
+    const outer = container.querySelector('svg[data-cutaway="side"]')!;
+    const nested = outer.querySelector('svg')!; // the cargo viewport
+    expect(nested.getAttribute('viewBox')).toBe(`0 0 ${V.length} ${V.height}`);
+    // hold outline rect unchanged: 0,0,length,height in the nested coordinate space
+    const frame = [...nested.querySelectorAll('rect')].find(
+      (r) =>
+        r.getAttribute('width') === String(V.length) && r.getAttribute('height') === String(V.height),
+    );
+    expect(frame).toBeTruthy();
+  });
+
+  it('top cargo viewport is length × width', () => {
+    const { container } = renderCut('top', 'Draufsicht');
+    const nested = container.querySelector('svg[data-cutaway="top"] svg')!;
+    expect(nested.getAttribute('viewBox')).toBe(`0 0 ${V.length} ${V.width}`);
+  });
+});
+
+// Truck chrome composed into the outer svg's gutters (Task 6): cab + wheels + ruler on the side view,
+// the light polygon hint on the top view — never the cargo viewport itself.
+describe('truck chrome composition', () => {
+  it('side view renders the tractor cap + wheels + ruler chrome, non-interactive', () => {
+    const { container } = renderCut('side', 'Seitenansicht');
+    const outer = container.querySelector('svg[data-cutaway="side"]')!;
+    // ruler tick labels present (interior metres of a 2000mm hold → "1")
+    const texts = [...outer.querySelectorAll('text')].map((t) => t.textContent);
+    expect(texts).toContain('1');
+    // the front tractor cap is re-hosted as a nested svg with the asset viewBox, and is decoration
+    const cap = outer.querySelector('svg[viewBox="53 520 372 400"]');
+    expect(cap).toBeTruthy();
+    expect(cap!.getAttribute('pointer-events')).toBe('none');
+    // wheels are half-circle paths (cap steer/drive + rear bogie)
+    expect(outer.querySelectorAll('path').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('top view renders the top-view cab, not the side tractor cap', () => {
+    const { container } = renderCut('top', 'Draufsicht');
+    const outer = container.querySelector('svg[data-cutaway="top"]')!;
+    // the top-view cab-top asset is present…
+    expect(outer.querySelector('svg[viewBox="50 55 215 370"]')).toBeTruthy();
+    // …and the side-view tractor cap is not
+    expect(outer.querySelector('svg[viewBox="53 520 372 400"]')).toBeNull();
   });
 });

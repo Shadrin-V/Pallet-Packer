@@ -222,7 +222,9 @@ describe('LadeplanScreen — group selection', () => {
 
   /** Rubber-band everything along y=0, then drag the stack at the origin to (toX, toY) client px. */
   const bandThenDrag = (container: HTMLElement, ref: string, toX: number, toY: number) => {
-    const svg = container.querySelector('svg[data-cutaway="top"]')!;
+    // The pointer handlers moved to the nested cargo svg (Task 5 nested-svg wrap); events on the
+    // outer chrome svg would not reach them. data-stack-ref g's are still descendants of it.
+    const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
     fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
     fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
     fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
@@ -320,7 +322,7 @@ describe('LadeplanScreen — group selection', () => {
           <LadeplanScreen load={load} layout={layout} />
         </LocaleProvider>,
       );
-      const svg = container.querySelector('svg[data-cutaway="top"]')!;
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!; // nested cargo svg holds the handlers
       fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
       fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
       fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });

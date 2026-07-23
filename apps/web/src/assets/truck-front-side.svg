@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="53 520 372 400" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Front tractor cap (41e.1) — extracted from the owner's vector reference
+    (truck_cargo_focus_top_side_aligned.svg, side view). Reference frame: cargo box y530..865
+    (floor=865, top=530), box front x260, ground ~911. Recoloured #111111 -> currentColor.
+  -->
+  <g transform="translate(0 21)" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#ffffff" stroke-width="4" d="M62 858 L62 731 Q63 692 80 659 L109 601 Q127 570 161 554 Q187 542 230 542 L230 858 Z"/>
+    <path stroke-width="3" d="M110 604 L198 604 Q210 604 207 618 L193 672 Q189 688 171 688 L82 688"/>
+    <path stroke-width="2.2" d="M78 714 L78 755"/>
+    <rect fill="#ffffff" stroke-width="4" x="53" y="710" width="13" height="30" rx="2"/>
+    <path fill="#ffffff" stroke-width="4" d="M62 858 L62 832 Q62 812 82 812 L236 812 L236 805 L396 805 Q417 805 424 824 L430 858 Z"/>
+    <line stroke-width="2.2" x1="236" y1="812" x2="236" y2="858"/>
+  </g>
+  <g fill="#ffffff" stroke="currentColor" stroke-width="4">
+    <circle cx="118" cy="878" r="33"/>
+    <circle cx="384" cy="878" r="33"/>
+  </g>
+  <g fill="#ffffff" stroke="currentColor" stroke-width="3">
+    <circle cx="118" cy="878" r="14"/>
+    <circle cx="384" cy="878" r="14"/>
+  </g>
+</svg>
