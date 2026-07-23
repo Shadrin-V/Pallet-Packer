@@ -25,7 +25,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
-import { GUTTER, CabProfile, Axles, GroundLine, TopHint, MetreRuler } from './truckChrome';
+import { GUTTER, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler } from './truckChrome';
 
 /** Where a dragged stack would land, and whether it may — the engine's answer, drawn. */
 export interface DropPreview {
@@ -115,13 +115,15 @@ export function CrossSection({
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
 
-  // Outer chrome gutters, in the cutaway's own mm units (front cab both views; wheels/ruler side
-  // only). Sourced from the same GUTTER constants truckChrome.tsx renders into, so the cargo
-  // viewport's exact 1:1 box and the chrome's footprint can never drift apart.
+  // Outer chrome gutters, in the cutaway's own mm units. Sourced from the same GUTTER constants
+  // truckChrome.tsx renders into, so the cargo viewport's exact 1:1 box and the chrome's footprint can
+  // never drift apart. The front gutter is reserved in BOTH views (identical outerW → same mm→px scale
+  // → top and side stay column-aligned on vehicle length); wheels sit below the floor on the side only.
+  // Nothing is drawn past the box rear, so there is no rear gutter.
   const frontGutter = height * GUTTER.front;
   const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
   const rulerGutter = height * GUTTER.ruler;
-  const outerW = length + frontGutter;
+  const outerW = frontGutter + length;
   const outerH = spanY + wheelGutter + rulerGutter;
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -508,18 +510,14 @@ export function CrossSection({
         <g pointerEvents="none">
           {view === 'side' && (
             <>
-              <g transform={`translate(0 0)`}><CabProfile height={spanY} /></g>
-              <g transform={`translate(${frontGutter} ${spanY})`}>
-                <Axles length={length} height={spanY} />
+              <FrontCap height={spanY} />
+              <g transform={`translate(${frontGutter} 0)`}>
+                <TrailerUnder length={length} height={spanY} />
               </g>
-              <GroundLine x1={frontGutter} x2={frontGutter + length} y={spanY + wheelGutter} />
+              <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
             </>
           )}
-          {view === 'top' && (
-            <g transform={`translate(${frontGutter} 0)`}>
-              <TopHint length={length} width={spanY} front={frontGutter} />
-            </g>
-          )}
+          {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
           <g transform={`translate(${frontGutter} ${spanY + wheelGutter})`}>
             <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} />
           </g>

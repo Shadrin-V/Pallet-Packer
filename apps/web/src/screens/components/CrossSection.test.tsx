@@ -814,19 +814,26 @@ describe('nested cargo viewport (1:1 preserved)', () => {
 // Truck chrome composed into the outer svg's gutters (Task 6): cab + wheels + ruler on the side view,
 // the light polygon hint on the top view — never the cargo viewport itself.
 describe('truck chrome composition', () => {
-  it('side view renders cab + wheels + ruler chrome, all non-interactive', () => {
+  it('side view renders the tractor cap + wheels + ruler chrome, non-interactive', () => {
     const { container } = renderCut('side', 'Seitenansicht');
     const outer = container.querySelector('svg[data-cutaway="side"]')!;
     // ruler tick labels present (interior metres of a 2000mm hold → "1")
     const texts = [...outer.querySelectorAll('text')].map((t) => t.textContent);
     expect(texts).toContain('1');
-    // at least two wheels
-    expect(outer.querySelectorAll('circle, ellipse').length).toBeGreaterThanOrEqual(2);
+    // the front tractor cap is re-hosted as a nested svg with the asset viewBox, and is decoration
+    const cap = outer.querySelector('svg[viewBox="53 520 372 400"]');
+    expect(cap).toBeTruthy();
+    expect(cap!.getAttribute('pointer-events')).toBe('none');
+    // wheels are half-circle paths (cap steer/drive + rear bogie)
+    expect(outer.querySelectorAll('path').length).toBeGreaterThanOrEqual(4);
   });
 
-  it('top view renders the light hint (a polygon) but no wheels', () => {
+  it('top view renders the top-view cab, not the side tractor cap', () => {
     const { container } = renderCut('top', 'Draufsicht');
     const outer = container.querySelector('svg[data-cutaway="top"]')!;
-    expect(outer.querySelector('polygon')).toBeTruthy();
+    // the top-view cab-top asset is present…
+    expect(outer.querySelector('svg[viewBox="50 55 215 370"]')).toBeTruthy();
+    // …and the side-view tractor cap is not
+    expect(outer.querySelector('svg[viewBox="53 520 372 400"]')).toBeNull();
   });
 });
