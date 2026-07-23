@@ -114,4 +114,30 @@ describe('insertionIndexAt', () => {
     const firstRowCount = fl.tiles.filter((t) => t.y === fl.tiles[0].y).length;
     expect(idx).toBe(firstRowCount);
   });
+
+  it('mixed-height row: uses the row height, not a tile\'s own, to tell its row apart', () => {
+    // A row can mix cargo heights (the buffer holds several types at once): tall, short, tall.
+    const mixedCargo = [
+      { id: 'tall', name: 'tall', length: 1200, width: 800, height: 1000, rotation: 'yaw' },
+      { id: 'short', name: 'short', length: 800, width: 500, height: 1000, rotation: 'yaw' },
+    ];
+    const mixedLoad = {
+      vehicle: { length: 13600, width: 2480, height: 2650 },
+      cargo: mixedCargo,
+    } as unknown as Load;
+    const tallTile = (): BufferTile => ({ cargoTypeId: 'tall', units: 1, orientation: 'lwh' });
+    const shortTile = (): BufferTile => ({ cargoTypeId: 'short', units: 1, orientation: 'lwh' });
+    const fl = warehouseFloor(mixedLoad, [tallTile(), shortTile(), tallTile()]);
+    const [a, b, c] = fl.tiles;
+    // Sanity: all three land in one row, and the middle tile really is shorter than the row.
+    expect(a.y).toBe(b.y);
+    expect(b.y).toBe(c.y);
+    expect(b.dy).toBeLessThan(a.dy);
+
+    // A point in the short tile's column, left of its centre, but below its OWN height — still
+    // inside the row (bounded by the tall neighbours). Must insert before it (index 1), not skip
+    // past it to the next tall tile (index 2).
+    const point = { x: b.x + b.dx / 4, y: b.y + b.dy + (a.dy - b.dy) / 2 };
+    expect(insertionIndexAt(fl, point)).toBe(1);
+  });
 });
