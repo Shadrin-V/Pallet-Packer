@@ -141,3 +141,26 @@ describe('insertionIndexAt', () => {
     expect(insertionIndexAt(fl, point)).toBe(1);
   });
 });
+
+describe('warehouseFloor — phantom slot', () => {
+  const load = {
+    vehicle: { length: 13600, width: 2480, height: 2650 },
+    cargo: [{ id: 'eur', name: 'EUR', length: 1200, width: 800, height: 1000, rotation: 'yaw' }],
+  } as unknown as Load;
+  const tile = (): BufferTile => ({ cargoTypeId: 'eur', units: 1, orientation: 'lwh' });
+
+  it('a phantom tile shifts the tiles after it and is flagged', () => {
+    const tiles = [tile(), tile(), tile()];
+    const withPhantom: BufferTile[] = [
+      tiles[0],
+      { ...tile(), phantom: true } as BufferTile & { phantom?: true },
+      tiles[1],
+      tiles[2],
+    ];
+    const base = warehouseFloor(load, tiles);
+    const fl = warehouseFloor(load, withPhantom);
+    // The tile that was 2nd is now pushed right by one slot (a tile + gap).
+    expect(fl.tiles[2].x).toBeGreaterThan(base.tiles[1].x);
+    expect((fl.tiles[1] as { phantom?: true }).phantom).toBe(true);
+  });
+});

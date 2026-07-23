@@ -20,6 +20,8 @@ import { orientedDims, type BufferStack, type Load } from '@shadrin-v/engine';
  *  way the layout function stands on its own — the component imports the type, not the reverse. */
 export interface BufferTile extends BufferStack {
   orientation: 'lwh' | 'wlh';
+  /** A placeholder opened during a carry-in drag; not a real stack (B). */
+  phantom?: true;
 }
 
 export interface PlacedTile {
@@ -32,6 +34,8 @@ export interface PlacedTile {
    *  cargo heights (the buffer holds several types at once), so a tile's own `dy` under-covers its
    *  row's actual footprint. Used by `insertionIndexAt` to tell a tile's row apart from the point. */
   rowH: number;
+  /** Carried over from `tile.phantom` — the gap-preview slot opened while dragging a stack in. */
+  phantom?: true;
 }
 
 export interface WarehouseFloorLayout {
@@ -73,7 +77,7 @@ export function warehouseFloor(
       rowH = 0;
       rowStart = out.length;
     }
-    out.push({ tile, x, y, dx, dy, rowH: 0 }); // rowH backfilled once the row closes, below
+    out.push({ tile, x, y, dx, dy, rowH: 0, phantom: tile.phantom }); // rowH backfilled once the row closes, below
     x += dx + gap;
     rowH = Math.max(rowH, dy);
   }
