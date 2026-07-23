@@ -35,7 +35,7 @@ import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
 import { snap, type StackSel } from './components/editLayout';
 import { WarehouseFloor } from './components/WarehouseFloor';
 import type { DropPreview } from './components/CrossSection';
-import type { BufferTile } from './components/warehouseLayout';
+import { warehouseFloor, insertionIndexAt, type BufferTile } from './components/warehouseLayout';
 
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
@@ -175,26 +175,75 @@ export function LadeplanScreen({
     const occ = (seenOfType[b.cargoTypeId] = (seenOfType[b.cargoTypeId] ?? -1) + 1);
     return `${b.cargoTypeId}#${occ}`;
   });
-  const tiles: BufferTile[] = buffer.map((b, i) => ({
+  // `key` rides along on each tile (an extra field WarehouseFloor never reads) so rotate/pick-up/drag
+  // can still find a tile's orientation slot after `orderedTiles` below has reshuffled its position —
+  // `tileOrientation` is keyed by occurrence in `stackBuffer`'s own order, not by display position.
+  const tiles: (BufferTile & { key: string })[] = buffer.map((b, i) => ({
     ...b,
+    key: tileKeys[i],
     orientation: tileOrientation[tileKeys[i]] ?? 'lwh',
   }));
+
+  // ---- bufferOrder (B): an explicit, user-steered display order for the warehouse strip, layered
+  // OVER `tiles`' own order rather than replacing it — `stackBuffer` is re-derived from `edited` on
+  // every render (full stacks before the remainder, per Load.cargo), so there is no stable array to
+  // just splice into. Holds cargo TYPE ids, not tile keys: an occurrence key would go stale the
+  // instant a tile of that type is added or removed, and staleness has to be harmless here, since a
+  // recompute or an unrelated edit can shuffle `tiles`' composition without the user touching the
+  // strip at all.
+  // `orderedTiles` reconciles the two by FIFO dequeue: group `tiles` into one queue per cargo type
+  // (preserving `tiles`' own order within each), then walk `bufferOrder` and, for each type mentioned,
+  // dequeue one tile of it. A repeated id in `bufferOrder` (several dropped stacks of the same type)
+  // dequeues that many; an id with an empty queue (the type left the buffer) or past the end of
+  // `bufferOrder` (never mentioned) simply falls through. Whatever remains in every queue once
+  // `bufferOrder` is exhausted is appended in `tiles`' own order — so a type `bufferOrder` never
+  // mentions keeps its default position, and the strip degrades gracefully rather than dropping tiles.
+  const [bufferOrder, setBufferOrder] = useState<string[]>([]);
+  const orderedTiles: (BufferTile & { key: string })[] = (() => {
+    const queues = new Map<string, (BufferTile & { key: string })[]>();
+    for (const t of tiles) {
+      const q = queues.get(t.cargoTypeId);
+      if (q) q.push(t);
+      else queues.set(t.cargoTypeId, [t]);
+    }
+    const out: (BufferTile & { key: string })[] = [];
+    for (const id of bufferOrder) {
+      const q = queues.get(id);
+      if (q && q.length > 0) out.push(q.shift()!);
+    }
+    for (const q of queues.values()) out.push(...q);
+    return out;
+  })();
+
   const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
   // The symmetric hold→warehouse carry (T3): the stack's own visual lives INSIDE the top-view svg and
   // is clipped the instant the pointer leaves it toward the warehouse strip below, so this page-level
   // ghost — outside that svg entirely — is what stays visible for the whole trip, same as `dragTile`
-  // above covers the opposite direction.
-  const [carry, setCarry] = useState<{ count: number; label: string; x: number; y: number } | null>(null);
+  // above covers the opposite direction. The type/units/orientation fields (B) additionally drive the
+  // live gap preview on the warehouse floor while this carry is in flight.
+  const [carry, setCarry] = useState<{
+    count: number;
+    label: string;
+    x: number;
+    y: number;
+    cargoTypeId: string;
+    units: number;
+    orientation: 'lwh' | 'wlh';
+  } | null>(null);
 
   const rotateTile = (i: number) =>
     setTileOrientation((prev) => {
-      const key = tileKeys[i];
+      const key = orderedTiles[i]?.key;
+      if (!key) return prev;
       return { ...prev, [key]: (prev[key] ?? 'lwh') === 'lwh' ? 'wlh' : 'lwh' };
     });
 
   // Declared before its readers: the drop preview reads it DURING RENDER (not just from a handler),
   // so a `const` further down the body would be in the temporal dead zone by the time it is reached.
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Also declared early: `phantomAt` below (read during render, same reason as `sheetRef`) resolves
+  // through it via `toWarehouseMm`.
+  const bufferRef = useRef<HTMLDivElement>(null);
 
   /** The top-view drop target: the NESTED cargo svg (data-hold), whose viewBox is 0 0 length spanY so
    *  its CTM maps client px straight to hold mm. NOT the outer svg[data-cutaway] — that one's viewBox
@@ -216,13 +265,33 @@ export function LadeplanScreen({
     return { x: p.x, y: p.y };
   };
 
+  /** The warehouse's own drop target — `WarehouseFloor`'s `<svg data-warehouse>`, picked out from
+   *  under `bufferRef` by that stable marker rather than `role="img"` alone, which also matches the
+   *  top/side cutaways. Mirrors `toHoldMm` exactly; the two never resolve the same svg; a carry can be
+   *  over at most one of them at a time. */
+  const warehouseSvg = () => bufferRef.current?.querySelector<SVGSVGElement>('svg[data-warehouse]') ?? null;
+
+  /** Client point → warehouse coordinates (mm), or null if it is not over the warehouse floor. */
+  const toWarehouseMm = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = warehouseSvg();
+    const ctm = svg?.getScreenCTM?.();
+    if (!svg || !ctm || !svg.createSVGPoint) return null;
+    const box = svg.getBoundingClientRect();
+    if (clientX < box.left || clientX > box.right || clientY < box.top || clientY > box.bottom) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  };
+
   /** The aim of a carried tile, in hold mm, or null when the pointer is not over the top view.
    *  The cursor holds the stack by its middle — that is where the user is pointing — so the corner
    *  is derived from it. The magnet does the rest; it also pulls a corner back inside the hold, so
    *  aiming at the far corner means "put it in the corner" rather than "hang out and be told off". */
   const tileAim = (index: number, clientX: number, clientY: number) => {
     const at = toHoldMm(clientX, clientY);
-    const tile = tiles[index];
+    const tile = orderedTiles[index];
     const cargo = tile && load.cargo.find((c) => c.id === tile.cargoTypeId);
     if (!at || !cargo) return null;
     const [dx, dy] = orientedDims(cargo.length, cargo.width, cargo.height, tile.orientation);
@@ -275,14 +344,45 @@ export function LadeplanScreen({
     };
   });
 
+  /** The live gap preview (B): while a stack is carried in from the hold and the pointer is over the
+   *  warehouse floor, show where it would land — spliced into `orderedTiles`' own flow so real tiles
+   *  reflow around it exactly as they would once the drop actually lands there. Off the floor (or
+   *  between renders, briefly), there is nothing to show. */
+  const phantomAt: { index: number; tile: BufferTile } | null = (() => {
+    if (!carry) return null;
+    const pt = toWarehouseMm(carry.x, carry.y);
+    if (!pt) return null;
+    const index = insertionIndexAt(warehouseFloor(load, orderedTiles), pt);
+    return {
+      index,
+      tile: { cargoTypeId: carry.cargoTypeId, units: carry.units, orientation: carry.orientation },
+    };
+  })();
+
   /** Stacks dragged out of the hold and dropped on the strip go back to the buffer, all at once. */
-  const bufferRef = useRef<HTMLDivElement>(null);
   const onDropOutside = (refs: StackRef[], clientX: number, clientY: number): boolean => {
     const box = bufferRef.current?.getBoundingClientRect();
     if (!box) return false;
     const overBuffer =
       clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
-    if (overBuffer) applyEdit((prev) => unplaceStacks(load, prev, refs));
+    if (overBuffer) {
+      // Land the dropped stacks where the user released them (B), not wherever `stackBuffer` happens
+      // to re-emit them next render: snapshot the CURRENT display order, splice the dropped types in
+      // at the release point, and store that as the new `bufferOrder`. The dropped stacks are not in
+      // `tiles` yet — `unplaceStacks` runs below, and `edited` only updates on the next render — but
+      // that is fine: once they appear, `orderedTiles`' FIFO dequeue places them per the order just
+      // recorded here, correct by construction. `toWarehouseMm` returning null (pointer strayed off
+      // the warehouse svg for this one event) falls back to the pre-B behaviour: unplace without
+      // reordering, rather than lose the drop.
+      const pt = toWarehouseMm(clientX, clientY);
+      if (pt) {
+        const idx = insertionIndexAt(warehouseFloor(load, orderedTiles), pt);
+        const snapshot = orderedTiles.map((t) => t.cargoTypeId);
+        snapshot.splice(idx, 0, ...refs.map((r) => r.cargoTypeId));
+        setBufferOrder(snapshot);
+      }
+      applyEdit((prev) => unplaceStacks(load, prev, refs));
+    }
     // The answer the cutaway needs: did these stacks leave the floor? Only then may it drop them
     // from the selection — a release beside the strip is a miss, and the block is still there.
     return overBuffer;
@@ -475,7 +575,17 @@ export function LadeplanScreen({
               onRotateStack={onRotateStack}
               onDropOutside={onDropOutside}
               preview={tilePreview}
-              onCarry={(p) => setCarry({ count: p.count, label: p.label, x: p.clientX, y: p.clientY })}
+              onCarry={(p) =>
+                setCarry({
+                  count: p.count,
+                  label: p.label,
+                  x: p.clientX,
+                  y: p.clientY,
+                  cargoTypeId: p.cargoTypeId,
+                  units: p.units,
+                  orientation: p.orientation,
+                })
+              }
               onCarryEnd={() => setCarry(null)}
             />
           </div>
@@ -484,11 +594,12 @@ export function LadeplanScreen({
           <div ref={bufferRef} className="print:hidden">
             <WarehouseFloor
               load={load}
-              tiles={tiles}
+              tiles={orderedTiles}
               orderColors={orderColorMap}
               onRotate={rotateTile}
               onPickUp={(index, e) => setDragTile({ index, x: e.clientX, y: e.clientY })}
               dragging={dragTile?.index ?? null}
+              phantomAt={phantomAt}
             />
             {editError && (
               <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">
@@ -511,8 +622,8 @@ export function LadeplanScreen({
           className="pointer-events-none fixed z-30 rounded-ctl border border-brand bg-card px-2 py-1 text-caption font-semibold shadow-pop"
           style={{ left: dragTile.x + 12, top: dragTile.y + 12 }}
         >
-          {load.cargo.find((c) => c.id === tiles[dragTile.index]?.cargoTypeId)?.name} ×
-          {tiles[dragTile.index]?.units}
+          {load.cargo.find((c) => c.id === orderedTiles[dragTile.index]?.cargoTypeId)?.name} ×
+          {orderedTiles[dragTile.index]?.units}
         </div>
       )}
 

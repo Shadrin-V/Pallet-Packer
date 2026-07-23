@@ -104,8 +104,19 @@ export function CrossSection({
    *  since it is the only view this component makes draggable). The parent draws a page-level ghost
    *  from it — the symmetric counterpart of the warehouse→hold ghost, needed because a stack carried
    *  OUT of the cutaway toward the warehouse strip is otherwise clipped the moment it crosses this
-   *  svg's own bounds. */
-  onCarry?: (payload: { count: number; label: string; clientX: number; clientY: number }) => void;
+   *  svg's own bounds. `cargoTypeId`/`units`/`orientation` describe the PRESSED stack specifically —
+   *  the one under the finger, not the whole group when several are carried together — because that
+   *  is the one the warehouse's live gap preview (B) needs to size a phantom slot for; a group carry
+   *  still previews just the one tile the pointer is actually over. */
+  onCarry?: (payload: {
+    count: number;
+    label: string;
+    clientX: number;
+    clientY: number;
+    cargoTypeId: string;
+    units: number;
+    orientation: 'lwh' | 'wlh';
+  }) => void;
   /** Fires once the carry gesture ends, however it ends (a drop, an outside hand-off, or a cancel) —
    *  the parent's ghost must not outlive the drag that produced it. */
   onCarryEnd?: () => void;
@@ -288,7 +299,20 @@ export function CrossSection({
         const r = rects.find((c) => c.cargoTypeId === ref.cargoTypeId && c.x === ref.x && c.y === ref.y);
         return sum + (r?.count ?? 1);
       }, 0);
-      onCarry({ count, label: cargo?.name ?? '', clientX: e.clientX, clientY: e.clientY });
+      // The pressed stack's OWN rect, not the group total above — the warehouse phantom previews the
+      // one tile under the finger, whatever else rides along in a group carry.
+      const pressedRect = rects.find(
+        (c) => c.cargoTypeId === drag.pressed.cargoTypeId && c.x === drag.pressed.x && c.y === drag.pressed.y,
+      );
+      onCarry({
+        count,
+        label: cargo?.name ?? '',
+        clientX: e.clientX,
+        clientY: e.clientY,
+        cargoTypeId: drag.pressed.cargoTypeId,
+        units: pressedRect?.count ?? 1,
+        orientation: pressedRect?.orientation === 'wlh' ? 'wlh' : 'lwh',
+      });
     }
   };
 

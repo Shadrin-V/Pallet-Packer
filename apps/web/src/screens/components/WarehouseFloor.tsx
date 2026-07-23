@@ -49,6 +49,7 @@ export function WarehouseFloor({
   onRotate,
   onPickUp,
   dragging,
+  phantomAt,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -58,6 +59,11 @@ export function WarehouseFloor({
   onPickUp: (index: number, e: ReactPointerEvent) => void;
   /** Index of the tile currently being dragged (dimmed in place), or null. */
   dragging: number | null;
+  /** The live gap preview (B): while a stack is carried in from the hold and hovers over this floor,
+   *  the parent computes where it would land (`insertionIndexAt`) and hands it here as a slot to open
+   *  — not a real tile, so it carries no count and takes no pointer at all. Absent/null while nothing
+   *  is being carried. */
+  phantomAt?: { index: number; tile: BufferTile } | null;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -66,7 +72,13 @@ export function WarehouseFloor({
   const [sel, setSel] = useState<number | null>(null);
   const downAt = useRef<{ x: number; y: number } | null>(null);
 
-  const floor = warehouseFloor(load, tiles);
+  // The phantom is spliced into the FLOW, not overlaid afterwards — inserting it before real tiles
+  // at `phantomAt.index` is what pushes them aside in `warehouseFloor`'s row-wrap layout, the same way
+  // a real drop would once it lands there for real.
+  const renderTiles: BufferTile[] = phantomAt
+    ? [...tiles.slice(0, phantomAt.index), { ...phantomAt.tile, phantom: true }, ...tiles.slice(phantomAt.index)]
+    : tiles;
+  const floor = warehouseFloor(load, renderTiles);
   const empty = total === 0;
   // Even empty, the floor is a drop target (8fy): a stack pulled out of the hold must have somewhere
   // to land, and the buffer only ever grew from the packer before. Give the empty floor one vehicle
@@ -115,6 +127,9 @@ export function WarehouseFloor({
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={tt('warehouse.title')}
+          // A stable selector for the parent (LadeplanScreen's `toWarehouseMm`): it cannot reach into
+          // this component's own refs, and `role="img"` alone also matches the top/side cutaways.
+          data-warehouse
           style={{ background: 'var(--paper)', display: 'block', touchAction: 'none' }}
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) setSel(null);
@@ -153,6 +168,27 @@ export function WarehouseFloor({
           {floor.tiles.map((pt, i) => {
               const cargo = byId.get(pt.tile.cargoTypeId);
               if (!cargo) return null;
+              // The gap preview stands in for a real tile in the flow (so its neighbours reflow
+              // around it) but must not look, click or focus like one — no count, no rotate handle,
+              // nothing for the pointer to catch. Just the promise of where the drop would land.
+              if (pt.tile.phantom) {
+                return (
+                  <rect
+                    key={`phantom-${pt.tile.cargoTypeId}-${i}`}
+                    data-testid="warehouse-phantom"
+                    x={pt.x}
+                    y={pt.y}
+                    width={pt.dx}
+                    height={pt.dy}
+                    fill="none"
+                    stroke="var(--brand)"
+                    strokeWidth={2}
+                    strokeDasharray="10 8"
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents="none"
+                  />
+                );
+              }
               const slot = orderColors?.get(cargo.orderId ?? '') ?? oidx.get(cargo.orderId ?? '') ?? 0;
               const { series } = orderColorToken(slot);
               const rotatable = cargo.rotation !== 'none';
