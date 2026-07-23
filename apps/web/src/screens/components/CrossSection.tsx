@@ -159,10 +159,11 @@ export function CrossSection({
       setBand(null);
       setSel([]);
       setDrag(null);
+      onCarryEnd?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draggable]);
+  }, [draggable, onCarryEnd]);
 
   const toSvg = (e: ReactPointerEvent): { x: number; y: number } => {
     const svg = svgRef.current;
@@ -249,6 +250,7 @@ export function CrossSection({
     // Symmetrically to onDown: a press on bare floor during a live stack drag ends that drag rather
     // than leaving it carried forever with its stacks visually translated.
     setDrag(null);
+    onCarryEnd?.();
     setBand({ x0: s.x, y0: s.y, x1: s.x, y1: s.y });
   };
 

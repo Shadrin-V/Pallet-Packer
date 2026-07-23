@@ -873,6 +873,36 @@ describe('group selection', () => {
 
       expect(onCarryEnd).toHaveBeenCalledTimes(1);
     });
+
+    // Escape aborts a live carry via setDrag(null) too — the parent's ghost must not outlive it.
+    it('calls onCarryEnd on Escape mid-drag, same as a release or cancel', () => {
+      const onCarry = vi.fn();
+      const onCarryEnd = vi.fn();
+      const { svg, container } = renderTop({ onCarry, onCarryEnd });
+
+      fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 200 });
+      expect(onCarryEnd).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+
+      expect(onCarryEnd).toHaveBeenCalledTimes(1);
+    });
+
+    // A second pointer landing on bare floor mid-carry also aborts via setDrag(null) (onBackgroundDown).
+    it('calls onCarryEnd when a second pointer lands on bare floor mid-carry', () => {
+      const onCarry = vi.fn();
+      const onCarryEnd = vi.fn();
+      const { svg, container } = renderTop({ onCarry, onCarryEnd });
+
+      fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 200 });
+      expect(onCarryEnd).not.toHaveBeenCalled();
+
+      fireEvent.pointerDown(svg, { clientX: 3500, clientY: 1500 });
+
+      expect(onCarryEnd).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
