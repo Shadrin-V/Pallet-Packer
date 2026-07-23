@@ -227,9 +227,13 @@ export function CrossSection({
     });
   };
 
-  /** A press on bare floor draws a rubber band. Only on the svg itself — a stack handled its own. */
+  /** A press on bare floor draws a rubber band. Only on the svg itself, or on the painted hold floor
+   *  that stands in for it — the nested svg paints nothing, so `visiblePainted` routes an empty-floor
+   *  press to that <rect> (data-hold-bg), never to the svg element (86v). A stack press targets the
+   *  stack, which onDown handled, and must not start a band. */
   const onBackgroundDown = (e: ReactPointerEvent) => {
-    if (e.target !== svgRef.current) return;
+    const t = e.target as Element;
+    if (t !== svgRef.current && !t.hasAttribute?.('data-hold-bg')) return;
     const s = toSvg(e);
     (e.target as Element).setPointerCapture?.(e.pointerId);
     // Symmetrically to onDown: a press on bare floor during a live stack drag ends that drag rather
@@ -350,6 +354,14 @@ export function CrossSection({
           onPointerDown={draggable ? onBackgroundDown : undefined}
           onPointerCancel={draggable ? onCancel : undefined}
         >
+        {/* The hold floor: a painted target so an empty-floor press has something to land on. The nested
+            svg paints nothing (visiblePainted → not hittable), and the outer svg's background is a sibling
+            these handlers never see — without this rect a bare-floor press reaches neither and no band is
+            ever drawn (86v). Paper fill over the paper background is invisible; stacks paint on top, so a
+            press on one still targets the stack. Top view only — the side view has no marquee. */}
+        {draggable && (
+          <rect data-hold-bg x={0} y={0} width={length} height={spanY} fill="var(--paper)" />
+        )}
         {/* The grid is decoration, and must not be a hit target: a press landing on a stroke would
             otherwise reach neither the svg nor a stack, and start no band at all — a dead stripe
             every 1000 mm. Same pointerEvents="none" every other overlay here carries. */}

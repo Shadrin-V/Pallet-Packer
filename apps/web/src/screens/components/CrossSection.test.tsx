@@ -394,6 +394,19 @@ describe('group selection', () => {
     expect(queryByTestId('marquee')).toBeNull(); // gone on release
   });
 
+  // Regression (86v): the nested cargo svg carries the handlers but paints nothing, so `visiblePainted`
+  // makes it a non-target on empty floor — the browser delivers the press to the painted hold background
+  // instead. jsdom hit-tests nothing, so every OTHER band test fires straight on the svg and never sees
+  // this. Here we fire on the background the browser actually hits: the band must still start.
+  it('starts a marquee from a press on the hold background (the real hit target), not only the svg', () => {
+    const { container, queryByTestId } = renderTop();
+    const bg = container.querySelector('[data-hold-bg]') as SVGRectElement | null;
+    expect(bg).not.toBeNull(); // there must be a painted floor to catch empty-floor presses
+    fireEvent.pointerDown(bg!, { clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(bg!, { clientX: 1500, clientY: 500 });
+    expect(queryByTestId('marquee')).not.toBeNull();
+  });
+
   it('rubber-bands the stacks it touches and reports the count', () => {
     const { svg, getByTestId } = renderTop();
     // A band over x 0..1500, y 0..500 clips the stacks at x=0 and x=1000, but not the one at 2000.
