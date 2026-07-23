@@ -346,6 +346,9 @@ export function CrossSection({
           height={spanY}
           // Its own viewBox is 0 0 length spanY, so getScreenCTM maps client px straight to cargo mm
           // (origin at the cargo box, unshifted by the gutter) — drops land where the ghost previews.
+          // This is the drop-target coordinate frame; the parent maps warehouse tiles through THIS svg
+          // (data-hold), never the gutter-inclusive outer svg (ki1).
+          data-hold={view}
           viewBox={`0 0 ${length} ${spanY}`}
           preserveAspectRatio="xMidYMid meet"
           style={{ overflow: 'visible', touchAction: draggable ? 'none' : undefined }}

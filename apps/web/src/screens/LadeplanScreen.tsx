@@ -182,8 +182,11 @@ export function LadeplanScreen({
   // so a `const` further down the body would be in the temporal dead zone by the time it is reached.
   const sheetRef = useRef<HTMLDivElement>(null);
 
-  /** The top-view cutaway, i.e. the drop target — the same svg the PNG export picks up. */
-  const topSvg = () => sheetRef.current?.querySelector<SVGSVGElement>('svg[data-cutaway="top"]') ?? null;
+  /** The top-view drop target: the NESTED cargo svg (data-hold), whose viewBox is 0 0 length spanY so
+   *  its CTM maps client px straight to hold mm. NOT the outer svg[data-cutaway] — that one's viewBox
+   *  includes the cab/ruler gutters, so its CTM would offset every aim by the front gutter (ki1). The
+   *  PNG export separately picks the outer svgs by data-cutaway; the two roles use different handles. */
+  const topSvg = () => sheetRef.current?.querySelector<SVGSVGElement>('svg[data-hold="top"]') ?? null;
 
   /** Client point → hold coordinates (mm), or null if it is not over the top view. */
   const toHoldMm = (clientX: number, clientY: number): { x: number; y: number } | null => {
