@@ -25,7 +25,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
-import { GUTTER, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler } from './truckChrome';
+import { GUTTER, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
 
 /** Where a dragged stack would land, and whether it may — the engine's answer, drawn. */
 export interface DropPreview {
@@ -562,6 +562,9 @@ export function CrossSection({
           <g transform={`translate(${frontGutter} ${spanY + wheelGutter})`}>
             <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} />
           </g>
+          {/* Vertical companion: height up the side view's left edge, width up the top view's — the
+              symmetric axis the bottom ruler was missing. Same font so both read at one size. */}
+          <VerticalRuler span={spanY} floorY={spanY} boxX={frontGutter} font={length * 0.02} />
         </g>
       </svg>
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both

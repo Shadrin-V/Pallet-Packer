@@ -159,6 +159,59 @@ export function TopChrome({
   );
 }
 
+/** The vertical companion to MetreRuler: whole-metre ticks up the LEFT edge of the cargo box — height
+ *  on the side view, width on the top. 0 and the box edges are the frame already, so only interior
+ *  metres are marked. `font` is shared with MetreRuler so both axes read at one size; the floor sits at
+ *  `floorY` and metres count upward from it. Ticks and numbers hang just outside the box (x < boxX). */
+export function VerticalRuler({
+  span,
+  floorY,
+  boxX,
+  font,
+}: {
+  span: number;
+  floorY: number;
+  boxX: number;
+  font: number;
+}) {
+  const ticks = metreTicks(span);
+  const tick = font * 0.6;
+  return (
+    <g pointerEvents="none" aria-hidden="true" fill="var(--faint)">
+      {ticks.map((t) => {
+        const y = floorY - t.x; // t.x is the metre distance in mm, measured up from the floor
+        return (
+          <g key={t.metre}>
+            <line
+              x1={boxX}
+              y1={y}
+              x2={boxX - tick}
+              y2={y}
+              stroke="var(--grid)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+            <text
+              x={boxX - tick - font * 0.3}
+              y={y}
+              fontSize={font}
+              textAnchor="end"
+              dominantBaseline="central"
+              stroke="var(--paper)"
+              strokeWidth={font * 0.2}
+              strokeLinejoin="round"
+              // Paper halo behind the glyph so the number reads cleanly where it crosses the cab line-art.
+              style={{ fontVariantNumeric: 'tabular-nums', paintOrder: 'stroke' }}
+            >
+              {t.metre}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 export function MetreRuler({
   length,
   y,
