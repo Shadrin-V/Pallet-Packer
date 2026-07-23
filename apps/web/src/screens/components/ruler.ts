@@ -13,3 +13,11 @@ export function halfMetreTicks(lengthMm: number): number[] {
   for (let x = 500; x < lengthMm; x += 1000) ticks.push(x);
   return ticks;
 }
+
+// Quarter-metre positions (250, 750, 1250 … mm) for the finest, intermediate ticks — those between the
+// half-metre minors. Multiples of 500 are omitted: those are already a minor or a major, not a quarter.
+export function quarterMetreTicks(lengthMm: number): number[] {
+  const ticks: number[] = [];
+  for (let x = 250; x < lengthMm; x += 250) if (x % 500 !== 0) ticks.push(x);
+  return ticks;
+}

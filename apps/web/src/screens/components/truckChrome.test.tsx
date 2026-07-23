@@ -57,23 +57,24 @@ describe('truck chrome', () => {
     expect(texts).not.toContain('13'); // 13 m sits within 800 mm of the 13.6 m total label
     expect(texts).toContain('13.6 m');
   });
-  it('VerticalRuler marks interior whole metres up from the floor, non-interactive', () => {
-    // 2650 mm high → metres 1 and 2 (3 m is past the roof); metre 2 sits higher (smaller y) than 1.
-    const { container } = render(<svg><VerticalRuler span={2650} floorY={2650} rearX={5000} font={200} /></svg>);
+  it('VerticalRuler marks whole metres up from the floor, ends in the total, non-interactive', () => {
+    // 2650 mm → metres 1 and 2 (3 m is past the roof); metre 2 sits higher (smaller y) than 1; the
+    // total "2.65 m" caps the axis at the top.
+    const { container } = render(<svg><VerticalRuler span={2650} floorY={2650} rearX={5000} font={200} unit="m" /></svg>);
     const texts = [...container.querySelectorAll('text')];
     const labels = texts.map((t) => t.textContent);
     expect(labels).toContain('1');
     expect(labels).toContain('2');
     expect(labels).not.toContain('3');
+    expect(labels).toContain('2.65 m'); // the height total
     const y = (n: string) => Number(texts.find((t) => t.textContent === n)!.getAttribute('y'));
     expect(y('2')).toBeLessThan(y('1')); // metres count upward
     expect(y('1')).toBe(2650 - 1000); // floor minus one metre
-    // engineering look: 2 whole-metre majors + 3 half-metre minors (0.5/1.5/2.5 m), all reaching IN
-    // from the rear wall (x2 < rearX). Minors are shorter, so they stop closer to the wall than majors.
+    // three tick tiers reaching IN from the rear wall: 2 majors + 3 half-metre minors + 5 quarter ticks
     const lines = [...container.querySelectorAll('line')];
-    expect(lines).toHaveLength(5);
-    const shortest = Math.max(...lines.map((l) => Number(l.getAttribute('x2'))));
-    expect(lines.filter((l) => Number(l.getAttribute('x2')) === shortest)).toHaveLength(3); // the minors
+    expect(lines).toHaveLength(10);
+    const shortest = Math.max(...lines.map((l) => Number(l.getAttribute('x2')))); // finest = closest to wall
+    expect(lines.filter((l) => Number(l.getAttribute('x2')) === shortest)).toHaveLength(5); // the quarters
     expect(container.querySelector('g')?.getAttribute('pointer-events')).toBe('none');
   });
   it('TopChrome re-hosts the top-view cab + rear fittings, non-interactive', () => {

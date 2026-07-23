@@ -7,11 +7,11 @@
 // decoration: colour var(--truck), pointer-events none, print-safe (line-art currentColor + white cut-outs).
 import frontRaw from '../../assets/truck-front-side.svg?raw';
 import topRaw from '../../assets/truck-front-top.svg?raw';
-import { metreTicks, halfMetreTicks } from './ruler';
+import { metreTicks, halfMetreTicks, quarterMetreTicks } from './ruler';
 
 // Ruler label height as a fraction of vehicle length, shared by both axes so they read at one size.
-// Engineering look (j81 follow-up): smaller numbers than the first pass, with half-metre minor ticks.
-export const RULER_FONT = 0.013;
+// Engineering look (xa6 follow-up): small numbers, three tick tiers (metre / half / quarter).
+export const RULER_FONT = 0.011;
 
 // Reference frame (units of the source vector, docs/design/Reference). The cargo box is BOX_H tall
 // (top..FLOOR) spanning x[FRONT..REAR]; wheels rest at GROUND. The cap asset's viewBox is
@@ -173,63 +173,56 @@ export function VerticalRuler({
   floorY,
   rearX,
   font,
+  unit,
 }: {
   span: number;
   floorY: number;
   rearX: number;
   font: number;
+  unit: string;
 }) {
-  const majors = metreTicks(span);
+  const majors = metreTicks(span).filter((t) => span - t.x > font); // drop one that sits under the total
   const minors = halfMetreTicks(span);
-  const tick = font * 0.55;
-  const minorTick = font * 0.28;
+  const quarters = quarterMetreTicks(span);
+  const tick = font * 0.9;
+  const minorTick = font * 0.55;
+  const quarterTick = font * 0.32;
+  // The number just inside the rear wall, with a paper halo so it reads over any cargo behind it.
+  const label = (y: number, text: string) => (
+    <text
+      x={rearX - tick - font * 0.3}
+      y={y}
+      fontSize={font}
+      textAnchor="end"
+      dominantBaseline="central"
+      stroke="var(--paper)"
+      strokeWidth={font * 0.2}
+      strokeLinejoin="round"
+      style={{ fontVariantNumeric: 'tabular-nums', paintOrder: 'stroke' }}
+    >
+      {text}
+    </text>
+  );
   return (
     <g pointerEvents="none" aria-hidden="true" fill="var(--faint)">
-      {minors.map((x) => {
-        const y = floorY - x;
-        return (
-          <line
-            key={`m${x}`}
-            x1={rearX}
-            y1={y}
-            x2={rearX - minorTick}
-            y2={y}
-            stroke="var(--grid)"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
-        );
-      })}
+      {quarters.map((x) => (
+        <line key={`q${x}`} x1={rearX} y1={floorY - x} x2={rearX - quarterTick} y2={floorY - x} stroke="var(--grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      ))}
+      {minors.map((x) => (
+        <line key={`h${x}`} x1={rearX} y1={floorY - x} x2={rearX - minorTick} y2={floorY - x} stroke="var(--grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      ))}
       {majors.map((t) => {
         const y = floorY - t.x; // t.x is the metre distance in mm, measured up from the floor
         return (
           <g key={t.metre}>
-            <line
-              x1={rearX}
-              y1={y}
-              x2={rearX - tick}
-              y2={y}
-              stroke="var(--grid)"
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
-            <text
-              x={rearX - tick - font * 0.3}
-              y={y}
-              fontSize={font}
-              textAnchor="end"
-              dominantBaseline="central"
-              stroke="var(--paper)"
-              strokeWidth={font * 0.2}
-              strokeLinejoin="round"
-              // Paper halo behind the glyph so the number reads cleanly over any cargo at the rear.
-              style={{ fontVariantNumeric: 'tabular-nums', paintOrder: 'stroke' }}
-            >
-              {t.metre}
-            </text>
+            <line x1={rearX} y1={y} x2={rearX - tick} y2={y} stroke="var(--grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+            {label(y, String(t.metre))}
           </g>
         );
       })}
+      {/* The total — height on the side view, width on the top — at the very top, mirroring the length
+          total at the end of the bottom ruler. Nudged just inside the roof so it is not clipped. */}
+      {label(floorY - span + font * 0.7, `${span / 1000} ${unit}`)}
     </g>
   );
 }
@@ -238,59 +231,41 @@ export function MetreRuler({
   length,
   y,
   unit,
+  dir = 1,
 }: {
   length: number;
   y: number;
   unit: string;
+  /** Which way the ticks and numbers grow from the baseline: +1 below (a bottom ruler), −1 above (a
+   *  top ruler). */
+  dir?: 1 | -1;
 }) {
   // Drop interior ticks that would collide with the total-length label at the end (design 2026-07-22).
   const ticks = metreTicks(length).filter((t) => length - t.x > 800);
-  // Half-metre minors, minus any that would sit under the total label — same clearance as the majors.
+  // Half-metre minors and quarter-metre finest ticks, minus any under the total label (same clearance).
   const minors = halfMetreTicks(length).filter((x) => length - x > 800);
+  const quarters = quarterMetreTicks(length).filter((x) => length - x > 800);
   const font = length * RULER_FONT;
+  const labelY = y + dir * font * 1.9;
   return (
     <g pointerEvents="none" aria-hidden="true" fill="var(--faint)">
+      {quarters.map((x) => (
+        <line key={`q${x}`} x1={x} y1={y} x2={x} y2={y + dir * font * 0.32} stroke="var(--grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      ))}
       {minors.map((x) => (
-        <line
-          key={`m${x}`}
-          x1={x}
-          y1={y}
-          x2={x}
-          y2={y + font * 0.28}
-          stroke="var(--grid)"
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-        />
+        <line key={`h${x}`} x1={x} y1={y} x2={x} y2={y + dir * font * 0.55} stroke="var(--grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       ))}
       {ticks.map((t) => (
         <g key={t.metre}>
-          <line
-            x1={t.x}
-            y1={y}
-            x2={t.x}
-            y2={y + font * 0.55}
-            stroke="var(--grid)"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
-          <text
-            x={t.x}
-            y={y + font * 1.9}
-            fontSize={font}
-            textAnchor="middle"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
+          <line x1={t.x} y1={y} x2={t.x} y2={y + dir * font * 0.9} stroke="var(--grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          <text x={t.x} y={labelY} fontSize={font} textAnchor="middle" dominantBaseline="central" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {t.metre}
           </text>
         </g>
       ))}
-      <text
-        x={length}
-        y={y + font * 1.9}
-        fontSize={font}
-        textAnchor="end"
-        style={{ fontVariantNumeric: 'tabular-nums' }}
-      >{`${length / 1000} ${unit}`}</text>
+      <text x={length} y={labelY} fontSize={font} textAnchor="end" dominantBaseline="central" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {`${length / 1000} ${unit}`}
+      </text>
     </g>
   );
 }

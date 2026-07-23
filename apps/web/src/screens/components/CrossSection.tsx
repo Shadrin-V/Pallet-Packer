@@ -122,12 +122,11 @@ export function CrossSection({
   // Nothing is drawn past the box rear, so there is no rear gutter.
   const frontGutter = height * GUTTER.front;
   const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
-  // The ruler's label font scales with length (MetreRuler: font = length*0.02), so its lane must be
-  // tall enough for that font (~2.2× baseline+descent) — a height-only gutter clips the digits on long
-  // trailers (length/height > ~4.2, i.e. every standard tractor). Widen to fit.
-  const rulerGutter = Math.max(height * GUTTER.ruler, length * 0.045);
+  // The length ruler sits ABOVE the box (owner: numbers along the top edge). Its lane must clear the
+  // number, which grows upward from the box top by ~1.9 font + half a line; font = length*RULER_FONT.
+  const topGutter = length * RULER_FONT * 2.8;
   const outerW = frontGutter + length;
-  const outerH = spanY + wheelGutter + rulerGutter;
+  const outerH = topGutter + spanY + wheelGutter;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -361,7 +360,7 @@ export function CrossSection({
         <svg
           ref={svgRef}
           x={frontGutter}
-          y={0}
+          y={topGutter}
           width={length}
           height={spanY}
           // Its own viewBox is 0 0 length spanY, so getScreenCTM maps client px straight to cargo mm
@@ -548,7 +547,8 @@ export function CrossSection({
             the nested cargo svg so that svg stays the outer svg's first <svg> descendant (existing
             tests key off that), and so chrome — which lives only in the outer gutters — paints on top
             without ever touching the cargo viewport's own 1:1 coordinate space. */}
-        <g pointerEvents="none">
+        {/* All box-relative chrome shifts down by the top ruler's lane so it stays glued to the box. */}
+        <g pointerEvents="none" transform={`translate(0 ${topGutter})`}>
           {view === 'side' && (
             <>
               <FrontCap height={spanY} />
@@ -559,12 +559,13 @@ export function CrossSection({
             </>
           )}
           {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
-          <g transform={`translate(${frontGutter} ${spanY + wheelGutter})`}>
-            <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} />
+          {/* Length ruler ALONG THE TOP edge (owner): numbers grow upward into the top lane (dir −1). */}
+          <g transform={`translate(${frontGutter} 0)`}>
+            <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} dir={-1} />
           </g>
           {/* Vertical companion up the REAR edge (away from the cab): height on the side view, width on
-              the top. Same font so both axes read at one size. */}
-          <VerticalRuler span={spanY} floorY={spanY} rearX={frontGutter + length} font={length * RULER_FONT} />
+              the top, each ending in its own total. Same font so all axes read at one size. */}
+          <VerticalRuler span={spanY} floorY={spanY} rearX={frontGutter + length} font={length * RULER_FONT} unit={tt('ladeplan.rulerUnit')} />
         </g>
       </svg>
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both
