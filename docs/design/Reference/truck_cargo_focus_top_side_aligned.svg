@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1600" height="1000" viewBox="0 0 1600 1000">
+  <title>Truck cargo focus - top and side views - aligned wheels</title>
+  <desc>Editable vector technical drawing with large empty cargo areas, minimized cab and wheels, and aligned side-view axles.</desc>
+
+  <defs>
+    <style><![CDATA[
+      .outline { fill: #ffffff; stroke: #111111; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      .detail  { fill: none; stroke: #111111; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .minor   { fill: none; stroke: #111111; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+      .wheel   { fill: #ffffff; stroke: #111111; stroke-width: 4; }
+      .hub     { fill: #ffffff; stroke: #111111; stroke-width: 3; }
+    ]]></style>
+
+    <!-- Ready-made clipping areas for cargo that can be inserted later -->
+    <clipPath id="clip-cargo-top">
+      <rect x="275" y="75" width="1240" height="330"/>
+    </clipPath>
+    <clipPath id="clip-cargo-side">
+      <rect x="275" y="545" width="1240" height="305"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#ffffff"/>
+
+  <!-- ===================== TOP VIEW ===================== -->
+  <g id="top-view">
+    <!-- large cargo body; nothing overlaps this rectangle -->
+    <g id="cargo-body-top" data-role="cargo-area">
+      <rect class="outline" x="260" y="60" width="1270" height="360" rx="2"/>
+    </g>
+
+    <!-- compact tractor/cab -->
+    <g id="cab-top">
+      <path class="outline" d="M62 124
+                               Q62 84 98 70
+                               Q120 61 154 61
+                               L218 61
+                               Q235 61 235 78
+                               L235 402
+                               Q235 419 218 419
+                               L154 419
+                               Q120 419 98 410
+                               Q62 396 62 356 Z"/>
+      <path class="detail" d="M76 132 Q104 99 145 94 L215 94"/>
+      <path class="detail" d="M76 348 Q104 381 145 386 L215 386"/>
+      <path class="minor" d="M92 153 L92 327"/>
+      <path class="minor" d="M108 130 L108 350"/>
+      <rect class="outline" x="235" y="153" width="25" height="174" rx="4"/>
+      <path class="minor" d="M72 185 L58 180 L54 193 L68 198"/>
+      <path class="minor" d="M72 295 L58 300 L54 287 L68 282"/>
+    </g>
+
+    <!-- rear fittings kept outside cargo body -->
+    <g id="rear-details-top">
+      <rect class="minor" x="1530" y="112" width="12" height="40"/>
+      <rect class="minor" x="1530" y="328" width="12" height="40"/>
+    </g>
+  </g>
+
+  <!-- ===================== SIDE VIEW ===================== -->
+  <g id="side-view">
+    <!-- large cargo body; wheels and chassis remain below it -->
+    <g id="cargo-body-side" data-role="cargo-area">
+      <rect class="outline" x="260" y="530" width="1270" height="335" rx="2"/>
+    </g>
+
+    <!-- compact tractor/cab -->
+    <g id="cab-side" transform="translate(0 21)">
+      <path class="outline" d="M62 858
+                               L62 731
+                               Q63 692 80 659
+                               L109 601
+                               Q127 570 161 554
+                               Q187 542 230 542
+                               L230 858 Z"/>
+      <path class="detail" d="M110 604 L198 604
+                               Q210 604 207 618
+                               L193 672
+                               Q189 688 171 688
+                               L82 688"/>
+      <path class="minor" d="M78 714 L78 755"/>
+      <rect class="outline" x="53" y="710" width="13" height="30" rx="2"/>
+
+      <!-- short chassis only; no intrusion into cargo body -->
+      <path class="outline" d="M62 858 L62 832
+                               Q62 812 82 812
+                               L236 812
+                               L236 805
+                               L396 805
+                               Q417 805 424 824
+                               L430 858 Z"/>
+      <line class="minor" x1="236" y1="812" x2="236" y2="858"/>
+    </g>
+
+    <!-- wheels are intentionally small -->
+    <g id="front-wheels-side">
+      <circle class="wheel" cx="118" cy="878" r="33"/>
+      <circle class="hub" cx="118" cy="878" r="14"/>
+      <circle class="wheel" cx="384" cy="878" r="33"/>
+      <circle class="hub" cx="384" cy="878" r="14"/>
+    </g>
+
+    <!-- simple support and minimal trailer undercarriage -->
+    <g id="undercarriage-side">
+      <line class="detail" x1="690" y1="865" x2="690" y2="912"/>
+      <line class="detail" x1="703" y1="865" x2="703" y2="912"/>
+      <path class="detail" d="M678 914 Q697 905 716 914"/>
+      <line class="minor" x1="1040" y1="884" x2="1468" y2="884"/>
+    </g>
+
+    <g id="rear-wheels-side">
+      <circle class="wheel" cx="1190" cy="878" r="33"/>
+      <circle class="hub" cx="1190" cy="878" r="14"/>
+      <circle class="wheel" cx="1302" cy="878" r="33"/>
+      <circle class="hub" cx="1302" cy="878" r="14"/>
+      <circle class="wheel" cx="1414" cy="878" r="33"/>
+      <circle class="hub" cx="1414" cy="878" r="14"/>
+      <rect class="minor" x="1530" y="829" width="12" height="38"/>
+    </g>
+  </g>
+
+  <!-- Empty groups prepared for future cargo artwork -->
+  <g id="future-cargo-top" clip-path="url(#clip-cargo-top)"></g>
+  <g id="future-cargo-side" clip-path="url(#clip-cargo-side)"></g>
+</svg>
