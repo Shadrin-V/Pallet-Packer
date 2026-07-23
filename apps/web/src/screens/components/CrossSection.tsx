@@ -519,7 +519,10 @@ export function CrossSection({
             </g>
           );
         })()}
-        <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--line-strong)" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        {/* The cargo box = the trailer body: framed in the truck line-art colour (--truck) so it reads
+            as one vehicle with the cab, a touch thinner than the cab's own strokes (d2d). Stays in the
+            nested viewport (the load boundary; kept 1:1 by the nested-svg invariant test). */}
+        <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--truck)" strokeWidth={1.75} vectorEffect="non-scaling-stroke" pointerEvents="none" />
         </svg>
         {/* chrome: front cab gutter (both views), wheels+ground (side), ruler lane (both). Drawn AFTER
             the nested cargo svg so that svg stays the outer svg's first <svg> descendant (existing
