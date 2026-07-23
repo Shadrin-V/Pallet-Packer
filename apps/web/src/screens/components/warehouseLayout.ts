@@ -72,3 +72,25 @@ export function warehouseFloor(
   }
   return { tiles: out, width, height: out.length === 0 ? 0 : y + rowH + pad };
 }
+
+/** Where a point (mm, warehouse frame) falls in the flow order: index in [0..tiles.length].
+ *  Rows first (by vertical band of each placed tile — a tile is "in the point's row" when
+ *  `t.y <= point.y <= t.y + t.dy`), then x within the row: the point inserts before the first tile
+ *  whose row it has reached and whose centre is at or right of it. A point past every row's tiles
+ *  lands at the end. Compares against each tile's own y-band rather than a global row-start, so it
+ *  keeps working even if rows are ever unequal height; the loop visits tiles in flow order, so
+ *  earlier rows are always consumed (skipped) before the point's own row is reached. */
+export function insertionIndexAt(
+  layout: WarehouseFloorLayout,
+  point: { x: number; y: number },
+): number {
+  const { tiles } = layout;
+  for (let i = 0; i < tiles.length; i++) {
+    const t = tiles[i];
+    if (point.y > t.y + t.dy) continue; // this tile's row is entirely above the point — already behind it
+    if (point.y < t.y) return i; // point falls before this row starts (a gap above it, or the very top)
+    const cx = t.x + t.dx / 2;
+    if (point.x <= cx) return i; // same row, at or left of this tile's centre
+  }
+  return tiles.length;
+}
