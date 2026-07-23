@@ -77,6 +77,8 @@ export function CrossSection({
   onRotateStack,
   onDropOutside,
   preview,
+  onCarry,
+  onCarryEnd,
 }: {
   load: Load;
   layout: Layout;
@@ -98,6 +100,26 @@ export function CrossSection({
   /** Preview for a drag the PARENT owns (a stack carried in from the warehouse). The component's own
    *  drags preview themselves; whichever is live gets drawn. */
   preview?: DropPreview | null;
+  /** Fires on every pointer move while a stack/group is being carried in THIS view (top view only,
+   *  since it is the only view this component makes draggable). The parent draws a page-level ghost
+   *  from it — the symmetric counterpart of the warehouse→hold ghost, needed because a stack carried
+   *  OUT of the cutaway toward the warehouse strip is otherwise clipped the moment it crosses this
+   *  svg's own bounds. `cargoTypeId`/`units`/`orientation` describe the PRESSED stack specifically —
+   *  the one under the finger, not the whole group when several are carried together — because that
+   *  is the one the warehouse's live gap preview (B) needs to size a phantom slot for; a group carry
+   *  still previews just the one tile the pointer is actually over. */
+  onCarry?: (payload: {
+    count: number;
+    label: string;
+    clientX: number;
+    clientY: number;
+    cargoTypeId: string;
+    units: number;
+    orientation: 'lwh' | 'wlh';
+  }) => void;
+  /** Fires once the carry gesture ends, however it ends (a drop, an outside hand-off, or a cancel) —
+   *  the parent's ghost must not outlive the drag that produced it. */
+  onCarryEnd?: () => void;
 }) {
   const tt = useT();
   const { length, width, height } = load.vehicle;
@@ -148,10 +170,11 @@ export function CrossSection({
       setBand(null);
       setSel([]);
       setDrag(null);
+      onCarryEnd?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draggable]);
+  }, [draggable, onCarryEnd]);
 
   const toSvg = (e: ReactPointerEvent): { x: number; y: number } => {
     const svg = svgRef.current;
@@ -238,6 +261,7 @@ export function CrossSection({
     // Symmetrically to onDown: a press on bare floor during a live stack drag ends that drag rather
     // than leaving it carried forever with its stacks visually translated.
     setDrag(null);
+    onCarryEnd?.();
     setBand({ x0: s.x, y0: s.y, x1: s.x, y1: s.y });
   };
 
@@ -246,6 +270,7 @@ export function CrossSection({
   const onCancel = () => {
     setBand(null);
     setDrag(null);
+    onCarryEnd?.();
   };
 
   const onMove = (e: ReactPointerEvent) => {
@@ -265,9 +290,34 @@ export function CrossSection({
     } else {
       setDrag({ ...drag, dx, dy, resolution: null, preview: previewFor(drag.refs[0], dx, dy) });
     }
+    // Page-level ghost payload (T3): the parent cannot see this carry — it lives past this svg's own
+    // bounds the instant the pointer crosses the cutaway edge toward the warehouse — so it is reported
+    // on every move rather than left for the parent to infer from `preview`.
+    if (onCarry) {
+      const cargo = load.cargo.find((c) => c.id === drag.pressed.cargoTypeId);
+      const count = drag.refs.reduce((sum, ref) => {
+        const r = rects.find((c) => c.cargoTypeId === ref.cargoTypeId && c.x === ref.x && c.y === ref.y);
+        return sum + (r?.count ?? 1);
+      }, 0);
+      // The pressed stack's OWN rect, not the group total above — the warehouse phantom previews the
+      // one tile under the finger, whatever else rides along in a group carry.
+      const pressedRect = rects.find(
+        (c) => c.cargoTypeId === drag.pressed.cargoTypeId && c.x === drag.pressed.x && c.y === drag.pressed.y,
+      );
+      onCarry({
+        count,
+        label: cargo?.name ?? '',
+        clientX: e.clientX,
+        clientY: e.clientY,
+        cargoTypeId: drag.pressed.cargoTypeId,
+        units: pressedRect?.count ?? 1,
+        orientation: pressedRect?.orientation === 'wlh' ? 'wlh' : 'lwh',
+      });
+    }
   };
 
   const onUp = (e: ReactPointerEvent) => {
+    onCarryEnd?.();
     if (band) {
       // A press that did not travel past the slop is a click on empty floor: nothing is caught and
       // the selection is cleared. Past it, the band selects everything it touches.

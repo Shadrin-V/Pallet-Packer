@@ -399,6 +399,203 @@ describe('LadeplanScreen — group selection', () => {
   });
 });
 
+// The symmetric direction (T3): a stack carried OUT of the hold toward the warehouse strip. Its own
+// visual lives inside the top-view cutaway svg and is clipped the instant the cursor leaves it — this
+// page-level ghost is what stays visible for the whole trip, the counterpart of `drag-ghost` above.
+describe('LadeplanScreen — hold-drag ghost (page-level, T3)', () => {
+  it('shows a page-level ghost while a stack is dragged out of the hold, and clears it on release', () => {
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 2000, height: 2000 });
+    try {
+      const { container } = renderLadeplan(); // 8 Box cubes fill the 2×2×2 hold
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
+
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c1@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 2600 }); // toward the warehouse, below the hold
+
+      const ghost = screen.getByTestId('hold-drag-ghost');
+      expect(ghost.textContent).toMatch(/^Box ×\d+$/);
+
+      fireEvent.pointerUp(svg, { clientX: 400, clientY: 2600 });
+      expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
+    } finally {
+      restoreSvg();
+    }
+  });
+
+  it('clears the ghost on pointercancel too, not only on release', () => {
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 2000, height: 2000 });
+    try {
+      const { container } = renderLadeplan();
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c1@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 2600 });
+      expect(screen.getByTestId('hold-drag-ghost')).toBeInTheDocument();
+
+      fireEvent.pointerCancel(svg, { clientX: 400, clientY: 2600 });
+      expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
+    } finally {
+      restoreSvg();
+    }
+  });
+});
+
+// The explicit buffer order (B): a stack dragged out of the hold lands where the user actually
+// released it — reflowing neighbours aside — rather than snapping to wherever `stackBuffer`'s own
+// (Load.cargo-order) recompute would put it. That default recompute is exactly what makes this fixture
+// worth being fussy about: `stackBuffer` always emits in cargo-array order (A, B, C — see
+// packages/engine/src/packing/edit.ts), so if "C" is dragged out with the feature absent it would
+// reappear LAST regardless of where it was released. Both cases below are chosen to land C somewhere
+// other than last, so a regression to "ignore the release point" is guaranteed to fail them rather
+// than pass by coincidence.
+// The layout is hand-built (as the "shows edit-error…" case above does), not `calculateLayout`'d: it
+// only needs A and B already unplaced and C sitting alone in the hold, and building it directly keeps
+// that independent of which type the packer would actually prioritise onto the floor.
+describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', () => {
+  const dropLoad: Load = {
+    // width: 50 — deliberately far too thin for its own cargo. This is what lets a release that is
+    // genuinely BETWEEN two warehouse tiles (so within both the hold's and the warehouse's shared
+    // x-range) still read as "outside the hold": CrossSection's own outside test is an OR of x- and
+    // y-range, and shrinking spanY (=vehicle.width for the top view) to near-nothing means almost any
+    // y at all clears it, freeing x to do the one job this fixture actually needs from it — landing
+    // between the two buffer tiles' centres. Nothing here is drawn against real vehicle bounds (this
+    // Layout is hand-built, not `calculateLayout`'d), so the mismatch is inert.
+    vehicle: { id: 'v5', name: 'LKW', length: 4000, width: 50, height: 1000 },
+    cargo: [
+      { id: 'a', name: 'A', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+      { id: 'b', name: 'B', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+      { id: 'c', name: 'C', length: 1000, width: 1000, height: 1000, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+    ],
+  };
+  const dropLayout: Layout = {
+    placements: [{ cargoTypeId: 'c', x: 0, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' }],
+    unplaced: [{ cargoTypeId: 'a', count: 1 }, { cargoTypeId: 'b', count: 1 }],
+    metrics: { totalPlaced: 1, usedFloorPositions: 1, floorFillPercent: 25, volumeFillPercent: 25 },
+    contractVersion: '0.14.0',
+  };
+  // A (500×500) opens the warehouse row at x=200 (centre 450, PAD/GAP=200); B follows at x=900
+  // (centre 1150). Both share the row band y=200..700 (rowH = the taller of the two, here both 500).
+
+  const withDropRig = (
+    run: (container: HTMLElement, rerender: (ui: Parameters<typeof render>[0]) => void) => void,
+  ) => {
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
+    const origRect = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, right: 4000, top: 0, bottom: 2000, width: 4000, height: 2000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      const { container, rerender } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={dropLoad} layout={dropLayout} />
+        </LocaleProvider>,
+      );
+      run(container, rerender);
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  };
+
+  /** Press the sole hold stack ("c@0,0") and carry it to (toX, toY), releasing there. Both svgs use
+   *  the identity CTM installed above, so client px double as mm in whichever frame the point falls
+   *  in — any y past the hold's own (tiny) spanY=50 is what CrossSection reads as "outside". */
+  const dropStackAt = (container: HTMLElement, toX: number, toY: number) => {
+    const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+    fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(svg, { clientX: toX, clientY: toY });
+    fireEvent.pointerUp(svg, { clientX: toX, clientY: toY });
+  };
+
+  it('previews the drop with a dashed phantom slot before release (live gap)', () => {
+    withDropRig((container) => {
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      // x=700 falls between A's and B's centres (450 and 1150), y=400 within their shared row —
+      // `onCarry` fires on every move, not just past the hold's own edge, so the preview appears
+      // without needing a release at all.
+      fireEvent.pointerMove(svg, { clientX: 700, clientY: 400 });
+      expect(screen.getByTestId('warehouse-phantom')).toBeInTheDocument();
+      fireEvent.pointerUp(svg, { clientX: 700, clientY: 400 });
+    });
+  });
+
+  it('drop before the first tile lands the stack there, not last (the stale-order default)', () => {
+    withDropRig((container) => {
+      // y=100 is above A's row (which opens at y=200) — insertionIndexAt's row-not-started-yet rule
+      // returns index 0 regardless of x. Without this feature, `stackBuffer`'s own recompute would
+      // always place a newly-unplaced C last (cargo array order A, B, C) — this pins the release
+      // point winning instead.
+      dropStackAt(container, 100, 100);
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('C'),
+        expect.stringContaining('A'),
+        expect.stringContaining('B'),
+      ]);
+    });
+  });
+
+  it('drop between two existing tiles lands the stack between them', () => {
+    withDropRig((container) => {
+      // x=700 is between A's and B's centres (450 and 1150); y=400 is within their row — also picked
+      // to exceed the hold's own spanY=50, which is what makes this release count as "outside" despite
+      // sharing its x-range with the hold.
+      dropStackAt(container, 700, 400);
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('A'),
+        expect.stringContaining('C'),
+        expect.stringContaining('B'),
+      ]);
+    });
+  });
+
+  // Final-review fix: bufferOrder must follow the same discard logic as `edited` (the useEffect at
+  // ~line 125 that resets both on a fresh `layout` prop) — a strategy/layout recompute must not keep
+  // replaying a stale release order from the plan it replaces.
+  it('resets bufferOrder to the default order when a fresh layout arrives', () => {
+    withDropRig((container, rerender) => {
+      // Establish a non-default bufferOrder: drop C before the first tile, landing it first — the
+      // released order becomes [C, A, B], not the cargo-array default [A, B, C].
+      dropStackAt(container, 100, 100);
+      expect(screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'))).toEqual([
+        expect.stringContaining('C'),
+        expect.stringContaining('A'),
+        expect.stringContaining('B'),
+      ]);
+
+      // A fresh `layout` prop arrives (a NEW object reference), as a strategy switch or recompute
+      // would produce — here with nothing placed at all, so all three types sit in the buffer.
+      // Per spec the buffer order must fall back to the default cargo-array order (A, B, C), the
+      // same way `edited` falls back to this fresh layout instead of keeping the old one.
+      const freshLayout: Layout = {
+        placements: [],
+        unplaced: [
+          { cargoTypeId: 'a', count: 1 },
+          { cargoTypeId: 'b', count: 1 },
+          { cargoTypeId: 'c', count: 1 },
+        ],
+        metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
+        contractVersion: '0.14.0',
+      };
+      rerender(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={dropLoad} layout={freshLayout} />
+        </LocaleProvider>,
+      );
+
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('A'),
+        expect.stringContaining('B'),
+        expect.stringContaining('C'),
+      ]);
+    });
+  });
+});
+
 describe('LadeplanScreen — figures (D1 + D3)', () => {
   const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
 

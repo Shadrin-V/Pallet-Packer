@@ -116,4 +116,41 @@ describe('WarehouseFloor', () => {
     expect(screen.getByTestId('warehouse-dropzone')).toBeInTheDocument();
     expect(screen.queryByTestId('warehouse-tile')).toBeNull();
   });
+
+  // The live gap preview (B): while a stack is carried in from the hold, the parent hands down where
+  // it would land as `phantomAt`, spliced into the same flow `warehouseFloor` lays real tiles out in
+  // — so a tile already sitting at that index is pushed aside exactly the way a real drop would push
+  // it, not just have something drawn on top of it.
+  it('opens a dashed phantom slot at phantomAt.index and pushes the tile there aside', () => {
+    const twoTiles: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+    ];
+    const phantomTile: BufferTile = { cargoTypeId: 'fixed', units: 1, orientation: 'lwh' };
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={load}
+          tiles={twoTiles}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+          phantomAt={{ index: 1, tile: phantomTile }}
+        />
+      </LocaleProvider>,
+    );
+    const phantom = screen.getByTestId('warehouse-phantom');
+    expect(phantom.tagName.toLowerCase()).toBe('rect');
+    expect(phantom).toHaveAttribute('fill', 'none');
+    expect(phantom).not.toHaveAttribute('pointer-events', 'auto');
+
+    // PAD=200, GAP=200: 'p' (1000×1200) still opens the row at x=200, same as with no phantom at all.
+    // The phantom takes the very next slot — its own tile's 800×600 footprint (fixed, lwh) — at
+    // x=1400. The real 'fixed' tile, pushed one slot right by the phantom ahead of it, lands at
+    // x=2400 rather than the x=1400 it would hold with the phantom absent.
+    const [pTile, fixedTile] = screen.getAllByTestId('warehouse-tile');
+    expect(Number(pTile.querySelector('rect')!.getAttribute('x'))).toBe(200);
+    expect(Number(phantom.getAttribute('x'))).toBe(1400);
+    expect(Number(fixedTile.querySelector('rect')!.getAttribute('x'))).toBe(2400);
+  });
 });
