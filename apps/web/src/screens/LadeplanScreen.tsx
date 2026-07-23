@@ -180,6 +180,11 @@ export function LadeplanScreen({
     orientation: tileOrientation[tileKeys[i]] ?? 'lwh',
   }));
   const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
+  // The symmetric hold→warehouse carry (T3): the stack's own visual lives INSIDE the top-view svg and
+  // is clipped the instant the pointer leaves it toward the warehouse strip below, so this page-level
+  // ghost — outside that svg entirely — is what stays visible for the whole trip, same as `dragTile`
+  // above covers the opposite direction.
+  const [carry, setCarry] = useState<{ count: number; label: string; x: number; y: number } | null>(null);
 
   const rotateTile = (i: number) =>
     setTileOrientation((prev) => {
@@ -470,6 +475,8 @@ export function LadeplanScreen({
               onRotateStack={onRotateStack}
               onDropOutside={onDropOutside}
               preview={tilePreview}
+              onCarry={(p) => setCarry({ count: p.count, label: p.label, x: p.clientX, y: p.clientY })}
+              onCarryEnd={() => setCarry(null)}
             />
           </div>
 
@@ -506,6 +513,19 @@ export function LadeplanScreen({
         >
           {load.cargo.find((c) => c.id === tiles[dragTile.index]?.cargoTypeId)?.name} ×
           {tiles[dragTile.index]?.units}
+        </div>
+      )}
+
+      {/* The symmetric direction: a stack carried OUT of the hold toward the warehouse strip. Its own
+          visual is inside the cutaway svg and gets clipped the moment the cursor leaves it — this
+          page-level twin stays visible over the whole page, including the warehouse below. */}
+      {carry && (
+        <div
+          data-testid="hold-drag-ghost"
+          className="pointer-events-none fixed z-30 rounded-ctl border border-brand bg-card px-2 py-1 text-caption font-semibold shadow-pop"
+          style={{ left: carry.x + 12, top: carry.y + 12 }}
+        >
+          {carry.label} ×{carry.count}
         </div>
       )}
     </main>

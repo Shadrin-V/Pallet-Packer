@@ -821,6 +821,59 @@ describe('group selection', () => {
 
     expect(getByTestId('group-frame').closest('g')).toHaveClass('print:hidden');
   });
+
+  // Page-level ghost payload (T3): the carried stack's own visual is clipped the instant it leaves this
+  // svg toward the warehouse strip below — a page-level ghost in the PARENT needs its own feed of what
+  // is being carried and where, since it cannot see into this component's drag state.
+  describe('onCarry / onCarryEnd (page-level ghost feed)', () => {
+    it('calls onCarry with the carried stack while dragging in the top view', () => {
+      const onCarry = vi.fn();
+      const { svg, container } = renderTop({ onCarry });
+
+      fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 200 });
+
+      expect(onCarry).toHaveBeenCalledWith(
+        expect.objectContaining({ count: expect.any(Number), label: 'Cube', clientX: 400, clientY: 200 }),
+      );
+    });
+
+    it('does not call onCarry for a rubber-band gesture (nothing is carried yet)', () => {
+      const onCarry = vi.fn();
+      const { svg } = renderTop({ onCarry });
+
+      fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
+
+      expect(onCarry).not.toHaveBeenCalled();
+      fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
+    });
+
+    it('calls onCarryEnd on release, ending the parent ghost', () => {
+      const onCarry = vi.fn();
+      const onCarryEnd = vi.fn();
+      const { svg, container } = renderTop({ onCarry, onCarryEnd });
+
+      fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 200 });
+      expect(onCarryEnd).not.toHaveBeenCalled();
+
+      fireEvent.pointerUp(svg, { clientX: 400, clientY: 200 });
+      expect(onCarryEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls onCarryEnd on pointercancel, same as a release', () => {
+      const onCarry = vi.fn();
+      const onCarryEnd = vi.fn();
+      const { svg, container } = renderTop({ onCarry, onCarryEnd });
+
+      fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 200 });
+      fireEvent.pointerCancel(svg, { clientX: 400, clientY: 200 });
+
+      expect(onCarryEnd).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 // The nested-svg wrap (Task 5): chrome lives in the OUTER svg's gutters; the cargo keeps its own 1:1

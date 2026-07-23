@@ -399,6 +399,48 @@ describe('LadeplanScreen — group selection', () => {
   });
 });
 
+// The symmetric direction (T3): a stack carried OUT of the hold toward the warehouse strip. Its own
+// visual lives inside the top-view cutaway svg and is clipped the instant the cursor leaves it — this
+// page-level ghost is what stays visible for the whole trip, the counterpart of `drag-ghost` above.
+describe('LadeplanScreen — hold-drag ghost (page-level, T3)', () => {
+  it('shows a page-level ghost while a stack is dragged out of the hold, and clears it on release', () => {
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 2000, height: 2000 });
+    try {
+      const { container } = renderLadeplan(); // 8 Box cubes fill the 2×2×2 hold
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
+
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c1@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 2600 }); // toward the warehouse, below the hold
+
+      const ghost = screen.getByTestId('hold-drag-ghost');
+      expect(ghost.textContent).toMatch(/^Box ×\d+$/);
+
+      fireEvent.pointerUp(svg, { clientX: 400, clientY: 2600 });
+      expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
+    } finally {
+      restoreSvg();
+    }
+  });
+
+  it('clears the ghost on pointercancel too, not only on release', () => {
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 2000, height: 2000 });
+    try {
+      const { container } = renderLadeplan();
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c1@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 400, clientY: 2600 });
+      expect(screen.getByTestId('hold-drag-ghost')).toBeInTheDocument();
+
+      fireEvent.pointerCancel(svg, { clientX: 400, clientY: 2600 });
+      expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
+    } finally {
+      restoreSvg();
+    }
+  });
+});
+
 describe('LadeplanScreen — figures (D1 + D3)', () => {
   const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
 
