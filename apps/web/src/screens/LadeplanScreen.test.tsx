@@ -477,19 +477,21 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   // A (500×500) opens the warehouse row at x=200 (centre 450, PAD/GAP=200); B follows at x=900
   // (centre 1150). Both share the row band y=200..700 (rowH = the taller of the two, here both 500).
 
-  const withDropRig = (run: (container: HTMLElement) => void) => {
+  const withDropRig = (
+    run: (container: HTMLElement, rerender: (ui: Parameters<typeof render>[0]) => void) => void,
+  ) => {
     const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
     const origRect = HTMLDivElement.prototype.getBoundingClientRect;
     HTMLDivElement.prototype.getBoundingClientRect = function () {
       return { left: 0, right: 4000, top: 0, bottom: 2000, width: 4000, height: 2000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
     };
     try {
-      const { container } = render(
+      const { container, rerender } = render(
         <LocaleProvider initial="de">
           <LadeplanScreen load={dropLoad} layout={dropLayout} />
         </LocaleProvider>,
       );
-      run(container);
+      run(container, rerender);
     } finally {
       HTMLDivElement.prototype.getBoundingClientRect = origRect;
       restoreSvg();
@@ -546,6 +548,49 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
         expect.stringContaining('A'),
         expect.stringContaining('C'),
         expect.stringContaining('B'),
+      ]);
+    });
+  });
+
+  // Final-review fix: bufferOrder must follow the same discard logic as `edited` (the useEffect at
+  // ~line 125 that resets both on a fresh `layout` prop) — a strategy/layout recompute must not keep
+  // replaying a stale release order from the plan it replaces.
+  it('resets bufferOrder to the default order when a fresh layout arrives', () => {
+    withDropRig((container, rerender) => {
+      // Establish a non-default bufferOrder: drop C before the first tile, landing it first — the
+      // released order becomes [C, A, B], not the cargo-array default [A, B, C].
+      dropStackAt(container, 100, 100);
+      expect(screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'))).toEqual([
+        expect.stringContaining('C'),
+        expect.stringContaining('A'),
+        expect.stringContaining('B'),
+      ]);
+
+      // A fresh `layout` prop arrives (a NEW object reference), as a strategy switch or recompute
+      // would produce — here with nothing placed at all, so all three types sit in the buffer.
+      // Per spec the buffer order must fall back to the default cargo-array order (A, B, C), the
+      // same way `edited` falls back to this fresh layout instead of keeping the old one.
+      const freshLayout: Layout = {
+        placements: [],
+        unplaced: [
+          { cargoTypeId: 'a', count: 1 },
+          { cargoTypeId: 'b', count: 1 },
+          { cargoTypeId: 'c', count: 1 },
+        ],
+        metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
+        contractVersion: '0.14.0',
+      };
+      rerender(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={dropLoad} layout={freshLayout} />
+        </LocaleProvider>,
+      );
+
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('A'),
+        expect.stringContaining('B'),
+        expect.stringContaining('C'),
       ]);
     });
   });

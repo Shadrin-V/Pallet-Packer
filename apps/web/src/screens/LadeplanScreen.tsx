@@ -125,6 +125,7 @@ export function LadeplanScreen({
   useEffect(() => {
     setEdited(layout);
     setEditError(null); // the refusal spoke about the previous layout; this one is fresh
+    setBufferOrder([]); // the release order spoke about the previous plan's buffer; this one is fresh
   }, [layout]);
   // The top view keeps its own selection and drag state, and those are only meaningful for the plan
   // they were made on: a selection is a list of floor coordinates, and a recompute repacks the hold
