@@ -14,7 +14,7 @@
 
   /* ---- lines ---- */
   --line: #e5ebe7;         /* hairlines, inner dividers */
-  --line-strong: #d5ddd8;  /* input borders, cutaway frame */
+  --line-strong: #d5ddd8;  /* input borders (cutaway frame is --truck, d2d) */
 
   /* ---- brand (holz-schaefer.de) ---- */
   --brand: #104f25;        /* deep forest — primary button, active, order edge, links */
