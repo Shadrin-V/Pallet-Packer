@@ -34,6 +34,7 @@ export const de: Dictionary = {
   'warehouse.empty': 'Alles platziert — das Lager ist leer.',
   'warehouse.rotate': 'Stapel im Lager drehen',
   'warehouse.dropHint': 'Zum Setzen in den Laderaum ziehen',
+  'warehouse.dropZone': 'Stapel aus dem Laderaum hierher ziehen',
   'article.label': 'Artikel',
   'article.source.erp': 'ERP',
   'article.source.local': 'lokal',

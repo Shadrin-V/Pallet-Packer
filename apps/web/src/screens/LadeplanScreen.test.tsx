@@ -156,9 +156,10 @@ describe('LadeplanScreen — warehouse floor', () => {
     expect(footprint(screen.getByTestId('warehouse-tile'))).toBe('800×1200'); // yaw flipped
   });
 
-  // Orientation is per cargo TYPE: stacks of one type are interchangeable and their order shifts on
-  // every edit, so an index-keyed orientation would hand the rotation to a random stack.
-  it('keeps a rotation on its cargo type, not on a slot in the list', async () => {
+  // Orientation is per TILE (owner: rotate one, not the whole article), keyed by cargo type + its
+  // occurrence in the deterministic buffer order — turning one leaves the others of its type as they
+  // were, the same as a stack in the hold.
+  it('turns a single warehouse stack, leaving the others of its type as they were', async () => {
     const two: Load = {
       vehicle: { id: 'v', name: 'LKW', length: 1200, width: 800, height: 1000 },
       cargo: [
@@ -176,10 +177,10 @@ describe('LadeplanScreen — warehouse floor', () => {
     await userEvent.click(screen.getAllByTestId('warehouse-tile')[0]);
     await userEvent.click(screen.getByRole('button', { name: /Stapel im Lager drehen/ }));
 
-    // both tiles of that type now read the rotated footprint — nothing depends on list position
-    for (const tile of screen.getAllByTestId('warehouse-tile')) {
-      expect(footprint(tile)).toBe('800×1200');
-    }
+    // only the turned tile flips; its neighbour of the same type keeps the original footprint
+    const [first, second] = screen.getAllByTestId('warehouse-tile');
+    expect(footprint(first)).toBe('800×1200');
+    expect(footprint(second)).toBe('1200×800');
   });
 
   it('offers no rotation for cargo whose rule forbids it', async () => {

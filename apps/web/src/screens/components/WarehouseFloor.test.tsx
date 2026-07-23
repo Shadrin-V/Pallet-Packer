@@ -107,9 +107,13 @@ describe('WarehouseFloor', () => {
     expect(screen.queryByRole('button', { name: 'Stapel im Lager drehen' })).not.toBeInTheDocument();
   });
 
-  it('says the floor is empty without drawing one', () => {
+  // Even empty, the floor must stay a drop target (8fy): otherwise the first stack pulled out of the
+  // hold has nowhere to land — the buffer only ever grew from the packer, never from the user.
+  it('still offers a drop zone when empty, so a stack can be pulled out of the hold', () => {
     renderFloor([]);
     expect(screen.getByText('Alles platziert — das Lager ist leer.')).toBeInTheDocument();
-    expect(document.querySelector('[data-testid="warehouse-floor"] svg')).toBeNull();
+    expect(document.querySelector('[data-testid="warehouse-floor"] svg')).not.toBeNull();
+    expect(screen.getByTestId('warehouse-dropzone')).toBeInTheDocument();
+    expect(screen.queryByTestId('warehouse-tile')).toBeNull();
   });
 });

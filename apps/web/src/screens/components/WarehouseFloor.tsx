@@ -67,6 +67,11 @@ export function WarehouseFloor({
   const downAt = useRef<{ x: number; y: number } | null>(null);
 
   const floor = warehouseFloor(load, tiles);
+  const empty = total === 0;
+  // Even empty, the floor is a drop target (8fy): a stack pulled out of the hold must have somewhere
+  // to land, and the buffer only ever grew from the packer before. Give the empty floor one vehicle
+  // width of depth so the zone is a comfortable size and shares the hold's 1:1 scale.
+  const floorHeight = empty ? Math.round(load.vehicle.width) : floor.height;
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
 
@@ -103,21 +108,49 @@ export function WarehouseFloor({
         </span>
       </div>
 
-      {total > 0 && (
-        <div>
-          <svg
-            viewBox={`0 0 ${floor.width} ${floor.height}`}
-            width="100%"
-            preserveAspectRatio="xMidYMid meet"
-            role="img"
-            aria-label={tt('warehouse.title')}
-            style={{ background: 'var(--paper)', display: 'block', touchAction: 'none' }}
-            onPointerDown={(e) => {
-              if (e.target === e.currentTarget) setSel(null);
-            }}
-          >
-            {bayFree && <ForkliftMark x={bay.x} y={bay.y} />}
-            {floor.tiles.map((pt, i) => {
+      <div>
+        <svg
+          viewBox={`0 0 ${floor.width} ${floorHeight}`}
+          width="100%"
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label={tt('warehouse.title')}
+          style={{ background: 'var(--paper)', display: 'block', touchAction: 'none' }}
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) setSel(null);
+          }}
+        >
+          {empty && (
+            // A dashed bay with a one-line invitation: the surface that catches a stack pulled out of
+            // the hold, and tells the user it will. Decoration only — the drop is handled by the
+            // parent, which hit-tests this whole section.
+            <g data-testid="warehouse-dropzone" pointerEvents="none">
+              <rect
+                x={PAD}
+                y={PAD}
+                width={floor.width - 2 * PAD}
+                height={floorHeight - 2 * PAD}
+                rx={countFont}
+                fill="none"
+                stroke="var(--line-strong)"
+                strokeWidth={2}
+                strokeDasharray="14 12"
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                x={floor.width / 2}
+                y={floorHeight / 2}
+                fill="var(--faint)"
+                fontSize={countFont}
+                textAnchor="middle"
+                dominantBaseline="central"
+              >
+                {tt('warehouse.dropZone')}
+              </text>
+            </g>
+          )}
+          {!empty && bayFree && <ForkliftMark x={bay.x} y={bay.y} />}
+          {floor.tiles.map((pt, i) => {
               const cargo = byId.get(pt.tile.cargoTypeId);
               if (!cargo) return null;
               const slot = orderColors?.get(cargo.orderId ?? '') ?? oidx.get(cargo.orderId ?? '') ?? 0;
@@ -193,9 +226,8 @@ export function WarehouseFloor({
                 </g>
               );
             })}
-          </svg>
-        </div>
-      )}
+        </svg>
+      </div>
     </section>
   );
 }
