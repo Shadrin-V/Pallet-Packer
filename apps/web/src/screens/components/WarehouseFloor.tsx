@@ -85,17 +85,11 @@ export function WarehouseFloor({
   const countFont = load.vehicle.width * 0.05;
 
   return (
-    <section
-      aria-label={tt('warehouse.title')}
-      data-testid="warehouse-floor"
-      // The whole card is one asphalt tone (owner feedback): the section background is the SAME colour
-      // the floor svg paints, so the header strip and the floor read as one continuous surface — no
-      // differently-coloured band. The header sits in normal flow above the svg (not overlaid), so it
-      // never washes the top row of stacks. overflow-hidden clips the fill to the rounded corners.
-      className="select-none overflow-hidden rounded-card py-3 print:hidden"
-      style={{ background: ASPHALT }}
-    >
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4">
+    <section aria-label={tt('warehouse.title')} data-testid="warehouse-floor" className="select-none print:hidden">
+      {/* Caption ABOVE the card, on the page background (like the cutaway's own labels). Keeping it out
+          of the card means the card is 100% yard — textured floor top to bottom, no differently-filled
+          strip, and nothing overlapping the top row of stacks (owner feedback). */}
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-1">
         <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
         {total > 0 && (
           <span className="text-caption font-semibold text-danger" data-testid="warehouse-count">
@@ -107,7 +101,9 @@ export function WarehouseFloor({
         </span>
       </div>
 
-      <div>
+      {/* The yard card: the floor svg is full-bleed (no padding strips), overflow-hidden clips the
+          asphalt to the rounded corners, and the asphalt tone is a fallback behind the svg. */}
+      <div className="overflow-hidden rounded-card" style={{ background: ASPHALT }}>
         <svg
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
           width="100%"
@@ -124,7 +120,7 @@ export function WarehouseFloor({
         >
           {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
               decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
-          <WarehouseBackdrop width={floor.width} height={floorHeight} sceneryDepth={load.vehicle.width} />
+          <WarehouseBackdrop width={floor.width} height={floorHeight} />
           {empty && (
             // A one-line invitation centred on the empty yard: the surface catches a stack pulled out
             // of the hold. The dashed outline is gone (owner feedback) — the yard art already reads as
