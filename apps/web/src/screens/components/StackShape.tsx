@@ -15,6 +15,7 @@ export function StackShape({
   series,
   muted = false,
   hatchSpacing = 180,
+  backing = false,
 }: {
   x: number;
   y: number;
@@ -26,9 +27,14 @@ export function StackShape({
   muted?: boolean;
   /** Hatch pitch in the caller's units. */
   hatchSpacing?: number;
+  /** Paint an opaque paper backing first — for the warehouse floor, whose scenery backdrop would
+   *  otherwise bleed through the tint's low opacity and muddy the stack. Over paper the tint reads
+   *  exactly as it does in the hold (41e.5). */
+  backing?: boolean;
 }) {
   return (
     <>
+      {backing && <rect x={x} y={y} width={w} height={h} fill="var(--paper)" />}
       <rect x={x} y={y} width={w} height={h} fill={`var(--s${series})`} fillOpacity={muted ? 0.06 : 0.16} />
       <HatchMarks
         x={x}
