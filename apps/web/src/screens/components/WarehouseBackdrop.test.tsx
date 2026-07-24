@@ -53,40 +53,40 @@ describe('WarehouseBackdrop', () => {
     expect(Number(left.getAttribute('width'))).toBeCloseTo(leftW * (height / natH), 3);
   });
 
-  // No height limit, no seams (owner feedback): the open floor is ONE flat asphalt tone filling the
-  // whole surface at any depth — not a tiled pattern (whose raster tiles antialiased into faint vertical
-  // seams). The lane is a native dashed line at the docks' lane height, painted before the caps so the
-  // docks carry it to the edges.
-  it('fills the whole floor with one flat asphalt tone and a native lane, caps painted last', () => {
+  // No height limit (owner feedback): the owner's asphalt pattern tiles across the WHOLE floor at any
+  // depth — not a flat fill, not a band capped at the yard depth. An opaque asphalt base sits under it
+  // (seam guard + header match), and both are painted BEFORE the caps so the docks win at the edges.
+  it('tiles the owner pattern across the whole floor depth, over an opaque base, caps last', () => {
     const width = 13600;
-    const height = 4000; // deeper than YARD — the fill is not capped at YARD
+    const height = 4000; // deeper than YARD — the pattern is not capped at YARD
     const g = renderBackdrop(width, height, YARD);
 
-    const floor = g.querySelector('rect[data-floor]')!;
-    expect(floor.getAttribute('fill')).toBe('#d9d4ce');
-    expect(Number(floor.getAttribute('width'))).toBe(width);
-    expect(Number(floor.getAttribute('height'))).toBe(height);
-    // no <pattern>/tiled <image> — that was the seam source
-    expect(g.querySelector('pattern')).toBeNull();
+    const base = g.querySelector('rect[data-floor]')!;
+    expect(base.getAttribute('fill')).toBe('#d9d4ce');
+    expect(Number(base.getAttribute('height'))).toBe(height);
 
-    const lane = g.querySelector('line[data-lane]')!;
-    expect(Number(lane.getAttribute('x1'))).toBe(0);
-    expect(Number(lane.getAttribute('x2'))).toBe(width);
-    expect(Number(lane.getAttribute('y1'))).toBeCloseTo(YARD * 0.22, 3); // at the docks' lane height
+    const asphalt = g.querySelector('rect[data-asphalt]')!;
+    expect(Number(asphalt.getAttribute('x'))).toBe(0);
+    expect(Number(asphalt.getAttribute('width'))).toBe(width);
+    expect(Number(asphalt.getAttribute('height'))).toBe(height); // full depth, not YARD
+    expect(asphalt.getAttribute('fill')).toMatch(/^url\(#/);
+    // the pattern tile is the owner's centre slice, sized to the yard unit on both axes
+    const tile = g.querySelector('pattern image')!;
+    expect(Number(g.querySelector('pattern')!.getAttribute('height'))).toBe(YARD);
+    expect(tile.getAttribute('href')).toBeTruthy();
 
-    const kids = Array.from(g.children);
-    const floorIdx = kids.indexOf(floor as Element);
+    const kids = Array.from(g.children).filter((n) => n.tagName !== 'defs');
+    const asphaltIdx = kids.indexOf(asphalt as Element);
     const leftIdx = kids.indexOf(g.querySelector('image[data-cap="left"]')! as Element);
-    expect(floorIdx).toBeLessThan(leftIdx);
+    expect(asphaltIdx).toBeLessThan(leftIdx);
   });
 
-  // Two distinct dock images — left dock, and right dock with the forklift.
-  it('wires the two distinct dock images', () => {
+  // Three distinct source images — left dock, centre asphalt tile, right dock with the forklift.
+  it('wires the three distinct slice images', () => {
     const g = renderBackdrop();
     const left = g.querySelector('image[data-cap="left"]')!.getAttribute('href');
     const right = g.querySelector('image[data-cap="right"]')!.getAttribute('href');
-    expect(left).toBeTruthy();
-    expect(right).toBeTruthy();
-    expect(left).not.toBe(right);
+    const tile = g.querySelector('pattern image')!.getAttribute('href');
+    expect(new Set([left, right, tile]).size).toBe(3);
   });
 });

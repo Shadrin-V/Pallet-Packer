@@ -29,7 +29,7 @@ import { fillTemplate } from './stackFormula';
 import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
-import { WarehouseBackdrop } from './WarehouseBackdrop';
+import { WarehouseBackdrop, ASPHALT } from './WarehouseBackdrop';
 import { warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
@@ -88,11 +88,25 @@ export function WarehouseFloor({
     <section
       aria-label={tt('warehouse.title')}
       data-testid="warehouse-floor"
-      // The yard fills the whole card: no coloured strips around it (owner feedback). The floor svg is
-      // full-bleed and the header rides on top of it as an overlay with a soft scrim, so the asphalt is
-      // the one background top to bottom. overflow-hidden clips the texture to the rounded corners.
-      className="relative select-none overflow-hidden rounded-card print:hidden"
+      // The whole card is one asphalt tone (owner feedback): the section background is the SAME colour
+      // the floor svg paints, so the header strip and the floor read as one continuous surface — no
+      // differently-coloured band. The header sits in normal flow above the svg (not overlaid), so it
+      // never washes the top row of stacks. overflow-hidden clips the fill to the rounded corners.
+      className="select-none overflow-hidden rounded-card py-3 print:hidden"
+      style={{ background: ASPHALT }}
     >
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4">
+        <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
+        {total > 0 && (
+          <span className="text-caption font-semibold text-danger" data-testid="warehouse-count">
+            {fillTemplate(tt('warehouse.count'), { n: total })}
+          </span>
+        )}
+        <span className="text-caption text-muted">
+          {total > 0 ? tt('warehouse.dropHint') : tt('warehouse.empty')}
+        </span>
+      </div>
+
       <div>
         <svg
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
@@ -103,7 +117,7 @@ export function WarehouseFloor({
           // A stable selector for the parent (LadeplanScreen's `toWarehouseMm`): it cannot reach into
           // this component's own refs, and `role="img"` alone also matches the top/side cutaways.
           data-warehouse
-          style={{ background: 'var(--paper)', display: 'block', touchAction: 'none' }}
+          style={{ background: ASPHALT, display: 'block', touchAction: 'none' }}
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) setSel(null);
           }}
@@ -236,23 +250,6 @@ export function WarehouseFloor({
               );
             })}
         </svg>
-      </div>
-
-      {/* Header over the yard, with a top-down paper scrim so the label stays legible over the dock
-          scenery beneath it. Purely a caption — no pointer targets — so it never blocks a drop. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-6 pt-2"
-        style={{ background: 'linear-gradient(to bottom, var(--paper) 35%, transparent)' }}
-      >
-        <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
-        {total > 0 && (
-          <span className="text-caption font-semibold text-danger" data-testid="warehouse-count">
-            {fillTemplate(tt('warehouse.count'), { n: total })}
-          </span>
-        )}
-        <span className="text-caption text-muted">
-          {total > 0 ? tt('warehouse.dropHint') : tt('warehouse.empty')}
-        </span>
       </div>
     </section>
   );
