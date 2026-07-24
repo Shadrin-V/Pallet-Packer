@@ -3,12 +3,11 @@ import { render } from '@testing-library/react';
 import { WarehouseBackdrop, WAREHOUSE_ASSET } from './WarehouseBackdrop';
 
 const { natH, leftW, rightW } = WAREHOUSE_ASSET;
-const YARD = 2430; // sceneryDepth used across these tests (a standard truck width)
 
-function renderBackdrop(width = 13600, height = 2430, sceneryDepth = YARD) {
+function renderBackdrop(width = 13600, height = 2430) {
   render(
     <svg>
-      <WarehouseBackdrop width={width} height={height} sceneryDepth={sceneryDepth} />
+      <WarehouseBackdrop width={width} height={height} />
     </svg>,
   );
   return document.querySelector('[data-testid="warehouse-backdrop"]')!;
@@ -23,57 +22,44 @@ describe('WarehouseBackdrop', () => {
     expect(g.getAttribute('pointer-events')).toBe('none');
   });
 
-  // The owner's call (41e.5): the docks/forklift stay a FIXED size and do not balloon as the buffer
-  // floor grows deeper. On a floor deeper than the yard depth, the caps are scaled to sceneryDepth —
-  // NOT the floor height — and pinned to the top (the truck side).
-  it('holds the caps at the fixed yard depth on a deep floor, not the floor height', () => {
+  // Owner's model: both docks take 100% of the floor height (scaled uniformly, so the forklift/crates
+  // never distort — width follows height by the native ratio), pinned to the edges.
+  it('scales both docks to 100% of the floor height, pinned to the edges', () => {
     const width = 13600;
-    const height = 4000; // deeper than YARD
-    const g = renderBackdrop(width, height, YARD);
-    const s = YARD / natH; // fixed scale — independent of floor height
+    const height = 3000;
+    const g = renderBackdrop(width, height);
+    const s = height / natH;
 
     const left = g.querySelector('image[data-cap="left"]')!;
     expect(Number(left.getAttribute('x'))).toBe(0);
-    expect(Number(left.getAttribute('height'))).toBe(YARD); // NOT 4000
+    expect(Number(left.getAttribute('height'))).toBe(height); // full height
     expect(Number(left.getAttribute('width'))).toBeCloseTo(leftW * s, 3);
 
     const right = g.querySelector('image[data-cap="right"]')!;
-    expect(Number(right.getAttribute('height'))).toBe(YARD);
+    expect(Number(right.getAttribute('height'))).toBe(height); // full height
     expect(Number(right.getAttribute('width'))).toBeCloseTo(rightW * s, 3);
     expect(Number(right.getAttribute('x'))).toBeCloseTo(width - rightW * s, 3);
   });
 
-  // A shallow one-row floor is thinner than the yard depth: the caps shrink to fit it rather than
-  // overflowing past the surface — they only ever shrink, never balloon.
-  it('shrinks the caps to fit a floor shallower than the yard depth', () => {
-    const height = 1600; // shallower than YARD
-    const g = renderBackdrop(13600, height, YARD);
-    const left = g.querySelector('image[data-cap="left"]')!;
-    expect(Number(left.getAttribute('height'))).toBe(height);
-    expect(Number(left.getAttribute('width'))).toBeCloseTo(leftW * (height / natH), 3);
-  });
-
-  // No height limit (owner feedback): the owner's asphalt pattern tiles across the WHOLE floor at any
-  // depth — not a flat fill, not a band capped at the yard depth. An opaque asphalt base sits under it
-  // (seam guard + header match), and both are painted BEFORE the caps so the docks win at the edges.
-  it('tiles the owner pattern across the whole floor depth, over an opaque base, caps last', () => {
+  // The owner's asphalt tiles across the whole floor, but its pattern cell is the FULL floor height — so
+  // there is exactly one row of tiles vertically (it repeats ONLY horizontally, no vertical seam/lane).
+  // An opaque asphalt base sits under it, and both paint BEFORE the caps so the docks win at the edges.
+  it('tiles the owner pattern full-height, repeating only horizontally, over an opaque base', () => {
     const width = 13600;
-    const height = 4000; // deeper than YARD — the pattern is not capped at YARD
-    const g = renderBackdrop(width, height, YARD);
+    const height = 3000;
+    const g = renderBackdrop(width, height);
 
     const base = g.querySelector('rect[data-floor]')!;
     expect(base.getAttribute('fill')).toBe('#d9d4ce');
     expect(Number(base.getAttribute('height'))).toBe(height);
 
     const asphalt = g.querySelector('rect[data-asphalt]')!;
-    expect(Number(asphalt.getAttribute('x'))).toBe(0);
     expect(Number(asphalt.getAttribute('width'))).toBe(width);
-    expect(Number(asphalt.getAttribute('height'))).toBe(height); // full depth, not YARD
+    expect(Number(asphalt.getAttribute('height'))).toBe(height);
     expect(asphalt.getAttribute('fill')).toMatch(/^url\(#/);
-    // the pattern tile is the owner's centre slice, sized to the yard unit on both axes
-    const tile = g.querySelector('pattern image')!;
-    expect(Number(g.querySelector('pattern')!.getAttribute('height'))).toBe(YARD);
-    expect(tile.getAttribute('href')).toBeTruthy();
+
+    // the pattern cell is the full floor height → one vertical tile → horizontal-only repeat
+    expect(Number(g.querySelector('pattern')!.getAttribute('height'))).toBe(height);
 
     const kids = Array.from(g.children).filter((n) => n.tagName !== 'defs');
     const asphaltIdx = kids.indexOf(asphalt as Element);
