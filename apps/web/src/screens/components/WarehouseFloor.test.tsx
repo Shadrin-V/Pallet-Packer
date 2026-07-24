@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../../i18n/LocaleContext';
@@ -152,5 +152,59 @@ describe('WarehouseFloor', () => {
     expect(Number(pTile.querySelector('rect')!.getAttribute('x'))).toBe(200);
     expect(Number(phantom.getAttribute('x'))).toBe(1400);
     expect(Number(fixedTile.querySelector('rect')!.getAttribute('x'))).toBe(2400);
+  });
+
+  // dwc.11: the map index runs over floor.tiles, which INCLUDES the spliced phantom, but the parent's
+  // onPickUp/onRotate index its `tiles` array WITHOUT the phantom. For any tile rendered after the
+  // phantom the two diverge by one — so a pick-up/rotate reaches the wrong buffer stack. Reachable only
+  // with a second pointer (multitouch) mid-carry, when phantomAt is live and a buffer tile is pressed.
+  it('reports the phantom-free tile index to onPickUp, not the render index', () => {
+    const twoTiles: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'p', units: 5, orientation: 'lwh' },
+    ];
+    const onPickUp = vi.fn();
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={load}
+          tiles={twoTiles}
+          onRotate={vi.fn()}
+          onPickUp={onPickUp}
+          dragging={null}
+          // Phantom spliced BEFORE both tiles: render order is [phantom, tileA, tileB], so tileB sits
+          // at render index 2 but is tiles[1].
+          phantomAt={{ index: 0, tile: { cargoTypeId: 'p', units: 1, orientation: 'lwh' } }}
+        />
+      </LocaleProvider>,
+    );
+    const secondTile = screen.getAllByTestId('warehouse-tile')[1];
+    fireEvent.pointerDown(secondTile);
+    expect(onPickUp).toHaveBeenCalledWith(1, expect.anything());
+  });
+
+  it('reports the phantom-free tile index to onRotate, not the render index', async () => {
+    const twoTiles: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'p', units: 5, orientation: 'lwh' },
+    ];
+    const onRotate = vi.fn();
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={load}
+          tiles={twoTiles}
+          onRotate={onRotate}
+          onPickUp={vi.fn()}
+          dragging={null}
+          phantomAt={{ index: 0, tile: { cargoTypeId: 'p', units: 1, orientation: 'lwh' } }}
+        />
+      </LocaleProvider>,
+    );
+    const secondTile = screen.getAllByTestId('warehouse-tile')[1];
+    secondTile.focus();
+    await userEvent.keyboard('{Enter}'); // select → reveals the rotate handle
+    await userEvent.click(screen.getByRole('button', { name: 'Stapel im Lager drehen' }));
+    expect(onRotate).toHaveBeenCalledWith(1);
   });
 });

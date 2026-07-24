@@ -299,6 +299,11 @@ export function CrossSection({
         const r = rects.find((c) => c.cargoTypeId === ref.cargoTypeId && c.x === ref.x && c.y === ref.y);
         return sum + (r?.count ?? 1);
       }, 0);
+      // The count above sums EVERY carried stack, so naming one type over it misreads a mixed selection
+      // as "Alpha ×(alpha+beta)". A single-type group stays named (that label is true); a group spanning
+      // more than one type turns neutral (dwc.10).
+      const mixed = new Set(drag.refs.map((ref) => ref.cargoTypeId)).size > 1;
+      const label = mixed ? tt('ladeplan.groupGhost') : cargo?.name ?? '';
       // The pressed stack's OWN rect, not the group total above — the warehouse phantom previews the
       // one tile under the finger, whatever else rides along in a group carry.
       const pressedRect = rects.find(
@@ -306,7 +311,7 @@ export function CrossSection({
       );
       onCarry({
         count,
-        label: cargo?.name ?? '',
+        label,
         clientX: e.clientX,
         clientY: e.clientY,
         cargoTypeId: drag.pressed.cargoTypeId,

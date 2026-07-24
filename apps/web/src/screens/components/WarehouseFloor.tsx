@@ -192,6 +192,11 @@ export function WarehouseFloor({
               const slot = orderColors?.get(cargo.orderId ?? '') ?? oidx.get(cargo.orderId ?? '') ?? 0;
               const { series } = orderColorToken(slot);
               const rotatable = cargo.rotation !== 'none';
+              // `i` runs over renderTiles, which SPLICES IN the phantom; the parent's onPickUp/onRotate/
+              // dragging index its own `tiles` array, WITHOUT it. For any tile after the phantom the two
+              // diverge by one, so map back before handing an index up (dwc.11). Reachable only with a
+              // second pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
+              const realIndex = phantomAt && i > phantomAt.index ? i - 1 : i;
               return (
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}
@@ -199,11 +204,11 @@ export function WarehouseFloor({
                   role="button"
                   tabIndex={0}
                   aria-label={`${cargo.name} ×${pt.tile.units}`}
-                  opacity={dragging === i ? 0.3 : undefined}
+                  opacity={dragging === realIndex ? 0.3 : undefined}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) => {
                     downAt.current = { x: e.clientX, y: e.clientY };
-                    onPickUp(i, e);
+                    onPickUp(realIndex, e);
                   }}
                   onClick={(e) => {
                     // A press that barely travelled is a click: select the stack (revealing the
@@ -254,7 +259,7 @@ export function WarehouseFloor({
                           cy={pt.y + Math.min(countFont * 0.8, pt.dy / 2)}
                           size={countFont * 0.8}
                           label={tt('warehouse.rotate')}
-                          onRotate={() => onRotate(i)}
+                          onRotate={() => onRotate(realIndex)}
                         />
                       )}
                     </>
