@@ -29,7 +29,7 @@ import { fillTemplate } from './stackFormula';
 import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
-import { ForkliftMark } from './ForkliftMark';
+import { WarehouseBackdrop } from './WarehouseBackdrop';
 import { warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
@@ -37,9 +37,6 @@ export type { BufferTile };
 /** Below this pointer travel (px) a press is a click (select), not a drag (carry). */
 const CLICK_SLOP_PX = 5;
 
-/** Footprint the forklift needs, in mm — it is only drawn where it does not sit on the cargo. */
-const FORKLIFT_W = 3500;
-const FORKLIFT_H = 1150;
 const PAD = 200;
 
 export function WarehouseFloor({
@@ -87,21 +84,6 @@ export function WarehouseFloor({
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
 
-  // Park the forklift bottom-right, but only where it does not stand on the cargo: it is scenery, and
-  // scenery must never look like a stack nor hide one.
-  const bay = {
-    x: floor.width - PAD - FORKLIFT_W,
-    y: floor.height - PAD - FORKLIFT_H,
-    w: FORKLIFT_W,
-    h: FORKLIFT_H,
-  };
-  const bayFree =
-    bay.x > PAD &&
-    bay.y > PAD &&
-    !floor.tiles.some(
-      (t) => t.x < bay.x + bay.w && bay.x < t.x + t.dx && t.y < bay.y + bay.h && bay.y < t.y + t.dy,
-    );
-
   return (
     <section
       aria-label={tt('warehouse.title')}
@@ -135,6 +117,9 @@ export function WarehouseFloor({
             if (e.target === e.currentTarget) setSel(null);
           }}
         >
+          {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
+              decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
+          <WarehouseBackdrop width={floor.width} height={floorHeight} sceneryDepth={load.vehicle.width} />
           {empty && (
             // A dashed bay with a one-line invitation: the surface that catches a stack pulled out of
             // the hold, and tells the user it will. Decoration only — the drop is handled by the
@@ -164,7 +149,6 @@ export function WarehouseFloor({
               </text>
             </g>
           )}
-          {!empty && bayFree && <ForkliftMark x={bay.x} y={bay.y} />}
           {floor.tiles.map((pt, i) => {
               const cargo = byId.get(pt.tile.cargoTypeId);
               if (!cargo) return null;
