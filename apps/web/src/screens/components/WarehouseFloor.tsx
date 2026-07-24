@@ -37,8 +37,6 @@ export type { BufferTile };
 /** Below this pointer travel (px) a press is a click (select), not a drag (carry). */
 const CLICK_SLOP_PX = 5;
 
-const PAD = 200;
-
 export function WarehouseFloor({
   load,
   tiles,
@@ -77,10 +75,12 @@ export function WarehouseFloor({
     : tiles;
   const floor = warehouseFloor(load, renderTiles);
   const empty = total === 0;
-  // Even empty, the floor is a drop target (8fy): a stack pulled out of the hold must have somewhere
-  // to land, and the buffer only ever grew from the packer before. Give the empty floor one vehicle
-  // width of depth so the zone is a comfortable size and shares the hold's 1:1 scale.
-  const floorHeight = empty ? Math.round(load.vehicle.width) : floor.height;
+  // A minimum depth of one vehicle width, always: empty, the floor still needs a comfortable drop
+  // target (8fy — a stack pulled out of the hold must have somewhere to land); with content, a single
+  // shallow row must not shrink the surface (nor its scenery) to a sliver. A deeper buffer grows past
+  // it. Pinning the minimum to the vehicle width also fixes the scenery's size for good: the backdrop's
+  // yard depth is the same width, so its `unit` is now constant at every buffer depth.
+  const floorHeight = Math.max(floor.height, Math.round(load.vehicle.width));
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
 
@@ -88,20 +88,11 @@ export function WarehouseFloor({
     <section
       aria-label={tt('warehouse.title')}
       data-testid="warehouse-floor"
-      className="select-none rounded-card bg-sub py-3 print:hidden"
+      // The yard fills the whole card: no coloured strips around it (owner feedback). The floor svg is
+      // full-bleed and the header rides on top of it as an overlay with a soft scrim, so the asphalt is
+      // the one background top to bottom. overflow-hidden clips the texture to the rounded corners.
+      className="relative select-none overflow-hidden rounded-card print:hidden"
     >
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4">
-        <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
-        {total > 0 && (
-          <span className="text-caption font-semibold text-danger" data-testid="warehouse-count">
-            {fillTemplate(tt('warehouse.count'), { n: total })}
-          </span>
-        )}
-        <span className="text-caption text-muted">
-          {total > 0 ? tt('warehouse.dropHint') : tt('warehouse.empty')}
-        </span>
-      </div>
-
       <div>
         <svg
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
@@ -121,22 +112,11 @@ export function WarehouseFloor({
               decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
           <WarehouseBackdrop width={floor.width} height={floorHeight} sceneryDepth={load.vehicle.width} />
           {empty && (
-            // A dashed bay with a one-line invitation: the surface that catches a stack pulled out of
-            // the hold, and tells the user it will. Decoration only — the drop is handled by the
-            // parent, which hit-tests this whole section.
+            // A one-line invitation centred on the empty yard: the surface catches a stack pulled out
+            // of the hold. The dashed outline is gone (owner feedback) — the yard art already reads as
+            // a place to set things down. Decoration only; the drop is handled by the parent, which
+            // hit-tests this whole section.
             <g data-testid="warehouse-dropzone" pointerEvents="none">
-              <rect
-                x={PAD}
-                y={PAD}
-                width={floor.width - 2 * PAD}
-                height={floorHeight - 2 * PAD}
-                rx={countFont}
-                fill="none"
-                stroke="var(--line-strong)"
-                strokeWidth={2}
-                strokeDasharray="14 12"
-                vectorEffect="non-scaling-stroke"
-              />
               <text
                 x={floor.width / 2}
                 y={floorHeight / 2}
@@ -144,6 +124,10 @@ export function WarehouseFloor({
                 fontSize={countFont}
                 textAnchor="middle"
                 dominantBaseline="central"
+                stroke="var(--paper)"
+                strokeWidth={countFont * 0.18}
+                strokeLinejoin="round"
+                style={{ paintOrder: 'stroke' }}
               >
                 {tt('warehouse.dropZone')}
               </text>
@@ -210,7 +194,7 @@ export function WarehouseFloor({
                   }}
                 >
                   <title>{`${cargo.name} ×${pt.tile.units}`}</title>
-                  <StackShape x={pt.x} y={pt.y} w={pt.dx} h={pt.dy} series={series} hatchSpacing={180} />
+                  <StackShape x={pt.x} y={pt.y} w={pt.dx} h={pt.dy} series={series} hatchSpacing={180} backing />
                   <text
                     x={pt.x + pt.dx / 2}
                     y={pt.y + pt.dy / 2}
@@ -252,6 +236,23 @@ export function WarehouseFloor({
               );
             })}
         </svg>
+      </div>
+
+      {/* Header over the yard, with a top-down paper scrim so the label stays legible over the dock
+          scenery beneath it. Purely a caption — no pointer targets — so it never blocks a drop. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-6 pt-2"
+        style={{ background: 'linear-gradient(to bottom, var(--paper) 35%, transparent)' }}
+      >
+        <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
+        {total > 0 && (
+          <span className="text-caption font-semibold text-danger" data-testid="warehouse-count">
+            {fillTemplate(tt('warehouse.count'), { n: total })}
+          </span>
+        )}
+        <span className="text-caption text-muted">
+          {total > 0 ? tt('warehouse.dropHint') : tt('warehouse.empty')}
+        </span>
       </div>
     </section>
   );
