@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
-import { WarehouseBackdrop, WAREHOUSE_ASSET } from './WarehouseBackdrop';
-
-const { natH, leftW, rightW } = WAREHOUSE_ASSET;
+import { WarehouseBackdrop, WAREHOUSE_ASSET, FLOOR } from './WarehouseBackdrop';
 
 function renderBackdrop(width = 13600, height = 2430) {
   render(
@@ -22,57 +20,54 @@ describe('WarehouseBackdrop', () => {
     expect(g.getAttribute('pointer-events')).toBe('none');
   });
 
-  // Owner's model: both docks take 100% of the floor height (scaled uniformly, so the forklift/crates
-  // never distort — width follows height by the native ratio), pinned to the edges.
-  it('scales both docks to 100% of the floor height, pinned to the edges', () => {
+  // The floor is a single flat tone filling the whole surface — seamless at any width or depth (no
+  // tiled pattern, no distortable full-scene image). Painted before the docks so they win at the edges.
+  it('fills the whole surface with one flat floor tone, behind the docks', () => {
     const width = 13600;
     const height = 3000;
     const g = renderBackdrop(width, height);
-    const s = height / natH;
+
+    const floor = g.querySelector('rect[data-floor]')!;
+    expect(floor.getAttribute('fill')).toBe(FLOOR);
+    expect(Number(floor.getAttribute('width'))).toBe(width);
+    expect(Number(floor.getAttribute('height'))).toBe(height);
+    expect(g.querySelector('pattern')).toBeNull(); // no tiling — nothing to seam
+
+    const kids = Array.from(g.children);
+    const floorIdx = kids.indexOf(floor as Element);
+    const leftIdx = kids.indexOf(g.querySelector('image[data-cap="left"]')! as Element);
+    expect(floorIdx).toBeLessThan(leftIdx);
+  });
+
+  // Each dock spans 100% of the floor height (owner's model), scaled by its OWN native ratio so it never
+  // distorts — width follows height — and pinned to its edge.
+  it('scales each dock to full height by its own ratio, pinned to the edges', () => {
+    const width = 13600;
+    const height = 3000;
+    const g = renderBackdrop(width, height);
 
     const left = g.querySelector('image[data-cap="left"]')!;
     expect(Number(left.getAttribute('x'))).toBe(0);
-    expect(Number(left.getAttribute('height'))).toBe(height); // full height
-    expect(Number(left.getAttribute('width'))).toBeCloseTo(leftW * s, 3);
+    expect(Number(left.getAttribute('height'))).toBe(height);
+    expect(Number(left.getAttribute('width'))).toBeCloseTo(
+      (WAREHOUSE_ASSET.left.w / WAREHOUSE_ASSET.left.h) * height,
+      3,
+    );
 
     const right = g.querySelector('image[data-cap="right"]')!;
-    expect(Number(right.getAttribute('height'))).toBe(height); // full height
-    expect(Number(right.getAttribute('width'))).toBeCloseTo(rightW * s, 3);
-    expect(Number(right.getAttribute('x'))).toBeCloseTo(width - rightW * s, 3);
+    const capR = (WAREHOUSE_ASSET.right.w / WAREHOUSE_ASSET.right.h) * height;
+    expect(Number(right.getAttribute('height'))).toBe(height);
+    expect(Number(right.getAttribute('width'))).toBeCloseTo(capR, 3);
+    expect(Number(right.getAttribute('x'))).toBeCloseTo(width - capR, 3);
   });
 
-  // The owner's asphalt tiles across the whole floor, but its pattern cell is the FULL floor height — so
-  // there is exactly one row of tiles vertically (it repeats ONLY horizontally, no vertical seam/lane).
-  // An opaque asphalt base sits under it, and both paint BEFORE the caps so the docks win at the edges.
-  it('tiles the owner pattern full-height, repeating only horizontally, over an opaque base', () => {
-    const width = 13600;
-    const height = 3000;
-    const g = renderBackdrop(width, height);
-
-    const base = g.querySelector('rect[data-floor]')!;
-    expect(base.getAttribute('fill')).toBe('#d9d4ce');
-    expect(Number(base.getAttribute('height'))).toBe(height);
-
-    const asphalt = g.querySelector('rect[data-asphalt]')!;
-    expect(Number(asphalt.getAttribute('width'))).toBe(width);
-    expect(Number(asphalt.getAttribute('height'))).toBe(height);
-    expect(asphalt.getAttribute('fill')).toMatch(/^url\(#/);
-
-    // the pattern cell is the full floor height → one vertical tile → horizontal-only repeat
-    expect(Number(g.querySelector('pattern')!.getAttribute('height'))).toBe(height);
-
-    const kids = Array.from(g.children).filter((n) => n.tagName !== 'defs');
-    const asphaltIdx = kids.indexOf(asphalt as Element);
-    const leftIdx = kids.indexOf(g.querySelector('image[data-cap="left"]')! as Element);
-    expect(asphaltIdx).toBeLessThan(leftIdx);
-  });
-
-  // Three distinct source images — left dock, centre asphalt tile, right dock with the forklift.
-  it('wires the three distinct slice images', () => {
+  // Two distinct dock images — left dock, and right dock with the forklift.
+  it('wires the two distinct dock images', () => {
     const g = renderBackdrop();
     const left = g.querySelector('image[data-cap="left"]')!.getAttribute('href');
     const right = g.querySelector('image[data-cap="right"]')!.getAttribute('href');
-    const tile = g.querySelector('pattern image')!.getAttribute('href');
-    expect(new Set([left, right, tile]).size).toBe(3);
+    expect(left).toBeTruthy();
+    expect(right).toBeTruthy();
+    expect(left).not.toBe(right);
   });
 });
