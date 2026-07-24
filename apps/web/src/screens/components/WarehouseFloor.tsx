@@ -29,7 +29,7 @@ import { fillTemplate } from './stackFormula';
 import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
-import { WarehouseBackdrop, ASPHALT } from './WarehouseBackdrop';
+import { WarehouseBackdrop, FLOOR } from './WarehouseBackdrop';
 import { warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
@@ -103,7 +103,7 @@ export function WarehouseFloor({
 
       {/* The yard card: the floor svg is full-bleed (no padding strips), overflow-hidden clips the
           asphalt to the rounded corners, and the asphalt tone is a fallback behind the svg. */}
-      <div className="overflow-hidden rounded-card" style={{ background: ASPHALT }}>
+      <div className="overflow-hidden rounded-card" style={{ background: FLOOR }}>
         <svg
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
           width="100%"
@@ -113,7 +113,7 @@ export function WarehouseFloor({
           // A stable selector for the parent (LadeplanScreen's `toWarehouseMm`): it cannot reach into
           // this component's own refs, and `role="img"` alone also matches the top/side cutaways.
           data-warehouse
-          style={{ background: ASPHALT, display: 'block', touchAction: 'none' }}
+          style={{ background: FLOOR, display: 'block', touchAction: 'none' }}
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) setSel(null);
           }}
