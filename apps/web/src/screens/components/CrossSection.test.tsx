@@ -578,6 +578,65 @@ describe('group selection', () => {
     expect(onMoveStacks).not.toHaveBeenCalled(); // the hold no longer owns them
   });
 
+  // dwc.10: the carry ghost's label named the PRESSED type while its count summed EVERY selected stack,
+  // so a MIXED selection read as "Alpha ×(alpha+beta)" — one type's name over a total spanning several.
+  // A single-type group is already correct and must stay named; only a mixed one turns neutral.
+  const mixedLoad: Load = {
+    vehicle: { id: 'v', name: 'V', length: 4000, width: 2000, height: 1000 },
+    cargo: [
+      { id: 'a', name: 'Alpha', length: 1000, width: 1000, height: 1000, quantity: 1, rotation: 'yawOnly', stacking: { stackable: false }, nesting: { nestable: false }, state: 'entschachtelt' },
+      { id: 'b', name: 'Beta', length: 1000, width: 1000, height: 1000, quantity: 1, rotation: 'yawOnly', stacking: { stackable: false }, nesting: { nestable: false }, state: 'entschachtelt' },
+    ],
+  };
+  const mixedLayout: Layout = {
+    placements: [
+      { cargoTypeId: 'a', x: 0, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' },
+      { cargoTypeId: 'b', x: 1000, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' },
+    ],
+    unplaced: [],
+    metrics: { totalPlaced: 2, usedFloorPositions: 2, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.14.0',
+  };
+  const renderMixed = (props: Partial<Parameters<typeof CrossSection>[0]> = {}) => {
+    restoreSvgGeometry = installSvgGeometry();
+    const utils = render(
+      <LocaleProvider initial="de">
+        <CrossSection
+          load={mixedLoad}
+          layout={mixedLayout}
+          view="top"
+          label="Draufsicht"
+          onMoveStack={vi.fn()}
+          onRotateStack={vi.fn()}
+          onMoveStacks={vi.fn()}
+          {...props}
+        />
+      </LocaleProvider>,
+    );
+    const svg = utils.container.querySelector('svg[data-cutaway="top"] svg')!;
+    return { ...utils, svg };
+  };
+
+  it('turns the carry-ghost label neutral for a MIXED group, not one type name (dwc.10)', () => {
+    const onCarry = vi.fn();
+    const { svg, container } = renderMixed({ onCarry });
+    rubberBand(svg, 0, 0, 1500, 500); // catches a@0,0 and b@1000,0
+    fireEvent.pointerDown(container.querySelector('[data-stack-ref="a@0,0"]')!, { clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(svg, { clientX: 600, clientY: 600 });
+    const payload = onCarry.mock.calls.at(-1)![0];
+    expect(payload.label).toBe('Auswahl');
+    expect(payload.label).not.toBe('Alpha');
+  });
+
+  it('keeps the type name in the carry ghost for a single-type group', () => {
+    const onCarry = vi.fn();
+    const { svg, container } = renderTop({ onCarry });
+    rubberBand(svg, 0, 0, 1500, 500);
+    fireEvent.pointerDown(stackEl(container, 0, 0), { clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(svg, { clientX: 600, clientY: 600 });
+    expect(onCarry.mock.calls.at(-1)![0].label).toBe('Cube');
+  });
+
   it('a plain press on a stack outside the selection replaces it and drags that one alone', () => {
     const onMoveStack = vi.fn();
     const onMoveStacks = vi.fn();

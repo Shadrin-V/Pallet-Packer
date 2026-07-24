@@ -73,6 +73,7 @@ export const ru: Dictionary = {
   'ladeplan.notPlaced': '{n} не размещено',
   'ladeplan.rotateStack': 'Повернуть стопку',
   'ladeplan.selection.count': 'Выделено стопок: {n}',
+  'ladeplan.groupGhost': 'Выделение',
   'ladeplan.discardEditsConfirm':
     'Ручные изменения раскладки будут потеряны при смене стратегии. Продолжить?',
   'ladeplan.emptyHint': 'Заполните заказы и нажмите «Рассчитать» — план загрузки появится здесь.',
