@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Load } from '@shadrin-v/engine';
 import { warehouseFloor, insertionIndexAt } from './warehouseLayout';
 import type { BufferTile } from './warehouseLayout';
+import { truckFrame } from './truckFrame';
 
 const V = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
 const cargo = (id: string, length: number, width: number, orderId = 'SO-1') => ({
@@ -25,8 +26,10 @@ const tile = (cargoTypeId: string, units = 1) => ({
 });
 
 describe('warehouseFloor', () => {
-  it('is as wide as the hold — the scale is shared by construction', () => {
-    expect(warehouseFloor(load, []).width).toBe(V.length);
+  // Не «шириной с кузов»: рамка разреза шире кузова на поле под кабину, и масштаб держится равенством
+  // ИМЕННО рамок (LKWkalk-6n4). Полосу под кабиной двор занимает стопками — решение владельца.
+  it('is as wide as the cutaway frame — the scale is shared by construction', () => {
+    expect(warehouseFloor(load, []).width).toBe(truckFrame(V, 'top').outerW);
   });
 
   it('lays tiles left to right at their real size, separated by the gap', () => {
@@ -36,8 +39,9 @@ describe('warehouseFloor', () => {
   });
 
   it('wraps to a new row when the next tile would leave the floor', () => {
-    const narrow: Load = { ...load, vehicle: { ...V, length: 3000 } };
-    const { tiles } = warehouseFloor(narrow, [tile('a'), tile('a'), tile('a')], {
+    // Ширина задана явно: тест про перенос строки, а не про рамку разреза.
+    const { tiles } = warehouseFloor(load, [tile('a'), tile('a'), tile('a')], {
+      width: 3000,
       gap: 200,
       pad: 200,
     });
@@ -46,8 +50,11 @@ describe('warehouseFloor', () => {
   });
 
   it('a row is as tall as its tallest tile', () => {
-    const narrow: Load = { ...load, vehicle: { ...V, length: 2200 } };
-    const { tiles } = warehouseFloor(narrow, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    const { tiles } = warehouseFloor(load, [tile('a'), tile('b')], {
+      width: 2200,
+      gap: 200,
+      pad: 200,
+    });
     expect(tiles[1].y).toBe(1200); // 200 + 800 (высота ряда по 'a') + 200
   });
 
@@ -276,8 +283,12 @@ describe('warehouseFloor — загоны по заказу', () => {
   });
 
   it('загоны переносятся на новую строку, когда следующий не влезает', () => {
-    const narrow: Load = { ...twoOrders, vehicle: { ...V, length: 6000 } };
-    const fl = warehouseFloor(narrow, [tile('a'), tile('a'), tile('b')], { gap: 200, pad: 200 });
+    // Ширина задана явно: тест про перенос загонов, а не про рамку разреза.
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('a'), tile('b')], {
+      width: 6000,
+      gap: 200,
+      pad: 200,
+    });
     // Загон SO-1 занял x=200..3200; SO-2 (w=2400) с x=3600 упёрся бы в 6000 > 6000-200.
     expect(fl.bays[1].x).toBe(200);
     expect(fl.bays[1].y).toBe(200 + fl.bays[0].h + 400); // строка + BAY_GAP

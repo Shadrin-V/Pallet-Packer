@@ -7,10 +7,11 @@
 // times, and — being drawn at the hold's own scale — they also answer the question the cards could
 // not: will this fit, and which way round?
 //
-// The 1:1 scale is structural, not measured: this SVG's viewBox is exactly as wide as the hold's
-// (vehicle.length) and both render at width:100% inside the same column, so the mm→px factor is
-// identical by construction. The floor grows in DEPTH instead, which is also what keeps it from
-// reading as a second truck: three rows of EPAL are ~2800 mm against the hold's 2430.
+// Масштаб 1:1 структурен, а не измерен: viewBox этого svg ровно той же ширины, что ВНЕШНИЙ viewBox
+// разреза (`truckFrame(vehicle, 'top').outerW` — поле под кабину плюс длина кузова), и оба рисуются
+// width:100% внутри одной колонки, так что множитель мм→px одинаков by construction. Число считает
+// truckFrame.ts, а не эти два компонента порознь — порознь они уже разъезжались (LKWkalk-6n4).
+// Двор растёт в ГЛУБИНУ, что заодно не даёт ему читаться вторым грузовиком.
 //
 // That construction is fragile in one specific way, and it has already bitten once: ANY horizontal
 // padding, border or scrollbar between this section and the column narrows the svg, and the scale

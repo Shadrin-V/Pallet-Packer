@@ -28,11 +28,11 @@ const VBW = 372; // covers the cab through the drive wheel (ref x417)
 const VBH = 400;
 
 // Gutter fractions of vehicle height, derived from the reference so chrome scales with the box.
-// front = tractor width ahead of the box; wheel = gap below the floor where wheels hang; ruler = lane.
+// front = tractor width ahead of the box; wheel = gap below the floor where wheels hang.
+// Consumed by truckFrame.ts, which owns the frame these fractions add up to.
 export const GUTTER = {
-  front: (FRONT - VBX) / BOX_H, // 0.657
+  front: (FRONT - VBX) / BOX_H, // 0.618
   wheel: (GROUND - FLOOR) / BOX_H, // 0.137
-  ruler: 0.16,
 };
 
 // TOP-view reference frame: cargo box y[T_TOP..(T_TOP+BOX_W)] (= vehicle width), box front at T_FRONT;

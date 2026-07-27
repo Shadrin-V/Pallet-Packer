@@ -5,10 +5,12 @@
 // wrapping. It lives here with cutaway.ts and orderBreakdown.ts, and stays a pure function so it can
 // be tested without a DOM.
 //
-// The floor is exactly as wide as the hold, and both SVGs render at width:100% inside the same
-// column — that is what makes the 1:1 scale hold, with no measuring in JS. It grows in DEPTH instead,
-// which is also what tells the two apart: three rows of EPAL are ~2800 mm against the hold's 2430.
+// Двор ровно той же ширины, что РАМКА разреза (`truckFrame(...).outerW` = поле под кабину + длина
+// кузова), и оба svg рисуются width:100% в одной колонке — это и держит масштаб 1:1, без измерений в
+// JS. Не «шириной с кузов»: так было до 41e.1, и молчаливая потеря этого равенства и есть LKWkalk-6n4.
+// Растёт двор в ГЛУБИНУ, что заодно отличает его от кузова: три ряда EPAL — это ~2800 мм.
 import { orientedDims, type BufferStack, type Load } from '@shadrin-v/engine';
+import { truckFrame } from './truckFrame';
 
 /** A buffer stack with the orientation the user has turned it to (yaw only, ADR 013).
  *
@@ -168,7 +170,7 @@ export function warehouseFloor(
   tiles: BufferTile[],
   opts: { width?: number; gap?: number; pad?: number; bayOrder?: string[] } = {},
 ): WarehouseFloorLayout {
-  const width = opts.width ?? load.vehicle.length;
+  const width = opts.width ?? truckFrame(load.vehicle, 'top').outerW;
   const gap = opts.gap ?? GAP;
   const pad = opts.pad ?? PAD;
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
