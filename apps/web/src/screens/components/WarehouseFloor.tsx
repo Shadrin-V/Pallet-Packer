@@ -184,11 +184,17 @@ export function WarehouseFloor({
               const slot = orderColors?.get(cargo.orderId ?? '') ?? oidx.get(cargo.orderId ?? '') ?? 0;
               const { series } = orderColorToken(slot);
               const rotatable = cargo.rotation !== 'none';
-              // `i` runs over renderTiles, which SPLICES IN the phantom; the parent's onPickUp/onRotate/
-              // dragging index its own `tiles` array, WITHOUT it. For any tile after the phantom the two
-              // diverge by one, so map back before handing an index up (dwc.11). Reachable only with a
-              // second pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
-              const realIndex = phantomAt && i > phantomAt.index ? i - 1 : i;
+              // Two index spaces to cross before an index may be handed up to the parent, which
+              // indexes its own `tiles` prop:
+              //  1. `i` runs over `floor.tiles`, which `warehouseFloor` GROUPS BY ORDER — with two or
+              //     more orders the drawing order is not the input order at all, so `pt.srcIndex`
+              //     (the tile's position in `renderTiles`) is what to carry, never `i` (41e.2, final
+              //     review);
+              //  2. `renderTiles` SPLICES IN the phantom, which the parent's array does not have, so
+              //     everything after it shifts back by one (dwc.11). Reachable only with a second
+              //     pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
+              const realIndex =
+                phantomAt && pt.srcIndex > phantomAt.index ? pt.srcIndex - 1 : pt.srcIndex;
               return (
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}

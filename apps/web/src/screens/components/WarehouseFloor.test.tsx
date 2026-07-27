@@ -263,6 +263,33 @@ describe('WarehouseFloor — загоны по заказу', () => {
     expect(screen.getByText(/Ohne Auftrag/)).toBeInTheDocument();
   });
 
+  // Тот же разрыв систем координат, что и в `insertionIndexAt` (финальное ревью, находка 1), но со
+  // стороны отрисовки: `floor.tiles` — СГРУППИРОВАННЫЙ список, а `onPickUp`/`onRotate`/`dragging`
+  // родителя индексируют его собственный проп `tiles`. Как только группировка переставляет плитки
+  // (здесь заказы чередуются во входе), позиция в отрисовке перестаёт совпадать с позицией во входе.
+  it('сообщает родителю индекс во ВХОДНОМ массиве, а не позицию в сгруппированной отрисовке', () => {
+    const interleaved: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' }, // SO-1, вход 0
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' }, // SO-2, вход 1
+      { cargoTypeId: 'p', units: 5, orientation: 'lwh' }, // SO-1, вход 2
+    ];
+    const onPickUp = vi.fn();
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor load={twoOrders} tiles={interleaved} onRotate={vi.fn()} onPickUp={onPickUp} dragging={null} />
+      </LocaleProvider>,
+    );
+    // Группировка рисует [p×18, p×5, Fix×2]: вторая нарисованная плитка — это вход 2, не вход 1.
+    const rendered = screen.getAllByTestId('warehouse-tile');
+    expect(rendered.map((t) => t.getAttribute('aria-label'))).toEqual([
+      'EPAL 3 ×18',
+      'EPAL 3 ×5',
+      'Fix ×2',
+    ]);
+    fireEvent.pointerDown(rendered[1]);
+    expect(onPickUp).toHaveBeenCalledWith(2, expect.anything());
+  });
+
   it('разметка лежит под стопками — стопку по-прежнему можно взять', () => {
     render2([
       { cargoTypeId: 'p', units: 18, orientation: 'lwh' },

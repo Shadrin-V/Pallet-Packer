@@ -34,6 +34,15 @@ export interface PlacedTile {
    *  cargo heights (the buffer holds several types at once), so a tile's own `dy` under-covers its
    *  row's actual footprint. Used by `insertionIndexAt` to tell a tile's row apart from the point. */
   rowH: number;
+  /** This tile's position in the `tiles` array the caller passed to `warehouseFloor`.
+   *
+   *  `tiles` is the layout's OWN order — grouped by order into bays, which reorders the input
+   *  (a group with no order id is pushed last today; `bayOrder` will reorder them wholesale). The
+   *  callers, however, splice into their own ungrouped arrays: `LadeplanScreen` into `orderedTiles`,
+   *  `WarehouseFloor` into its `tiles` prop, and both index handlers by that array too. This field is
+   *  the bridge between the two index spaces — without it every index the layout hands out is only
+   *  accidentally right (41e.2, final review). */
+  srcIndex: number;
   /** Carried over from `tile.phantom` — the gap-preview slot opened while dragging a stack in. */
   phantom?: true;
 }
@@ -80,6 +89,12 @@ export { BAY_PAD, BAY_GAP, TAG_H, BAY_MIN_W };
 
 type Cargo = Load['cargo'][number];
 
+/** An input tile paired with its position in the caller's array, so that position survives grouping. */
+interface SourcedTile {
+  tile: BufferTile;
+  srcIndex: number;
+}
+
 interface Flow {
   tiles: PlacedTile[];
   /** Правый край самой длинной строки — по нему считается ширина загона. */
@@ -89,13 +104,13 @@ interface Flow {
 
 /** Сегодняшняя раскладка рядами с переносом, в координатах от (0,0). Вынесена, чтобы её могли
  *  разделить весь двор (когда загонов нет) и каждый загон по отдельности. */
-function flowTiles(tiles: BufferTile[], byId: Map<string, Cargo>, maxWidth: number, gap: number): Flow {
+function flowTiles(tiles: SourcedTile[], byId: Map<string, Cargo>, maxWidth: number, gap: number): Flow {
   const out: PlacedTile[] = [];
   let x = 0;
   let y = 0;
   let rowH = 0;
   let rowStart = 0;
-  for (const tile of tiles) {
+  for (const { tile, srcIndex } of tiles) {
     const c = byId.get(tile.cargoTypeId);
     if (!c) continue;
     const [dx, dy] = orientedDims(c.length, c.width, c.height, tile.orientation);
@@ -108,7 +123,7 @@ function flowTiles(tiles: BufferTile[], byId: Map<string, Cargo>, maxWidth: numb
       rowH = 0;
       rowStart = out.length;
     }
-    out.push({ tile, x, y, dx, dy, rowH: 0, phantom: tile.phantom });
+    out.push({ tile, x, y, dx, dy, rowH: 0, srcIndex, phantom: tile.phantom });
     x += dx + gap;
     rowH = Math.max(rowH, dy);
   }
@@ -121,13 +136,13 @@ function flowTiles(tiles: BufferTile[], byId: Map<string, Cargo>, maxWidth: numb
  *  поверх — пользовательский `bayOrder` (41e.6). Плитки неизвестного типа выпадают здесь, как и
  *  раньше выпадали в потоке. */
 function groupByOrder(
-  tiles: BufferTile[],
+  tiles: SourcedTile[],
   byId: Map<string, Cargo>,
   bayOrder: string[],
-): { orderId: string; tiles: BufferTile[] }[] {
-  const groups = new Map<string, BufferTile[]>();
+): { orderId: string; tiles: SourcedTile[] }[] {
+  const groups = new Map<string, SourcedTile[]>();
   for (const t of tiles) {
-    const c = byId.get(t.cargoTypeId);
+    const c = byId.get(t.tile.cargoTypeId);
     if (!c) continue;
     const key = c.orderId ?? '';
     const g = groups.get(key);
@@ -157,13 +172,14 @@ export function warehouseFloor(
   const gap = opts.gap ?? GAP;
   const pad = opts.pad ?? PAD;
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
+  const sourced: SourcedTile[] = tiles.map((tile, srcIndex) => ({ tile, srcIndex }));
 
-  const groups = groupByOrder(tiles, byId, opts.bayOrder ?? []);
+  const groups = groupByOrder(sourced, byId, opts.bayOrder ?? []);
 
   // Меньше двух заказов — делить нечего: рамка вокруг всего ничего не разделяет. Двор остаётся
   // ровно таким, каким был до 41e.2.
   if (groups.length < 2) {
-    const flow = flowTiles(tiles, byId, width - 2 * pad, gap);
+    const flow = flowTiles(sourced, byId, width - 2 * pad, gap);
     return {
       tiles: flow.tiles.map((t) => ({ ...t, x: t.x + pad, y: t.y + pad })),
       bays: [],
@@ -199,7 +215,7 @@ export function warehouseFloor(
       y: by,
       w,
       h,
-      units: g.tiles.reduce((s, t) => s + (t.phantom ? 0 : t.units), 0),
+      units: g.tiles.reduce((s, { tile: t }) => s + (t.phantom ? 0 : t.units), 0),
       startIndex,
       count: outTiles.length - startIndex,
     });
@@ -230,14 +246,22 @@ function flowIndexAt(tiles: PlacedTile[], point: { x: number; y: number }): numb
 
 /** Where a dropped stack lands. A stack's order is fixed by its cargo type and cannot change on a
  *  drop, so with live bays the point magnets to its own order's bay: inside it, it sets a position;
- *  outside, the stack lands at the end of its own bay. Returns a GLOBAL index into the flat `tiles`,
- *  so the phantom splice in `WarehouseFloor` stays unchanged. */
+ *  outside, the stack lands at the end of its own bay.
+ *
+ *  The returned index is in the CALLER's index space — the `tiles` array that was handed to
+ *  `warehouseFloor` — not in the layout's own grouped `tiles`. Both call sites splice it straight
+ *  into their ungrouped arrays (`LadeplanScreen`'s `orderedTiles`, `WarehouseFloor`'s `tiles` prop),
+ *  and the two spaces only coincide while grouping happens to preserve the input order, which it
+ *  already does not (a group with no order id is pushed last) and will not by design once `bayOrder`
+ *  lands. `PlacedTile.srcIndex` is what carries the input position across the grouping. */
 export function insertionIndexAt(
   layout: WarehouseFloorLayout,
   point: { x: number; y: number },
   opts: { orderId?: string } = {},
 ): number {
   const { tiles, bays } = layout;
+  // No bays — grouping did not run at all, so the layout order IS the input order and the flow index
+  // needs no translation. Unchanged from before 41e.2.
   if (bays.length === 0 || opts.orderId === undefined) return flowIndexAt(tiles, point);
   const bay = bays.find((b) => b.orderId === opts.orderId);
   // This order has no stack in the yard yet: its bay will open at the end of the flow, where the
@@ -245,6 +269,12 @@ export function insertionIndexAt(
   if (!bay) return tiles.length;
   const inside =
     point.x >= bay.x && point.x <= bay.x + bay.w && point.y >= bay.y && point.y <= bay.y + bay.h;
-  if (!inside) return bay.startIndex + bay.count;
-  return bay.startIndex + flowIndexAt(tiles.slice(bay.startIndex, bay.startIndex + bay.count), point);
+  const end = bay.startIndex + bay.count;
+  // Grouping is stable, so within a bay `srcIndex` increases: inserting before the bay's grouped tile
+  // `k` is the same cut as inserting at `tiles[k].srcIndex` in the input array (everything of this bay
+  // before `k` has a smaller `srcIndex`, everything from `k` on a larger-or-equal one), and appending
+  // to the bay is the slot right after its last tile. A bay always holds at least one tile — groups
+  // are built from tiles — so `end - 1` is always a real tile of this bay.
+  const at = inside ? bay.startIndex + flowIndexAt(tiles.slice(bay.startIndex, end), point) : end;
+  return at < end ? tiles[at].srcIndex : tiles[end - 1].srcIndex + 1;
 }

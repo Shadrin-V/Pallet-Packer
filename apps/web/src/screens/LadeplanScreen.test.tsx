@@ -654,26 +654,24 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   // per-order clusters for display, so both codepaths render `[A, B, C]`. This test instead starts
   // with TWO bays already standing (A/SO-1 and B/SO-2 both already in the buffer, one order each), so
   // `insertionIndexAt` actually reaches its per-bay branch.
-  it('уводит стопку в конец своего уже существующего загона, а не туда, куда воткнул бы общий поток', () => {
-    // A — SO-1, B — SO-2, оба уже в буфере: два загона стоят ДО броска. C — SO-1, единственный груз
-    // в кузове. Бросаем C высоко над двором (y=100 — выше обоих загонов): без учёта заказа общий
-    // поток читает эту точку как "перед самой первой плиткой" и воткнул бы C впереди A; магнит обязан
-    // вместо этого запарковать C в КОНЦЕ её собственного загона SO-1 (после A) — точка вне всех границ
-    // загона всегда садится в его хвост (warehouseLayout.ts, insertionIndexAt).
-    const twoBaysLoad: Load = {
-      vehicle: { id: 'v5', name: 'LKW', length: 4000, width: 50, height: 1000 },
-      cargo: [
-        { id: 'a', name: 'A', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
-        { id: 'b', name: 'B', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-2' },
-        { id: 'c', name: 'C', length: 1000, width: 1000, height: 1000, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
-      ],
-    };
-    const twoBaysLayout: Layout = {
-      placements: [{ cargoTypeId: 'c', x: 0, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' }],
-      unplaced: [{ cargoTypeId: 'a', count: 1 }, { cargoTypeId: 'b', count: 1 }],
-      metrics: { totalPlaced: 1, usedFloorPositions: 1, floorFillPercent: 25, volumeFillPercent: 25 },
-      contractVersion: '0.14.0',
-    };
+  // A — SO-1, B — SO-2, оба уже в буфере: два загона стоят ДО того, как C покидает кузов. C — SO-1,
+  // единственный груз в кузове. Точка (100,100) лежит ВЫШЕ обоих загонов (они открываются в pad=200):
+  // без учёта заказа общий поток читает её как «перед самой первой плиткой».
+  const twoBaysLoad: Load = {
+    vehicle: { id: 'v5', name: 'LKW', length: 4000, width: 50, height: 1000 },
+    cargo: [
+      { id: 'a', name: 'A', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+      { id: 'b', name: 'B', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-2' },
+      { id: 'c', name: 'C', length: 1000, width: 1000, height: 1000, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+    ],
+  };
+  const twoBaysLayout: Layout = {
+    placements: [{ cargoTypeId: 'c', x: 0, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' }],
+    unplaced: [{ cargoTypeId: 'a', count: 1 }, { cargoTypeId: 'b', count: 1 }],
+    metrics: { totalPlaced: 1, usedFloorPositions: 1, floorFillPercent: 25, volumeFillPercent: 25 },
+    contractVersion: '0.14.0',
+  };
+  const withTwoBaysRig = (run: (container: HTMLElement) => void) => {
     const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
     const origRect = HTMLDivElement.prototype.getBoundingClientRect;
     HTMLDivElement.prototype.getBoundingClientRect = function () {
@@ -685,6 +683,17 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
           <LadeplanScreen load={twoBaysLoad} layout={twoBaysLayout} />
         </LocaleProvider>,
       );
+      run(container);
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  };
+
+  it('уводит стопку в конец своего уже существующего загона, а не туда, куда воткнул бы общий поток', () => {
+    // Магнит обязан запарковать C в КОНЦЕ её собственного загона SO-1 (после A) — точка вне всех
+    // границ загона всегда садится в его хвост (warehouseLayout.ts, insertionIndexAt).
+    withTwoBaysRig((container) => {
       const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       fireEvent.pointerMove(svg, { clientX: 100, clientY: 100 });
@@ -697,10 +706,33 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
         expect.stringContaining('C'),
         expect.stringContaining('B'),
       ]);
-    } finally {
-      HTMLDivElement.prototype.getBoundingClientRect = origRect;
-      restoreSvg();
-    }
+    });
+  });
+
+  // Превью — видимая половина магнита, и до сих пор ни один тест не проверял, что `phantomAt` вообще
+  // передаёт свой `orderId`: единственная проверка фантома была `toBeInTheDocument()` в стенде с одним
+  // заказом, а оба теста магнита смотрят состояние ПОСЛЕ отпускания, то есть через `onDropOutside`.
+  // Здесь фантом проверяется ДО отпускания и по позиции: убери аргумент `orderId` у `phantomAt` —
+  // общий поток вернёт 0 и фантом встанет ПЕРЕД A, слева от неё.
+  it('превью фантома магнитится в загон своего заказа ещё до отпускания', () => {
+    withTwoBaysRig((container) => {
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 100, clientY: 100 });
+
+      const phantomX = Number(screen.getByTestId('warehouse-phantom').getAttribute('x'));
+      const aTile = screen.getAllByTestId('warehouse-tile').find((t) => t.getAttribute('aria-label')!.startsWith('A'))!;
+      const aX = Number(aTile.querySelector('rect')!.getAttribute('x'));
+      // Фантом — в хвосте загона SO-1, то есть ПРАВЕЕ уже стоящей там A.
+      expect(phantomX).toBeGreaterThan(aX);
+      // И он внутри разметки именно своего загона, а не чужого.
+      const own = document.querySelector('[data-testid="warehouse-bay"][data-order="SO-1"] [data-outline]')!;
+      const bx = Number(own.getAttribute('x'));
+      expect(phantomX).toBeGreaterThanOrEqual(bx);
+      expect(phantomX).toBeLessThanOrEqual(bx + Number(own.getAttribute('width')));
+
+      fireEvent.pointerUp(svg, { clientX: 100, clientY: 100 });
+    });
   });
 });
 

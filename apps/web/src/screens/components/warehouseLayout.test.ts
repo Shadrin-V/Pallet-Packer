@@ -180,6 +180,43 @@ describe('insertionIndexAt — магнит к своему загону', () =>
     const layout = warehouseFloor(load, [tile('a'), tile('a')], { gap: 200, pad: 200 });
     expect(insertionIndexAt(layout, { x: 0, y: layout.tiles[0].y })).toBe(0);
   });
+
+  // Индекс возвращается в системе координат ВХОДНОГО массива `tiles` (его сплайсят оба вызывающих:
+  // `onDropOutside` — в `orderedTiles`, `WarehouseFloor` — в свой проп `tiles`), а не в системе
+  // сгруппированного `layout.tiles`. Две системы совпадают, только пока группировка не переставляет
+  // группы; она это делает уже сегодня (загон без номера уходит в конец) и будет делать системно,
+  // когда придёт `bayOrder`.
+  it('точка внутри загона → индекс во ВХОДНОМ массиве, даже когда группировка переставила загоны', () => {
+    const mixed: Load = {
+      vehicle: V,
+      cargo: [cargo('a', 1200, 800, ''), cargo('b', 600, 400, 'SO-2')],
+    };
+    // Вход [a, b]; загон без номера уходит ПОСЛЕ SO-2 → в layout.tiles плитка 'a' стоит второй.
+    const layout = warehouseFloor(mixed, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    expect(layout.bays.map((b) => b.orderId)).toEqual(['SO-2', '']);
+    const blank = layout.bays[1];
+    const aTile = layout.tiles[blank.startIndex];
+    expect(aTile.x).toBe(blank.x + 200); // sanity: это действительно плитка загона без номера
+    // Точка внутри пустого загона, левее центра 'a' → вставка ПЕРЕД ней. Во входном массиве
+    // [a, b] это индекс 0; её позиция в сгруппированном списке — 1, и вернуть 1 значило бы
+    // сплайснуть фантом ПОСЛЕ 'a'.
+    expect(insertionIndexAt(layout, { x: aTile.x + 1, y: aTile.y + 1 }, { orderId: '' })).toBe(0);
+  });
+
+  it('точка вне своего загона → индекс сразу за последней его плиткой во ВХОДНОМ массиве', () => {
+    const two: Load = {
+      vehicle: V,
+      cargo: [cargo('a', 1200, 800, 'SO-1'), cargo('b', 600, 400, 'SO-2')],
+    };
+    // Вход [a, b, a] — заказы чередуются; в layout.tiles они разведены в [a, a, b].
+    const layout = warehouseFloor(two, [tile('a'), tile('b'), tile('a')], { gap: 200, pad: 200 });
+    expect(layout.bays.map((b) => b.orderId)).toEqual(['SO-1', 'SO-2']);
+    // (0,0) — вне обоих загонов (они начинаются в pad=200): стопка SO-1 садится в хвост своего
+    // загона. Последняя плитка SO-1 во входном массиве — индекс 2, значит вставка на 3.
+    expect(insertionIndexAt(layout, { x: 0, y: 0 }, { orderId: 'SO-1' })).toBe(3);
+    // А хвост SO-2 — сразу за его единственной плиткой, входной индекс 1 → вставка на 2.
+    expect(insertionIndexAt(layout, { x: 0, y: 0 }, { orderId: 'SO-2' })).toBe(2);
+  });
 });
 
 describe('warehouseFloor — phantom slot', () => {
