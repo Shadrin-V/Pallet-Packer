@@ -219,12 +219,63 @@ describe('WarehouseFloor — загоны по заказу', () => {
       { ...load.cargo[1], orderId: 'SO-2' },
     ],
   };
-  const render2 = (t: BufferTile[]) =>
+  const render2 = (t: BufferTile[], props: Partial<{ grouped: boolean; onGroupedChange: (v: boolean) => void }> = {}) =>
     render(
       <LocaleProvider initial="de">
-        <WarehouseFloor load={twoOrders} tiles={t} onRotate={vi.fn()} onPickUp={vi.fn()} dragging={null} />
+        <WarehouseFloor
+          load={twoOrders}
+          tiles={t}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+          grouped
+          {...props}
+        />
       </LocaleProvider>,
     );
+
+  const bothOrders: BufferTile[] = [
+    { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+    { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+  ];
+
+  // 77g: владелец после прода — «без неё удобнее». Загоны 41e.2 из умолчания стали режимом.
+  describe('группировка — режим, а не умолчание (LKWkalk-77g)', () => {
+    it('без флага загонов нет даже при двух заказах', () => {
+      render2(bothOrders, { grouped: false });
+      expect(document.querySelectorAll('[data-testid="warehouse-bay"]')).toHaveLength(0);
+      expect(document.querySelectorAll('[data-testid="warehouse-tile"]')).toHaveLength(2);
+    });
+
+    it('переключатель стоит в шапке двора и сообщает о переключении', async () => {
+      const onGroupedChange = vi.fn();
+      render2(bothOrders, { grouped: false, onGroupedChange });
+
+      const toggle = screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' });
+      expect((toggle as HTMLInputElement).checked).toBe(false);
+      await userEvent.click(toggle);
+      expect(onGroupedChange).toHaveBeenCalledWith(true);
+    });
+
+    // Группировать нечего: один заказ идёт тем же потоком с загонами и без, поэтому переключатель
+    // был бы заведомо мёртвым — а мёртвый переключатель хуже отсутствующего.
+    it('при одном заказе во дворе переключателя нет', () => {
+      render(
+        <LocaleProvider initial="de">
+          <WarehouseFloor
+            load={load}
+            tiles={tiles}
+            onRotate={vi.fn()}
+            onPickUp={vi.fn()}
+            dragging={null}
+            grouped={false}
+            onGroupedChange={vi.fn()}
+          />
+        </LocaleProvider>,
+      );
+      expect(screen.queryByRole('checkbox', { name: 'Nach Auftrag gruppieren' })).not.toBeInTheDocument();
+    });
+  });
 
   it('рисует по загону на заказ с номером и числом единиц', () => {
     render2([
@@ -259,6 +310,7 @@ describe('WarehouseFloor — загоны по заказу', () => {
           onRotate={vi.fn()}
           onPickUp={vi.fn()}
           dragging={null}
+          grouped
         />
       </LocaleProvider>,
     );
@@ -278,7 +330,7 @@ describe('WarehouseFloor — загоны по заказу', () => {
     const onPickUp = vi.fn();
     render(
       <LocaleProvider initial="de">
-        <WarehouseFloor load={twoOrders} tiles={interleaved} onRotate={vi.fn()} onPickUp={onPickUp} dragging={null} />
+        <WarehouseFloor load={twoOrders} tiles={interleaved} onRotate={vi.fn()} onPickUp={onPickUp} dragging={null} grouped />
       </LocaleProvider>,
     );
     // Группировка рисует [p×18, p×5, Fix×2]: вторая нарисованная плитка — это вход 2, не вход 1.

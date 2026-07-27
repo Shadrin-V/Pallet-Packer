@@ -168,7 +168,17 @@ function groupByOrder(
 export function warehouseFloor(
   load: Load,
   tiles: BufferTile[],
-  opts: { width?: number; gap?: number; pad?: number; bayOrder?: string[] } = {},
+  opts: {
+    width?: number;
+    gap?: number;
+    pad?: number;
+    bayOrder?: string[];
+    /** Разбивать ли двор на загоны заказов. По умолчанию НЕТ (LKWkalk-77g): владелец после прода —
+     *  «без неё удобнее», так что загоны из умолчания 41e.2 стали режимом, который просят явно.
+     *  Выключенная группировка идёт ровно тем же путём, что и «заказ всего один», — сплошным
+     *  потоком до-41e.2, включая магнит броска (`insertionIndexAt` при пустых `bays`). */
+    grouped?: boolean;
+  } = {},
 ): WarehouseFloorLayout {
   const width = opts.width ?? truckFrame(load.vehicle, 'top').outerW;
   const gap = opts.gap ?? GAP;
@@ -178,9 +188,9 @@ export function warehouseFloor(
 
   const groups = groupByOrder(sourced, byId, opts.bayOrder ?? []);
 
-  // Меньше двух заказов — делить нечего: рамка вокруг всего ничего не разделяет. Двор остаётся
-  // ровно таким, каким был до 41e.2.
-  if (groups.length < 2) {
+  // Группировка не запрошена, либо меньше двух заказов — делить нечего: рамка вокруг всего ничего
+  // не разделяет. Двор остаётся ровно таким, каким был до 41e.2.
+  if (!opts.grouped || groups.length < 2) {
     const flow = flowTiles(sourced, byId, width - 2 * pad, gap);
     return {
       tiles: flow.tiles.map((t) => ({ ...t, x: t.x + pad, y: t.y + pad })),

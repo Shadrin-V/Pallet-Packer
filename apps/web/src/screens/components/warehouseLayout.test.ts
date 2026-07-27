@@ -155,7 +155,7 @@ describe('insertionIndexAt — магнит к своему загону', () =>
     vehicle: V2,
     cargo: [cargo('a', 1200, 800, 'SO-1'), cargo('b', 600, 400, 'SO-2')],
   };
-  const fl = () => warehouseFloor(two, [tile('a'), tile('a'), tile('b')], { gap: 200, pad: 200 });
+  const fl = () => warehouseFloor(two, [tile('a'), tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
 
   it('точка в чужом загоне — стопка всё равно уходит в конец своего', () => {
     const layout = fl();
@@ -184,7 +184,7 @@ describe('insertionIndexAt — магнит к своему загону', () =>
   });
 
   it('без целевого заказа поведение прежнее', () => {
-    const layout = warehouseFloor(load, [tile('a'), tile('a')], { gap: 200, pad: 200 });
+    const layout = warehouseFloor(load, [tile('a'), tile('a')], { gap: 200, pad: 200, grouped: true });
     expect(insertionIndexAt(layout, { x: 0, y: layout.tiles[0].y })).toBe(0);
   });
 
@@ -199,7 +199,7 @@ describe('insertionIndexAt — магнит к своему загону', () =>
       cargo: [cargo('a', 1200, 800, ''), cargo('b', 600, 400, 'SO-2')],
     };
     // Вход [a, b]; загон без номера уходит ПОСЛЕ SO-2 → в layout.tiles плитка 'a' стоит второй.
-    const layout = warehouseFloor(mixed, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    const layout = warehouseFloor(mixed, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
     expect(layout.bays.map((b) => b.orderId)).toEqual(['SO-2', '']);
     const blank = layout.bays[1];
     const aTile = layout.tiles[blank.startIndex];
@@ -216,7 +216,7 @@ describe('insertionIndexAt — магнит к своему загону', () =>
       cargo: [cargo('a', 1200, 800, 'SO-1'), cargo('b', 600, 400, 'SO-2')],
     };
     // Вход [a, b, a] — заказы чередуются; в layout.tiles они разведены в [a, a, b].
-    const layout = warehouseFloor(two, [tile('a'), tile('b'), tile('a')], { gap: 200, pad: 200 });
+    const layout = warehouseFloor(two, [tile('a'), tile('b'), tile('a')], { gap: 200, pad: 200, grouped: true });
     expect(layout.bays.map((b) => b.orderId)).toEqual(['SO-1', 'SO-2']);
     // (0,0) — вне обоих загонов (они начинаются в pad=200): стопка SO-1 садится в хвост своего
     // загона. Последняя плитка SO-1 во входном массиве — индекс 2, значит вставка на 3.
@@ -256,6 +256,26 @@ describe('warehouseFloor — загоны по заказу', () => {
     cargo: [cargo('a', 1200, 800, 'SO-1'), cargo('b', 600, 400, 'SO-2')],
   };
 
+  // 77g: владелец после прода — «без неё удобнее». Загоны из умолчания становятся режимом: двор
+  // по умолчанию снова сплошной поток, и разбить его на загоны надо попросить явно.
+  it('по умолчанию загонов нет даже при двух заказах — группировка включается флагом', () => {
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')], { gap: 200, pad: 200 });
+    expect(fl.bays).toEqual([]);
+    // и это ровно тот же поток, что до 41e.2: порядок входа сохранён, плитки идут подряд
+    expect(fl.tiles.map((t) => t.srcIndex)).toEqual([0, 1, 2]);
+    expect(fl.tiles[0]).toMatchObject({ x: 200, y: 200 });
+    expect(fl.tiles[1]).toMatchObject({ x: 1600, y: 200 });
+  });
+
+  it('grouped: true — загоны открываются', () => {
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')], {
+      gap: 200,
+      pad: 200,
+      grouped: true,
+    });
+    expect(fl.bays.map((b) => b.orderId)).toEqual(['SO-1', 'SO-2']);
+  });
+
   it('один заказ — загонов нет, раскладка ровно сегодняшняя', () => {
     const fl = warehouseFloor(load, [tile('a'), tile('a')], { gap: 200, pad: 200 });
     expect(fl.bays).toEqual([]);
@@ -265,7 +285,7 @@ describe('warehouseFloor — загоны по заказу', () => {
 
   it('два заказа — по загону на заказ, плитки сгруппированы', () => {
     // Порядок плиток нарочно чередует заказы: группировка должна их развести.
-    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')], { gap: 200, pad: 200 });
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')], { gap: 200, pad: 200, grouped: true });
     expect(fl.bays.map((b) => b.orderId)).toEqual(['SO-1', 'SO-2']);
     expect(fl.bays[0]).toMatchObject({ startIndex: 0, count: 2, units: 2 });
     expect(fl.bays[1]).toMatchObject({ startIndex: 2, count: 1, units: 1 });
@@ -277,7 +297,7 @@ describe('warehouseFloor — загоны по заказу', () => {
   });
 
   it('плитки смещены внутрь своего загона — под бирку и поля', () => {
-    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
     // 200 (bay.x) + 200 (BAY_PAD) = 400 по x; 200 (bay.y) + 330 (TAG_H) + 200 (BAY_PAD) = 730 по y.
     expect(fl.tiles[0]).toMatchObject({ x: 400, y: 730 });
   });
@@ -285,6 +305,7 @@ describe('warehouseFloor — загоны по заказу', () => {
   it('загоны переносятся на новую строку, когда следующий не влезает', () => {
     // Ширина задана явно: тест про перенос загонов, а не про рамку разреза.
     const fl = warehouseFloor(twoOrders, [tile('a'), tile('a'), tile('b')], {
+      grouped: true,
       width: 6000,
       gap: 200,
       pad: 200,
@@ -299,12 +320,13 @@ describe('warehouseFloor — загоны по заказу', () => {
       vehicle: V,
       cargo: [cargo('a', 1200, 800, ''), cargo('b', 600, 400, 'SO-2')],
     };
-    const fl = warehouseFloor(mixed, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    const fl = warehouseFloor(mixed, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
     expect(fl.bays.map((b) => b.orderId)).toEqual(['SO-2', '']);
   });
 
   it('bayOrder выводит названный заказ вперёд, неизвестный id игнорирует', () => {
     const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], {
+      grouped: true,
       gap: 200,
       pad: 200,
       bayOrder: ['SO-9', 'SO-2'],
@@ -316,19 +338,19 @@ describe('warehouseFloor — загоны по заказу', () => {
     const fl = warehouseFloor(
       twoOrders,
       [tile('a'), { ...tile('a'), phantom: true }, tile('b')],
-      { gap: 200, pad: 200 },
+      { gap: 200, pad: 200, grouped: true },
     );
     expect(fl.bays[0].units).toBe(1);
     expect(fl.bays[0].count).toBe(2); // но место в раскладке фантом занимает
   });
 
   it('высота двора покрывает самую высокую строку загонов', () => {
-    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
     expect(fl.height).toBe(200 + 1530 + 200);
   });
 
   it('детерминирована', () => {
-    const build = () => warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')]);
+    const build = () => warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')], { grouped: true });
     expect(build()).toEqual(build());
   });
 });

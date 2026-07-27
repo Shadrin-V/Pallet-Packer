@@ -47,6 +47,8 @@ export function WarehouseFloor({
   onPickUp,
   dragging,
   phantomAt,
+  grouped = false,
+  onGroupedChange,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -61,6 +63,12 @@ export function WarehouseFloor({
    *  — not a real tile, so it carries no count and takes no pointer at all. Absent/null while nothing
    *  is being carried. */
   phantomAt?: { index: number; tile: BufferTile } | null;
+  /** Разбит ли двор на загоны заказов. По умолчанию НЕТ (LKWkalk-77g): владелец после прода —
+   *  «без неё удобнее», так что загоны 41e.2 стали режимом, который включают явно. */
+  grouped?: boolean;
+  /** Отсутствует — переключатель не рисуется (двор без органов управления, например в тестах
+   *  соседних экранов). */
+  onGroupedChange?: (next: boolean) => void;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -75,7 +83,12 @@ export function WarehouseFloor({
   const renderTiles: BufferTile[] = phantomAt
     ? [...tiles.slice(0, phantomAt.index), { ...phantomAt.tile, phantom: true }, ...tiles.slice(phantomAt.index)]
     : tiles;
-  const floor = warehouseFloor(load, renderTiles);
+  const floor = warehouseFloor(load, renderTiles, { grouped });
+  // Сколько различимых заказов лежит во дворе — по тому же ключу, по которому группирует раскладка
+  // (груз без номера — это тоже группа). Меньше двух — делить нечего, и переключатель был бы мёртвым.
+  const distinctOrders = new Set(
+    tiles.map((t) => byId.get(t.cargoTypeId)).filter(Boolean).map((c) => c!.orderId ?? ''),
+  ).size;
   const empty = total === 0;
   // A minimum depth of one vehicle width, always: empty, the floor still needs a comfortable drop
   // target (8fy — a stack pulled out of the hold must have somewhere to land); with content, a single
@@ -101,6 +114,20 @@ export function WarehouseFloor({
         <span className="text-caption text-muted">
           {total > 0 ? tt('warehouse.dropHint') : tt('warehouse.empty')}
         </span>
+        {/* Режим двора живёт над двором, а не в панели плана: «Dichte vor Auftragstrennung» рядом с
+            ней — стратегия ДВИЖКА (часть Load, гоняет пересчёт), а это чистое представление склада.
+            Соседство двух одинаковых на вид флажков разной природы путало бы. */}
+        {onGroupedChange && distinctOrders > 1 && (
+          <label className="ml-auto inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
+            <input
+              type="checkbox"
+              aria-label={tt('warehouse.groupByOrder')}
+              checked={grouped}
+              onChange={(e) => onGroupedChange(e.target.checked)}
+            />
+            <span>{tt('warehouse.groupByOrder')}</span>
+          </label>
+        )}
       </div>
 
       {/* The yard card: the floor svg is full-bleed (no padding strips), overflow-hidden clips the

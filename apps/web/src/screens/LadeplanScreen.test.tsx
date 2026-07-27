@@ -195,6 +195,93 @@ describe('LadeplanScreen — warehouse floor', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10 });
     expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
   });
+
+  // LKWkalk-fyk. Measured in a real browser: the grabbed yard tile is ~109×73 px, the ghost that
+  // followed the cursor was a 78×26 px text chip, and the source tile stayed in its slot at
+  // opacity 0.3 — so "did I even pick it up?" was a fair question. The opposite direction never had
+  // to answer it: a stack carried out of the hold keeps a full-size shape under the cursor inside
+  // the cutaway svg the whole way. These two tests pin the symmetric answer for this direction.
+  describe('the carried stack is visible as itself (LKWkalk-fyk)', () => {
+    /** Identity geometry: one client px per mm, so the yard's own mm→px scale is 1 and the ghost's
+     *  expected pixel size is the cube's 1000×1000 footprint verbatim. */
+    const withGeometry = (run: () => void) => {
+      const restore = installSvgGeometry();
+      try {
+        run();
+      } finally {
+        restore();
+      }
+    };
+
+    it('carries a picture of the stack at the yard scale, not only a label', () => {
+      withGeometry(() => {
+        renderOverloaded();
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 100, clientY: 200 });
+
+        const shape = screen.getByTestId('drag-ghost-shape');
+        expect(shape.getAttribute('width')).toBe('1000');
+        expect(shape.getAttribute('height')).toBe('1000');
+        // still says what it is — the picture adds to the label, it does not replace it
+        expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
+      });
+    });
+
+    // Not cosmetics: `tileAim` resolves the drop from the pointer as the stack's MIDDLE
+    // (`snap(at.x - dx / 2)`). A ghost drawn down-right of the cursor therefore promises a landing
+    // spot that is not the one the release computes.
+    it('centres the carried stack on the cursor, where the drop actually resolves', () => {
+      withGeometry(() => {
+        renderOverloaded();
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 100, clientY: 200 });
+
+        const ghost = screen.getByTestId('drag-ghost');
+        expect(ghost.style.left).toBe('-400px'); // 100 − 1000/2
+        expect(ghost.style.top).toBe('-300px'); //  200 − 1000/2
+      });
+    });
+  });
+});
+
+// 77g: загоны 41e.2 из умолчания стали режимом — владелец после прода сказал «без неё удобнее».
+// Выбор режима — настройка ВИДА двора, не часть Load: в контракт и в сохранённый план не лезет и
+// пересчёта не запускает, поэтому живёт своим ключом в localStorage.
+describe('LadeplanScreen — режим группировки двора (LKWkalk-77g)', () => {
+  const twoOrders: Load = {
+    vehicle: V,
+    cargo: [
+      { ...load.cargo[0], quantity: 11 },
+      { ...load.cargo[0], id: 'c2', name: 'Kiste', quantity: 4, orderId: 'SO-2' },
+    ],
+  };
+  const renderTwo = () =>
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={twoOrders} layout={calculateLayout(twoOrders)} />
+      </LocaleProvider>,
+    );
+
+  it('по умолчанию двор не разбит на загоны, а переключатель выключен', () => {
+    renderTwo();
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]')).toHaveLength(0);
+    const toggle = screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('включение открывает загоны и переживает перезагрузку своим ключом', async () => {
+    const { unmount } = renderTwo();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' }));
+
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]').length).toBeGreaterThan(1);
+    expect(localStorage.getItem('ladungsplaner.yardGrouping')).toBe('true');
+    // и это НЕ часть плана: сохранённый Load переключателем не трогается
+    expect(localStorage.getItem('ladungsplaner.load')).toBeNull();
+
+    unmount();
+    renderTwo();
+    const toggle = screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]').length).toBeGreaterThan(1);
+  });
 });
 
 // Group edits (dwc.6): the whole selection travels as one, and one edit puts it all in the buffer.
@@ -596,6 +683,8 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   });
 
   it('после броска стопки чужого заказа два загона рисуются, а плитки группируются по заказу', () => {
+    // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     // C — единственный груз заказа SO-2; A и B (уже в буфере) — SO-1. Бросаем C в точку внутри
     // загона SO-1 (это ЧУЖОЙ для неё загон) и проверяем итоговую КАРТИНУ: два загона (SO-1, SO-2) и
     // плитки, сгруппированные по заказу (A, B, затем C), а не порядок, в котором C была брошена.
@@ -691,6 +780,8 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   };
 
   it('уводит стопку в конец своего уже существующего загона, а не туда, куда воткнул бы общий поток', () => {
+    // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     // Магнит обязан запарковать C в КОНЦЕ её собственного загона SO-1 (после A) — точка вне всех
     // границ загона всегда садится в его хвост (warehouseLayout.ts, insertionIndexAt).
     withTwoBaysRig((container) => {
@@ -715,6 +806,8 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   // Здесь фантом проверяется ДО отпускания и по позиции: убери аргумент `orderId` у `phantomAt` —
   // общий поток вернёт 0 и фантом встанет ПЕРЕД A, слева от неё.
   it('превью фантома магнитится в загон своего заказа ещё до отпускания', () => {
+    // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     withTwoBaysRig((container) => {
       const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
