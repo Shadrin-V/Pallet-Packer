@@ -86,7 +86,8 @@ MVP развёрнут и работает. Закрыты эпики: `qrd` (д
 - **click-outside слушать `click`, НЕ `mousedown`**; **ручной поворот — только yaw**; **вид сбоку:**
   больший `y` = ближний ряд; **`findGeometryViolations` пропускает пары одной колонки**.
 - **`localStorage`-ключи:** `ladungsplaner.setup` · `.load` · `.orderColors` · `.locale` · `.palletPresets`
-  (последний переживает Reset). Демо **транзиентно** (`skipNextSaveRef` + `result.transient`).
+  (последний переживает Reset) · `.yardGrouping` (режим загонов двора, `77g`; настройка ВИДА — в `Load`
+  и в экспорт JSON не попадает). Демо **транзиентно** (`skipNextSaveRef` + `result.transient`).
 - **`dist` в .gitignore** — на чистой машине `npm ci` + сборка пакетов, иначе web/server-тесты не видят
   `@shadrin-v/engine`/`i18n`. **git checkout+merge+push — по отдельности, НЕ через `&&`** (хук
   авто-экспортит `.beads/issues.jsonl` при commit).

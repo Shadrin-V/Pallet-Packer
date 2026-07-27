@@ -13,6 +13,10 @@
 >    чинится через `srcIndex`.
 > 3. **Бирка**: текст `{label} · ×{units}` (со средней точкой, как в спеке), кегль ужимается под
 >    длину номера заказа; из констант наружу экспортируется только `TAG_H`.
+>
+> И позже в тот же день — четвёртое, уже после прода (`LKWkalk-77g`, PR #39): **дефолт развёрнут.**
+> Загоны стали режимом, ВЫКЛЮЧЕННЫМ по умолчанию (`warehouseFloor(..., { grouped })` + переключатель
+> в шапке двора). Весь план ниже описывает включённое состояние.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
