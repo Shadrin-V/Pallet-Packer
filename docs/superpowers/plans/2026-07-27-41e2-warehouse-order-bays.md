@@ -1,10 +1,24 @@
 # Warehouse Order Bays Implementation Plan
 
+> ⚠️ **ВЫПОЛНЕН 2026-07-27** (PR #35, `cecc45d` в `main`, задача `LKWkalk-41e.2` закрыта).
+> Истина о том, КАК оно устроено, — спека `docs/superpowers/specs/2026-07-27-41e2-warehouse-order-bays-design.md`
+> и код; этот план — исторический документ, и код-блоки в нём отражают ЗАМЫСЕЛ, а не то, что уехало.
+> Финальное ревью изменило три вещи против текста ниже:
+> 1. **Два пространства индексов.** План обещал, что `insertionIndexAt` отдаёт индекс в плоском
+>    `layout.tiles` и потому ничего у вызывающих не меняется. Это было неверно: `layout.tiles`
+>    сгруппирован, а вызывающие сплайсят в свои несгруппированные массивы. Появился
+>    `PlacedTile.srcIndex`, и наружу отдаётся всегда он — см. спеку §2 «Две системы индексов».
+> 2. **Тот же перекос на отрисовке:** `WarehouseFloor` отдавал родителю сгруппированный индекс для
+>    `onPickUp`/`onRotate`/`dragging` — при двух перемешанных заказах бралась не та стопка. Тоже
+>    чинится через `srcIndex`.
+> 3. **Бирка**: текст `{label} · ×{units}` (со средней точкой, как в спеке), кегль ужимается под
+>    длину номера заказа; из констант наружу экспортируется только `TAG_H`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Стопки в буфере склада группируются по заказу в размеченные загоны на асфальте, и стопка, брошенная из кузова, садится в загон своего заказа.
 
-**Architecture:** Вся геометрия — в чистом модуле `warehouseLayout.ts`: он разбивает плитки по `orderId`, раскладывает каждую группу сегодняшним потоком с переносом внутри её загона, затем раскладывает сами загоны как блоки и возвращает `bays: PlacedBay[]` рядом с прежним плоским `tiles`. Компоненты только рисуют: новый `WarehouseBay` — периметр разметки и бирку с номером заказа. `insertionIndexAt` получает необязательный целевой заказ и переводит точку броска в индекс **внутри своего загона**, оставаясь глобальным индексом в плоском `tiles`, — поэтому splice фантома и все индексы `onPickUp`/`onRotate`/`dragging` не меняются.
+**Architecture:** Вся геометрия — в чистом модуле `warehouseLayout.ts`: он разбивает плитки по `orderId`, раскладывает каждую группу сегодняшним потоком с переносом внутри её загона, затем раскладывает сами загоны как блоки и возвращает `bays: PlacedBay[]` рядом с прежним плоским `tiles`. Компоненты только рисуют: новый `WarehouseBay` — периметр разметки и бирку с номером заказа. `insertionIndexAt` получает необязательный целевой заказ и переводит точку броска в позицию **внутри своего загона**; наружу отдаётся индекс во ВХОДНОМ массиве (через `PlacedTile.srcIndex`), а не в сгруппированном `layout.tiles` — см. баннер выше.
 
 **Tech Stack:** TypeScript, React 18, SVG в мм-координатах, Vitest + @testing-library/react, Tailwind + CSS-токены темы, `@shadrin-v/i18n`.
 
@@ -36,7 +50,8 @@
   - `export interface PlacedBay { orderId: string; x: number; y: number; w: number; h: number; units: number; startIndex: number; count: number }`
   - `WarehouseFloorLayout` получает поле `bays: PlacedBay[]`
   - `warehouseFloor(load, tiles, opts?)` — `opts` получает необязательное `bayOrder?: string[]`
-  - экспортируемые константы `BAY_PAD = 200`, `BAY_GAP = 400`, `TAG_H = 330`, `BAY_MIN_W = 2400`
+  - константы `BAY_PAD = 200`, `BAY_GAP = 400`, `TAG_H = 330`, `BAY_MIN_W = 2400` (по факту наружу
+    ушёл только `TAG_H` — у остальных не нашлось потребителя, см. баннер)
 
 - [ ] **Step 1: Написать падающие тесты**
 
@@ -496,7 +511,7 @@ git commit -m "feat(warehouse): drop magnet — insertion index inside the stack
 
 - [ ] **Step 2: Собрать словарь и прогнать его тесты**
 
-Run: `npm run build -w @shadrin-v/i18n && npm test -w @shadrin-v/i18n`
+Run: `npm run build -w @shadrin-v/i18n && npm test -- packages/i18n`
 Expected: PASS — `completeness.test.ts` подтверждает, что ключ есть в обеих локалях.
 
 - [ ] **Step 3: Добавить токен разметки**
@@ -641,7 +656,7 @@ export function WarehouseBay({
         fontWeight={700}
         dominantBaseline="central"
       >
-        {label} ×{bay.units}
+        {label} · ×{bay.units}
       </text>
     </g>
   );
