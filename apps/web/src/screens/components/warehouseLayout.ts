@@ -217,11 +217,7 @@ export function warehouseFloor(
  *  reached and whose centre is at or right of it. A point past every row's tiles lands at the end.
  *  The loop visits tiles in flow order, so earlier rows are always consumed (skipped) before the
  *  point's own row is reached. */
-export function insertionIndexAt(
-  layout: WarehouseFloorLayout,
-  point: { x: number; y: number },
-): number {
-  const { tiles } = layout;
+function flowIndexAt(tiles: PlacedTile[], point: { x: number; y: number }): number {
   for (let i = 0; i < tiles.length; i++) {
     const t = tiles[i];
     if (point.y > t.y + t.rowH) continue; // this tile's row is entirely above the point — already behind it
@@ -230,4 +226,25 @@ export function insertionIndexAt(
     if (point.x <= cx) return i; // same row, at or left of this tile's centre
   }
   return tiles.length;
+}
+
+/** Where a dropped stack lands. A stack's order is fixed by its cargo type and cannot change on a
+ *  drop, so with live bays the point magnets to its own order's bay: inside it, it sets a position;
+ *  outside, the stack lands at the end of its own bay. Returns a GLOBAL index into the flat `tiles`,
+ *  so the phantom splice in `WarehouseFloor` stays unchanged. */
+export function insertionIndexAt(
+  layout: WarehouseFloorLayout,
+  point: { x: number; y: number },
+  opts: { orderId?: string } = {},
+): number {
+  const { tiles, bays } = layout;
+  if (bays.length === 0 || opts.orderId === undefined) return flowIndexAt(tiles, point);
+  const bay = bays.find((b) => b.orderId === opts.orderId);
+  // This order has no stack in the yard yet: its bay will open at the end of the flow, where the
+  // phantom will already show up inside it.
+  if (!bay) return tiles.length;
+  const inside =
+    point.x >= bay.x && point.x <= bay.x + bay.w && point.y >= bay.y && point.y <= bay.y + bay.h;
+  if (!inside) return bay.startIndex + bay.count;
+  return bay.startIndex + flowIndexAt(tiles.slice(bay.startIndex, bay.startIndex + bay.count), point);
 }

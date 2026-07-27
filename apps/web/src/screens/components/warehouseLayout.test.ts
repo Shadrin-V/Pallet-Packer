@@ -142,6 +142,46 @@ describe('insertionIndexAt', () => {
   });
 });
 
+describe('insertionIndexAt — магнит к своему загону', () => {
+  const V2 = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
+  const two: Load = {
+    vehicle: V2,
+    cargo: [cargo('a', 1200, 800, 'SO-1'), cargo('b', 600, 400, 'SO-2')],
+  };
+  const fl = () => warehouseFloor(two, [tile('a'), tile('a'), tile('b')], { gap: 200, pad: 200 });
+
+  it('точка в чужом загоне — стопка всё равно уходит в конец своего', () => {
+    const layout = fl();
+    const foreign = layout.bays[0]; // SO-1
+    const point = { x: foreign.x + 10, y: foreign.y + 10 };
+    // Несём стопку заказа SO-2: его загон — второй, плитки [2..3).
+    expect(insertionIndexAt(layout, point, { orderId: 'SO-2' })).toBe(3);
+  });
+
+  it('точка в своём загоне задаёт позицию внутри него', () => {
+    const layout = fl();
+    const own = layout.bays[0]; // SO-1, плитки 0 и 1
+    const first = layout.tiles[0];
+    // Левее центра первой плитки своего загона → перед ней.
+    expect(insertionIndexAt(layout, { x: own.x + 1, y: first.y }, { orderId: 'SO-1' })).toBe(0);
+    // Правее центра первой, левее центра второй → между ними.
+    const between = { x: first.x + first.dx + 10, y: first.y };
+    expect(insertionIndexAt(layout, between, { orderId: 'SO-1' })).toBe(1);
+  });
+
+  it('у заказа ещё нет загона — новый открывается в конце', () => {
+    const layout = fl();
+    expect(insertionIndexAt(layout, { x: 300, y: 300 }, { orderId: 'SO-77' })).toBe(
+      layout.tiles.length,
+    );
+  });
+
+  it('без целевого заказа поведение прежнее', () => {
+    const layout = warehouseFloor(load, [tile('a'), tile('a')], { gap: 200, pad: 200 });
+    expect(insertionIndexAt(layout, { x: 0, y: layout.tiles[0].y })).toBe(0);
+  });
+});
+
 describe('warehouseFloor — phantom slot', () => {
   const load = {
     vehicle: { length: 13600, width: 2480, height: 2650 },
