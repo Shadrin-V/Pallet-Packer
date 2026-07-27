@@ -195,6 +195,51 @@ describe('LadeplanScreen — warehouse floor', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10 });
     expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
   });
+
+  // LKWkalk-fyk. Measured in a real browser: the grabbed yard tile is ~109×73 px, the ghost that
+  // followed the cursor was a 78×26 px text chip, and the source tile stayed in its slot at
+  // opacity 0.3 — so "did I even pick it up?" was a fair question. The opposite direction never had
+  // to answer it: a stack carried out of the hold keeps a full-size shape under the cursor inside
+  // the cutaway svg the whole way. These two tests pin the symmetric answer for this direction.
+  describe('the carried stack is visible as itself (LKWkalk-fyk)', () => {
+    /** Identity geometry: one client px per mm, so the yard's own mm→px scale is 1 and the ghost's
+     *  expected pixel size is the cube's 1000×1000 footprint verbatim. */
+    const withGeometry = (run: () => void) => {
+      const restore = installSvgGeometry();
+      try {
+        run();
+      } finally {
+        restore();
+      }
+    };
+
+    it('carries a picture of the stack at the yard scale, not only a label', () => {
+      withGeometry(() => {
+        renderOverloaded();
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 100, clientY: 200 });
+
+        const shape = screen.getByTestId('drag-ghost-shape');
+        expect(shape.getAttribute('width')).toBe('1000');
+        expect(shape.getAttribute('height')).toBe('1000');
+        // still says what it is — the picture adds to the label, it does not replace it
+        expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
+      });
+    });
+
+    // Not cosmetics: `tileAim` resolves the drop from the pointer as the stack's MIDDLE
+    // (`snap(at.x - dx / 2)`). A ghost drawn down-right of the cursor therefore promises a landing
+    // spot that is not the one the release computes.
+    it('centres the carried stack on the cursor, where the drop actually resolves', () => {
+      withGeometry(() => {
+        renderOverloaded();
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 100, clientY: 200 });
+
+        const ghost = screen.getByTestId('drag-ghost');
+        expect(ghost.style.left).toBe('-400px'); // 100 − 1000/2
+        expect(ghost.style.top).toBe('-300px'); //  200 − 1000/2
+      });
+    });
+  });
 });
 
 // Group edits (dwc.6): the whole selection travels as one, and one edit puts it all in the buffer.

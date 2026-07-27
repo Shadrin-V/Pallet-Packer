@@ -33,6 +33,7 @@ import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
 import { snap, type StackSel } from './components/editLayout';
+import { StackShape } from './components/StackShape';
 import { WarehouseFloor } from './components/WarehouseFloor';
 import type { DropPreview } from './components/CrossSection';
 import { warehouseFloor, insertionIndexAt, type BufferTile } from './components/warehouseLayout';
@@ -322,6 +323,35 @@ export function LadeplanScreen({
     if (!aim) return null; // not over the hold — nothing to promise
     const r = resolveDrop(load, edited, aim.spec);
     return { x: r.x, y: r.y, dx: aim.dx, dy: aim.dy, ok: r.ok, blocking: r.blocking };
+  })();
+
+  /** The stack in hand, drawn as itself (fyk). A text chip was all that followed the cursor out of the
+   *  yard, while the tile it came from stayed in its slot at opacity 0.3 — measured in a real browser,
+   *  the chip was 78×26 px against a 109×73 px tile, and "did I even pick it up?" was a fair question.
+   *  The opposite direction never had to ask it: a stack carried out of the hold keeps its full-size
+   *  shape under the cursor the whole way (CrossSection draws it inside its own svg).
+   *
+   *  The size comes from the warehouse svg's screen CTM — its mm→px scale — so the ghost is exactly as
+   *  big as the tile it was lifted from, and, over the top view, exactly as big as it will be when it
+   *  lands: the two surfaces are 1:1 by construction (LKWkalk-6n4).
+   *
+   *  Null when that scale cannot be read (no svg on screen yet) — the label alone still says what is in
+   *  hand rather than nothing at all. */
+  const carriedGhost = (() => {
+    if (!dragTile) return null;
+    const tile = orderedTiles[dragTile.index];
+    const cargo = tile && load.cargo.find((c) => c.id === tile.cargoTypeId);
+    if (!tile || !cargo) return null;
+    const label = `${cargo.name} ×${tile.units}`;
+    const scale = warehouseSvg()?.getScreenCTM?.()?.a;
+    if (!scale) return { label, shape: null };
+    const [dx, dy] = orientedDims(cargo.length, cargo.width, cargo.height, tile.orientation);
+    const slot =
+      orderColorMap?.get(cargo.orderId ?? '') ?? orderIndexMap(load).get(cargo.orderId ?? '') ?? 0;
+    return {
+      label,
+      shape: { dx, dy, w: dx * scale, h: dy * scale, series: orderColorToken(slot).series },
+    };
   })();
 
   const dropTileAt = (index: number, clientX: number, clientY: number) => {
@@ -628,15 +658,52 @@ export function LadeplanScreen({
         </div>
       </div>
 
-      {/* The carried stack follows the cursor; pointer-events off so the drop lands on what is under it. */}
-      {dragTile && (
+      {/* The carried stack follows the cursor; pointer-events off so the drop lands on what is under it.
+          Centred on the cursor rather than offset from it, because that is where the drop resolves:
+          `tileAim` reads the pointer as the stack's MIDDLE (`snap(at.x − dx / 2)`), so a ghost drawn
+          down-right of the cursor would promise a landing spot the release does not use. */}
+      {dragTile && carriedGhost && (
         <div
           data-testid="drag-ghost"
-          className="pointer-events-none fixed z-30 rounded-ctl border border-brand bg-card px-2 py-1 text-caption font-semibold shadow-pop"
-          style={{ left: dragTile.x + 12, top: dragTile.y + 12 }}
+          className="pointer-events-none fixed z-30"
+          style={
+            carriedGhost.shape
+              ? {
+                  left: dragTile.x - carriedGhost.shape.w / 2,
+                  top: dragTile.y - carriedGhost.shape.h / 2,
+                }
+              : { left: dragTile.x + 12, top: dragTile.y + 12 }
+          }
         >
-          {load.cargo.find((c) => c.id === orderedTiles[dragTile.index]?.cargoTypeId)?.name} ×
-          {orderedTiles[dragTile.index]?.units}
+          {carriedGhost.shape && (
+            <svg
+              data-testid="drag-ghost-shape"
+              width={carriedGhost.shape.w}
+              height={carriedGhost.shape.h}
+              viewBox={`0 0 ${carriedGhost.shape.dx} ${carriedGhost.shape.dy}`}
+              aria-hidden="true"
+              style={{ display: 'block', overflow: 'visible' }}
+            >
+              <StackShape
+                x={0}
+                y={0}
+                w={carriedGhost.shape.dx}
+                h={carriedGhost.shape.dy}
+                series={carriedGhost.shape.series}
+                hatchSpacing={180}
+                backing
+              />
+            </svg>
+          )}
+          {/* The name rides just below the shape, absolutely placed so it cannot resize the ghost —
+              the box IS the stack's footprint, and the centring arithmetic above depends on that. */}
+          <span
+            className={`whitespace-nowrap rounded-ctl border border-brand bg-card px-2 py-1 text-caption font-semibold shadow-pop${
+              carriedGhost.shape ? ' absolute left-1/2 top-full -translate-x-1/2' : ''
+            }`}
+          >
+            {carriedGhost.label}
+          </span>
         </div>
       )}
 
