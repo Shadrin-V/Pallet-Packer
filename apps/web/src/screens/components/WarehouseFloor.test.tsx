@@ -5,6 +5,7 @@ import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../../i18n/LocaleContext';
 import { WarehouseFloor } from './WarehouseFloor';
 import type { BufferTile } from './warehouseLayout';
+import { truckFrame } from './truckFrame';
 
 const V = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
 const load: Load = {
@@ -57,12 +58,13 @@ function renderFloor(t: BufferTile[] = tiles, onRotate = vi.fn()) {
 
 describe('WarehouseFloor', () => {
   // Если эти ширины разойдутся, масштаб разойдётся молча: оба svg рисуются width:100% в одной
-  // колонке, поэтому равенство viewBox по ширине — и есть весь механизм 1:1.
-  it('is exactly as wide as the hold — that IS the 1:1 scale', () => {
+  // колонке, поэтому равенство viewBox по ширине — и есть весь механизм 1:1. Сравнивать надо с
+  // рамкой разреза, а не с длиной кузова: рамка шире на поле под кабину (LKWkalk-6n4).
+  it('is exactly as wide as the cutaway frame — that IS the 1:1 scale', () => {
     renderFloor();
     const svg = document.querySelector('[data-testid="warehouse-floor"] svg')!;
     const [, , w] = svg.getAttribute('viewBox')!.split(' ').map(Number);
-    expect(w).toBe(V.length);
+    expect(w).toBe(truckFrame(V, 'top').outerW);
   });
 
   it('draws each stack at its real footprint with the unit count', () => {
