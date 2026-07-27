@@ -208,3 +208,69 @@ describe('WarehouseFloor', () => {
     expect(onRotate).toHaveBeenCalledWith(1);
   });
 });
+
+describe('WarehouseFloor — загоны по заказу', () => {
+  const twoOrders: Load = {
+    vehicle: V,
+    cargo: [
+      { ...load.cargo[0], orderId: 'SO-1' },
+      { ...load.cargo[1], orderId: 'SO-2' },
+    ],
+  };
+  const render2 = (t: BufferTile[]) =>
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor load={twoOrders} tiles={t} onRotate={vi.fn()} onPickUp={vi.fn()} dragging={null} />
+      </LocaleProvider>,
+    );
+
+  it('рисует по загону на заказ с номером и числом единиц', () => {
+    render2([
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+    ]);
+    const bays = document.querySelectorAll('[data-testid="warehouse-bay"]');
+    expect(bays).toHaveLength(2);
+    expect([...bays].map((b) => b.getAttribute('data-order'))).toEqual(['SO-1', 'SO-2']);
+    expect(screen.getByText(/SO-1 ×18/)).toBeInTheDocument();
+  });
+
+  it('один заказ — разметки нет, двор как раньше', () => {
+    renderFloor();
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="warehouse-tile"]')).toHaveLength(1);
+  });
+
+  it('загон без номера заказа подписан локализованным ярлыком', () => {
+    const anon: Load = {
+      vehicle: V,
+      cargo: [{ ...load.cargo[0], orderId: undefined }, { ...load.cargo[1], orderId: 'SO-2' }],
+    };
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={anon}
+          tiles={[
+            { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+            { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+          ]}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+        />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText(/Ohne Auftrag/)).toBeInTheDocument();
+  });
+
+  it('разметка лежит под стопками — стопку по-прежнему можно взять', () => {
+    render2([
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+    ]);
+    const svg = document.querySelector('[data-testid="warehouse-floor"] svg')!;
+    const nodes = [...svg.querySelectorAll('[data-testid="warehouse-bay"], [data-testid="warehouse-tile"]')];
+    expect(nodes[0].getAttribute('data-testid')).toBe('warehouse-bay');
+    expect(nodes.at(-1)!.getAttribute('data-testid')).toBe('warehouse-tile');
+  });
+});

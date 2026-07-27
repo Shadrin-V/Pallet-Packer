@@ -30,6 +30,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
 import { WarehouseBackdrop, FLOOR } from './WarehouseBackdrop';
+import { WarehouseBay } from './WarehouseBay';
 import { warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
@@ -121,6 +122,19 @@ export function WarehouseFloor({
           {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
               decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
           <WarehouseBackdrop width={floor.width} height={floorHeight} />
+          {/* Загоны заказов (41e.2): пустой массив, когда различимых заказов меньше двух — тогда
+              двор выглядит как раньше. Рисуются между фоном и стопками, указателя не берут. */}
+          {floor.bays.map((bay) => {
+            const slot = orderColors?.get(bay.orderId) ?? oidx.get(bay.orderId) ?? 0;
+            return (
+              <WarehouseBay
+                key={bay.orderId}
+                bay={bay}
+                series={orderColorToken(slot).series}
+                label={bay.orderId || tt('warehouse.bay.noOrder')}
+              />
+            );
+          })}
           {empty && (
             // A one-line invitation centred on the empty yard: the surface catches a stack pulled out
             // of the hold. The dashed outline is gone (owner feedback) — the yard art already reads as
