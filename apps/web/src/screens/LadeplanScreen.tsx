@@ -216,6 +216,11 @@ export function LadeplanScreen({
     return out;
   })();
 
+  /** Заказ типа груза — он же заказ любой его стопки: броском заказ не меняется, поэтому именно он
+   *  выбирает загон, в который стопка сядет (41e.2). */
+  const orderOfType = (cargoTypeId: string) =>
+    load.cargo.find((c) => c.id === cargoTypeId)?.orderId ?? '';
+
   const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
   // The symmetric hold→warehouse carry (T3): the stack's own visual lives INSIDE the top-view svg and
   // is clipped the instant the pointer leaves it toward the warehouse strip below, so this page-level
@@ -353,7 +358,9 @@ export function LadeplanScreen({
     if (!carry) return null;
     const pt = toWarehouseMm(carry.x, carry.y);
     if (!pt) return null;
-    const index = insertionIndexAt(warehouseFloor(load, orderedTiles), pt);
+    const index = insertionIndexAt(warehouseFloor(load, orderedTiles), pt, {
+      orderId: orderOfType(carry.cargoTypeId),
+    });
     return {
       index,
       tile: { cargoTypeId: carry.cargoTypeId, units: carry.units, orientation: carry.orientation },
@@ -377,7 +384,12 @@ export function LadeplanScreen({
       // reordering, rather than lose the drop.
       const pt = toWarehouseMm(clientX, clientY);
       if (pt) {
-        const idx = insertionIndexAt(warehouseFloor(load, orderedTiles), pt);
+        // Якорь берётся по заказу ПЕРВОЙ стопки группы: групповой бросок может смешивать заказы, но
+        // раскладка всё равно разведёт их по своим загонам — точка броска задаёт лишь относительное
+        // место внутри своего загона.
+        const idx = insertionIndexAt(warehouseFloor(load, orderedTiles), pt, {
+          orderId: orderOfType(refs[0].cargoTypeId),
+        });
         const snapshot = orderedTiles.map((t) => t.cargoTypeId);
         snapshot.splice(idx, 0, ...refs.map((r) => r.cargoTypeId));
         setBufferOrder(snapshot);

@@ -594,6 +594,100 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
       ]);
     });
   });
+
+  it('стопка чужого заказа садится в свой загон, куда бы её ни бросили', () => {
+    // C — единственный груз заказа SO-2; A и B (уже в буфере) — SO-1. Бросаем C прямо в загон SO-1:
+    // магнит обязан увести её в собственный загон, а не воткнуть между A и B.
+    const bayLoad: Load = {
+      ...dropLoad,
+      cargo: dropLoad.cargo.map((c) => (c.id === 'c' ? { ...c, orderId: 'SO-2' } : c)),
+    };
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
+    const origRect = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, right: 4000, top: 0, bottom: 2000, width: 4000, height: 2000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={bayLoad} layout={dropLayout} />
+        </LocaleProvider>,
+      );
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      // Точка внутри загона SO-1 (левый верхний угол двора), но это ЧУЖОЙ загон.
+      fireEvent.pointerMove(svg, { clientX: 500, clientY: 400 });
+      fireEvent.pointerUp(svg, { clientX: 500, clientY: 400 });
+      // Два загона, C — в своём, а не между A и B.
+      const bays = [...document.querySelectorAll('[data-testid="warehouse-bay"]')];
+      expect(bays.map((b) => b.getAttribute('data-order'))).toEqual(['SO-1', 'SO-2']);
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('A'),
+        expect.stringContaining('B'),
+        expect.stringContaining('C'),
+      ]);
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  });
+
+  // Addition beyond the brief (dwc): the case above cannot actually distinguish orderId-aware from
+  // orderId-blind code — at drop time the yard holds only ONE order (A, B — both SO-1), so
+  // `insertionIndexAt`'s own `bays.length === 0` guard already forces the plain flow-index path
+  // regardless of `orderId`, and `groupByOrder` then renormalizes any raw interleaving back into
+  // per-order clusters for display, so both codepaths render `[A, B, C]`. This test instead starts
+  // with TWO bays already standing (A/SO-1 and B/SO-2 both already in the buffer, one order each), so
+  // `insertionIndexAt` actually reaches its per-bay branch.
+  it('уводит стопку в конец своего уже существующего загона, а не туда, куда воткнул бы общий поток', () => {
+    // A — SO-1, B — SO-2, оба уже в буфере: два загона стоят ДО броска. C — SO-1, единственный груз
+    // в кузове. Бросаем C высоко над двором (y=100 — выше обоих загонов): без учёта заказа общий
+    // поток читает эту точку как "перед самой первой плиткой" и воткнул бы C впереди A; магнит обязан
+    // вместо этого запарковать C в КОНЦЕ её собственного загона SO-1 (после A) — точка вне всех границ
+    // загона всегда садится в его хвост (warehouseLayout.ts, insertionIndexAt).
+    const twoBaysLoad: Load = {
+      vehicle: { id: 'v5', name: 'LKW', length: 4000, width: 50, height: 1000 },
+      cargo: [
+        { id: 'a', name: 'A', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+        { id: 'b', name: 'B', length: 500, width: 500, height: 500, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-2' },
+        { id: 'c', name: 'C', length: 1000, width: 1000, height: 1000, quantity: 1, rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId: 'SO-1' },
+      ],
+    };
+    const twoBaysLayout: Layout = {
+      placements: [{ cargoTypeId: 'c', x: 0, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' }],
+      unplaced: [{ cargoTypeId: 'a', count: 1 }, { cargoTypeId: 'b', count: 1 }],
+      metrics: { totalPlaced: 1, usedFloorPositions: 1, floorFillPercent: 25, volumeFillPercent: 25 },
+      contractVersion: '0.14.0',
+    };
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
+    const origRect = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, right: 4000, top: 0, bottom: 2000, width: 4000, height: 2000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={twoBaysLoad} layout={twoBaysLayout} />
+        </LocaleProvider>,
+      );
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(svg, { clientX: 100, clientY: 100 });
+      const bays = [...document.querySelectorAll('[data-testid="warehouse-bay"]')];
+      expect(bays.map((b) => b.getAttribute('data-order'))).toEqual(['SO-1', 'SO-2']);
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('A'),
+        expect.stringContaining('C'),
+        expect.stringContaining('B'),
+      ]);
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  });
 });
 
 describe('LadeplanScreen — figures (D1 + D3)', () => {
