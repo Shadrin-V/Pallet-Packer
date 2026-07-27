@@ -35,6 +35,7 @@ export const ru: Dictionary = {
   'warehouse.rotate': 'Повернуть стопку на складе',
   'warehouse.dropHint': 'Перетащите в кузов, чтобы поставить',
   'warehouse.dropZone': 'Перетащите стопку из кузова сюда',
+  'warehouse.bay.noOrder': 'Без заказа',
   'article.label': 'Артикул',
   'article.source.erp': 'ERP',
   'article.source.local': 'локально',

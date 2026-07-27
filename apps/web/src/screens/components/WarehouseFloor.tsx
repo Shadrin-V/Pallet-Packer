@@ -30,6 +30,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
 import { WarehouseBackdrop, FLOOR } from './WarehouseBackdrop';
+import { WarehouseBay } from './WarehouseBay';
 import { warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
@@ -121,6 +122,19 @@ export function WarehouseFloor({
           {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
               decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
           <WarehouseBackdrop width={floor.width} height={floorHeight} />
+          {/* Загоны заказов (41e.2): пустой массив, когда различимых заказов меньше двух — тогда
+              двор выглядит как раньше. Рисуются между фоном и стопками, указателя не берут. */}
+          {floor.bays.map((bay) => {
+            const slot = orderColors?.get(bay.orderId) ?? oidx.get(bay.orderId) ?? 0;
+            return (
+              <WarehouseBay
+                key={bay.orderId}
+                bay={bay}
+                series={orderColorToken(slot).series}
+                label={bay.orderId || tt('warehouse.bay.noOrder')}
+              />
+            );
+          })}
           {empty && (
             // A one-line invitation centred on the empty yard: the surface catches a stack pulled out
             // of the hold. The dashed outline is gone (owner feedback) — the yard art already reads as
@@ -170,11 +184,17 @@ export function WarehouseFloor({
               const slot = orderColors?.get(cargo.orderId ?? '') ?? oidx.get(cargo.orderId ?? '') ?? 0;
               const { series } = orderColorToken(slot);
               const rotatable = cargo.rotation !== 'none';
-              // `i` runs over renderTiles, which SPLICES IN the phantom; the parent's onPickUp/onRotate/
-              // dragging index its own `tiles` array, WITHOUT it. For any tile after the phantom the two
-              // diverge by one, so map back before handing an index up (dwc.11). Reachable only with a
-              // second pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
-              const realIndex = phantomAt && i > phantomAt.index ? i - 1 : i;
+              // Two index spaces to cross before an index may be handed up to the parent, which
+              // indexes its own `tiles` prop:
+              //  1. `i` runs over `floor.tiles`, which `warehouseFloor` GROUPS BY ORDER — with two or
+              //     more orders the drawing order is not the input order at all, so `pt.srcIndex`
+              //     (the tile's position in `renderTiles`) is what to carry, never `i` (41e.2, final
+              //     review);
+              //  2. `renderTiles` SPLICES IN the phantom, which the parent's array does not have, so
+              //     everything after it shifts back by one (dwc.11). Reachable only with a second
+              //     pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
+              const realIndex =
+                phantomAt && pt.srcIndex > phantomAt.index ? pt.srcIndex - 1 : pt.srcIndex;
               return (
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}

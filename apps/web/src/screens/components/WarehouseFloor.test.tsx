@@ -208,3 +208,96 @@ describe('WarehouseFloor', () => {
     expect(onRotate).toHaveBeenCalledWith(1);
   });
 });
+
+describe('WarehouseFloor — загоны по заказу', () => {
+  const twoOrders: Load = {
+    vehicle: V,
+    cargo: [
+      { ...load.cargo[0], orderId: 'SO-1' },
+      { ...load.cargo[1], orderId: 'SO-2' },
+    ],
+  };
+  const render2 = (t: BufferTile[]) =>
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor load={twoOrders} tiles={t} onRotate={vi.fn()} onPickUp={vi.fn()} dragging={null} />
+      </LocaleProvider>,
+    );
+
+  it('рисует по загону на заказ с номером и числом единиц', () => {
+    render2([
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+    ]);
+    const bays = document.querySelectorAll('[data-testid="warehouse-bay"]');
+    expect(bays).toHaveLength(2);
+    expect([...bays].map((b) => b.getAttribute('data-order'))).toEqual(['SO-1', 'SO-2']);
+    expect(screen.getByText(/SO-1 · ×18/)).toBeInTheDocument();
+  });
+
+  it('один заказ — разметки нет, двор как раньше', () => {
+    renderFloor();
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="warehouse-tile"]')).toHaveLength(1);
+  });
+
+  it('загон без номера заказа подписан локализованным ярлыком', () => {
+    const anon: Load = {
+      vehicle: V,
+      cargo: [{ ...load.cargo[0], orderId: undefined }, { ...load.cargo[1], orderId: 'SO-2' }],
+    };
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={anon}
+          tiles={[
+            { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+            { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+          ]}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+        />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText(/Ohne Auftrag/)).toBeInTheDocument();
+  });
+
+  // Тот же разрыв систем координат, что и в `insertionIndexAt` (финальное ревью, находка 1), но со
+  // стороны отрисовки: `floor.tiles` — СГРУППИРОВАННЫЙ список, а `onPickUp`/`onRotate`/`dragging`
+  // родителя индексируют его собственный проп `tiles`. Как только группировка переставляет плитки
+  // (здесь заказы чередуются во входе), позиция в отрисовке перестаёт совпадать с позицией во входе.
+  it('сообщает родителю индекс во ВХОДНОМ массиве, а не позицию в сгруппированной отрисовке', () => {
+    const interleaved: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' }, // SO-1, вход 0
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' }, // SO-2, вход 1
+      { cargoTypeId: 'p', units: 5, orientation: 'lwh' }, // SO-1, вход 2
+    ];
+    const onPickUp = vi.fn();
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor load={twoOrders} tiles={interleaved} onRotate={vi.fn()} onPickUp={onPickUp} dragging={null} />
+      </LocaleProvider>,
+    );
+    // Группировка рисует [p×18, p×5, Fix×2]: вторая нарисованная плитка — это вход 2, не вход 1.
+    const rendered = screen.getAllByTestId('warehouse-tile');
+    expect(rendered.map((t) => t.getAttribute('aria-label'))).toEqual([
+      'EPAL 3 ×18',
+      'EPAL 3 ×5',
+      'Fix ×2',
+    ]);
+    fireEvent.pointerDown(rendered[1]);
+    expect(onPickUp).toHaveBeenCalledWith(2, expect.anything());
+  });
+
+  it('разметка лежит под стопками — стопку по-прежнему можно взять', () => {
+    render2([
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+    ]);
+    const svg = document.querySelector('[data-testid="warehouse-floor"] svg')!;
+    const nodes = [...svg.querySelectorAll('[data-testid="warehouse-bay"], [data-testid="warehouse-tile"]')];
+    expect(nodes[0].getAttribute('data-testid')).toBe('warehouse-bay');
+    expect(nodes.at(-1)!.getAttribute('data-testid')).toBe('warehouse-tile');
+  });
+});
