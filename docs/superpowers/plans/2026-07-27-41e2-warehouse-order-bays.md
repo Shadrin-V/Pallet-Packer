@@ -20,7 +20,7 @@
 - Двор экран-онли: `print:hidden`, PNG-экспорт берёт только `svg[data-cutaway]`. Ничего в этом плане не должно получить атрибут `data-cutaway`.
 - Обещание масштаба 1:1: `viewBox` двора по ширине равен `vehicle.length`. Никакой горизонтальный отступ/рамка вокруг svg не добавляется.
 - Мерж в `main` = выкладка на прод (ADR 023). Коммитим только на зелёных тестах.
-- Зелёный прогон этого репозитория — `npm test -w apps/web` и `npm test -w @shadrin-v/i18n`. Корневой `npm test` включает `apps/server`, где локально красно из-за ABI `better-sqlite3` (`NODE_MODULE_VERSION`) — это пре-существующее и не относится к задаче.
+- Тесты запускаются ТОЛЬКО из корня репозитория: `npm test -- <фильтр по пути>` (vitest, один общий конфиг; у `apps/web` своего скрипта `test` нет). Зелёный прогон этой работы — `npm test -- apps/web packages`. Голый `npm test` тянет ещё и `apps/server`, где локально красно из-за ABI `better-sqlite3` (`NODE_MODULE_VERSION`) — это пре-существующее, чинить не нужно.
 
 ---
 
@@ -144,7 +144,7 @@ describe('warehouseFloor — загоны по заказу', () => {
 
 - [ ] **Step 2: Прогнать тесты, убедиться что падают**
 
-Run: `npm test -w apps/web -- warehouseLayout`
+Run: `npm test -- warehouseLayout`
 Expected: FAIL — `fl.bays` is undefined; `bayOrder` нет в типе `opts`.
 
 - [ ] **Step 3: Реализовать**
@@ -331,7 +331,7 @@ export function warehouseFloor(
 
 - [ ] **Step 4: Прогнать тесты, убедиться что зелено**
 
-Run: `npm test -w apps/web -- warehouseLayout`
+Run: `npm test -- warehouseLayout`
 Expected: PASS — и новый блок, и все прежние тесты `warehouseFloor`/`insertionIndexAt`/phantom.
 
 - [ ] **Step 5: Проверить типы**
@@ -406,7 +406,7 @@ describe('insertionIndexAt — магнит к своему загону', () =>
 
 - [ ] **Step 2: Прогнать тесты, убедиться что падают**
 
-Run: `npm test -w apps/web -- warehouseLayout`
+Run: `npm test -- warehouseLayout`
 Expected: FAIL — третий аргумент `insertionIndexAt` не принимается / индексы не совпадают.
 
 - [ ] **Step 3: Реализовать**
@@ -453,7 +453,7 @@ export function insertionIndexAt(
 
 - [ ] **Step 4: Прогнать тесты, убедиться что зелено**
 
-Run: `npm test -w apps/web -- warehouseLayout`
+Run: `npm test -- warehouseLayout`
 Expected: PASS, включая прежний блок `insertionIndexAt` (он вызывает функцию с двумя аргументами).
 
 - [ ] **Step 5: Коммит**
@@ -573,7 +573,7 @@ describe('WarehouseBay', () => {
 
 - [ ] **Step 5: Прогнать тест, убедиться что падает**
 
-Run: `npm test -w apps/web -- WarehouseBay`
+Run: `npm test -- WarehouseBay`
 Expected: FAIL — `Failed to resolve import './WarehouseBay'`.
 
 - [ ] **Step 6: Реализовать компонент**
@@ -650,7 +650,7 @@ export function WarehouseBay({
 
 - [ ] **Step 7: Прогнать тест, убедиться что зелено**
 
-Run: `npm test -w apps/web -- WarehouseBay`
+Run: `npm test -- WarehouseBay`
 Expected: PASS.
 
 - [ ] **Step 8: Коммит**
@@ -746,7 +746,7 @@ describe('WarehouseFloor — загоны по заказу', () => {
 
 - [ ] **Step 2: Прогнать тесты, убедиться что падают**
 
-Run: `npm test -w apps/web -- WarehouseFloor`
+Run: `npm test -- WarehouseFloor`
 Expected: FAIL — узлов `warehouse-bay` в документе нет.
 
 - [ ] **Step 3: Реализовать**
@@ -777,12 +777,12 @@ import { WarehouseBay } from './WarehouseBay';
 
 - [ ] **Step 4: Прогнать тесты, убедиться что зелено**
 
-Run: `npm test -w apps/web -- WarehouseFloor`
+Run: `npm test -- WarehouseFloor`
 Expected: PASS, включая прежние тесты (viewBox, размеры стопки, title, поворот).
 
 - [ ] **Step 5: Проверить типы и линт**
 
-Run: `npm run typecheck -w apps/web && npm run lint -w apps/web`
+Run: `npm run typecheck -w apps/web && npm run lint`
 Expected: чисто.
 
 - [ ] **Step 6: Коммит**
@@ -850,7 +850,7 @@ git commit -m "feat(warehouse): draw order bays under the buffer stacks (41e.2)"
 
 - [ ] **Step 2: Прогнать тест, убедиться что падает**
 
-Run: `npm test -w apps/web -- LadeplanScreen`
+Run: `npm test -- LadeplanScreen`
 Expected: FAIL — загонов нет / порядок плиток `A, C, B`.
 
 - [ ] **Step 3: Реализовать**
@@ -885,12 +885,12 @@ Expected: FAIL — загонов нет / порядок плиток `A, C, B`
 
 - [ ] **Step 4: Прогнать тест, убедиться что зелено**
 
-Run: `npm test -w apps/web -- LadeplanScreen`
+Run: `npm test -- LadeplanScreen`
 Expected: PASS, включая прежние тесты броска (они держат один заказ `SO-1`, значит идут по ветке без загонов).
 
 - [ ] **Step 5: Полный прогон и линт**
 
-Run: `npm test -w apps/web && npm run typecheck -w apps/web && npm run lint -w apps/web`
+Run: `npm test -- apps/web packages && npm run typecheck -w apps/web && npm run lint`
 Expected: всё зелено. Число тестов `apps/web` выросло относительно базовых 587 (`apps/web` + `packages`) ровно на добавленные.
 
 - [ ] **Step 6: Коммит**
