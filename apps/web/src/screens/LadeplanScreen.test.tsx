@@ -242,6 +242,48 @@ describe('LadeplanScreen — warehouse floor', () => {
   });
 });
 
+// 77g: загоны 41e.2 из умолчания стали режимом — владелец после прода сказал «без неё удобнее».
+// Выбор режима — настройка ВИДА двора, не часть Load: в контракт и в сохранённый план не лезет и
+// пересчёта не запускает, поэтому живёт своим ключом в localStorage.
+describe('LadeplanScreen — режим группировки двора (LKWkalk-77g)', () => {
+  const twoOrders: Load = {
+    vehicle: V,
+    cargo: [
+      { ...load.cargo[0], quantity: 11 },
+      { ...load.cargo[0], id: 'c2', name: 'Kiste', quantity: 4, orderId: 'SO-2' },
+    ],
+  };
+  const renderTwo = () =>
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={twoOrders} layout={calculateLayout(twoOrders)} />
+      </LocaleProvider>,
+    );
+
+  it('по умолчанию двор не разбит на загоны, а переключатель выключен', () => {
+    renderTwo();
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]')).toHaveLength(0);
+    const toggle = screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('включение открывает загоны и переживает перезагрузку своим ключом', async () => {
+    const { unmount } = renderTwo();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' }));
+
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]').length).toBeGreaterThan(1);
+    expect(localStorage.getItem('ladungsplaner.yardGrouping')).toBe('true');
+    // и это НЕ часть плана: сохранённый Load переключателем не трогается
+    expect(localStorage.getItem('ladungsplaner.load')).toBeNull();
+
+    unmount();
+    renderTwo();
+    const toggle = screen.getByRole('checkbox', { name: 'Nach Auftrag gruppieren' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(document.querySelectorAll('[data-testid="warehouse-bay"]').length).toBeGreaterThan(1);
+  });
+});
+
 // Group edits (dwc.6): the whole selection travels as one, and one edit puts it all in the buffer.
 describe('LadeplanScreen — group selection', () => {
   /** Stub the geometry jsdom lacks, plus a buffer strip just below the cutaway, so a release at
@@ -641,6 +683,8 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   });
 
   it('после броска стопки чужого заказа два загона рисуются, а плитки группируются по заказу', () => {
+    // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     // C — единственный груз заказа SO-2; A и B (уже в буфере) — SO-1. Бросаем C в точку внутри
     // загона SO-1 (это ЧУЖОЙ для неё загон) и проверяем итоговую КАРТИНУ: два загона (SO-1, SO-2) и
     // плитки, сгруппированные по заказу (A, B, затем C), а не порядок, в котором C была брошена.
@@ -736,6 +780,8 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   };
 
   it('уводит стопку в конец своего уже существующего загона, а не туда, куда воткнул бы общий поток', () => {
+    // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     // Магнит обязан запарковать C в КОНЦЕ её собственного загона SO-1 (после A) — точка вне всех
     // границ загона всегда садится в его хвост (warehouseLayout.ts, insertionIndexAt).
     withTwoBaysRig((container) => {
@@ -760,6 +806,8 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
   // Здесь фантом проверяется ДО отпускания и по позиции: убери аргумент `orderId` у `phantomAt` —
   // общий поток вернёт 0 и фантом встанет ПЕРЕД A, слева от неё.
   it('превью фантома магнитится в загон своего заказа ещё до отпускания', () => {
+    // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     withTwoBaysRig((container) => {
       const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });

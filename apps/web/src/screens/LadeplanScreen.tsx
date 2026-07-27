@@ -38,6 +38,24 @@ import { WarehouseFloor } from './components/WarehouseFloor';
 import type { DropPreview } from './components/CrossSection';
 import { warehouseFloor, insertionIndexAt, type BufferTile } from './components/warehouseLayout';
 
+/** Ключ режима двора (LKWkalk-77g) — свой, а не поле в `ladungsplaner.load`: это настройка вида, и
+ *  класть её в сохранённый план значило бы протащить её в контракт и в экспорт JSON. */
+const YARD_GROUPING_STORAGE_KEY = 'ladungsplaner.yardGrouping';
+function readYardGrouping(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(YARD_GROUPING_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+function writeYardGrouping(on: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(YARD_GROUPING_STORAGE_KEY, String(on));
+  } catch {
+    /* ignore */
+  }
+}
+
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
     <div className="text-right" data-testid={danger ? 'fig-unplaced' : undefined}>
@@ -222,6 +240,15 @@ export function LadeplanScreen({
   const orderOfType = (cargoTypeId: string) =>
     load.cargo.find((c) => c.id === cargoTypeId)?.orderId ?? '';
 
+  // Режим двора (LKWkalk-77g). Настройка ВИДА, а не часть Load: в контракт и в сохранённый план не
+  // входит и пересчёта не запускает, поэтому и ключ свой, отдельный от `ladungsplaner.load`.
+  // Умолчание — выключено: владелец после прода 41e.2 сказал «без неё удобнее».
+  const [yardGrouped, setYardGrouped] = useState(readYardGrouping);
+  const changeYardGrouping = (next: boolean) => {
+    setYardGrouped(next);
+    writeYardGrouping(next);
+  };
+
   const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
   // The symmetric hold→warehouse carry (T3): the stack's own visual lives INSIDE the top-view svg and
   // is clipped the instant the pointer leaves it toward the warehouse strip below, so this page-level
@@ -388,7 +415,8 @@ export function LadeplanScreen({
     if (!carry) return null;
     const pt = toWarehouseMm(carry.x, carry.y);
     if (!pt) return null;
-    const index = insertionIndexAt(warehouseFloor(load, orderedTiles), pt, {
+    // Тот же режим, что рисует двор: иначе магнит целился бы в загоны, которых на экране нет.
+    const index = insertionIndexAt(warehouseFloor(load, orderedTiles, { grouped: yardGrouped }), pt, {
       orderId: orderOfType(carry.cargoTypeId),
     });
     return {
@@ -417,7 +445,9 @@ export function LadeplanScreen({
         // Якорь берётся по заказу ПЕРВОЙ стопки группы: групповой бросок может смешивать заказы, но
         // раскладка всё равно разведёт их по своим загонам — точка броска задаёт лишь относительное
         // место внутри своего загона.
-        const idx = insertionIndexAt(warehouseFloor(load, orderedTiles), pt, {
+        // Тот же режим, что рисует двор (77g): с выключенной группировкой загонов нет, и точка
+        // броска задаёт место в общем потоке — поведение до 41e.2.
+        const idx = insertionIndexAt(warehouseFloor(load, orderedTiles, { grouped: yardGrouped }), pt, {
           orderId: orderOfType(refs[0].cargoTypeId),
         });
         const snapshot = orderedTiles.map((t) => t.cargoTypeId);
@@ -643,6 +673,8 @@ export function LadeplanScreen({
               onPickUp={(index, e) => setDragTile({ index, x: e.clientX, y: e.clientY })}
               dragging={dragTile?.index ?? null}
               phantomAt={phantomAt}
+              grouped={yardGrouped}
+              onGroupedChange={changeYardGrouping}
             />
             {editError && (
               <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">
