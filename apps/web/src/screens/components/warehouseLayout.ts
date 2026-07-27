@@ -38,8 +38,28 @@ export interface PlacedTile {
   phantom?: true;
 }
 
+/** Площадка одного заказа на асфальте: периметр разметки + бирка с номером (41e.2). */
+export interface PlacedBay {
+  /** '' — грузы без номера заказа; ярлык подставляет компонент. */
+  orderId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Сумма units по РЕАЛЬНЫМ стопкам загона — «×N» на бирке. Фантом не считается: это ещё не груз,
+   *  и мигающий во время драга счёт врал бы про содержимое двора. */
+  units: number;
+  /** Диапазон плиток загона в плоском `tiles`: [startIndex, startIndex + count).
+   *  Магниту нужно переводить позицию внутри загона в глобальный индекс, и хранить это здесь
+   *  честнее, чем пересканировать `tiles` по `orderId` на каждый кадр драга. */
+  startIndex: number;
+  count: number;
+}
+
 export interface WarehouseFloorLayout {
   tiles: PlacedTile[];
+  /** Загоны заказов. Пуст, когда различимых заказов меньше двух — тогда двор выглядит как раньше. */
+  bays: PlacedBay[];
   /** mm — always the vehicle length, so the floor shares the top view's scale. */
   width: number;
   /** mm — grows with the content; 0 when the buffer is empty. */
@@ -48,41 +68,145 @@ export interface WarehouseFloorLayout {
 
 const GAP = 200;
 const PAD = 200;
+/** Поле между разметкой загона и его стопками. */
+const BAY_PAD = 200;
+/** Проход между соседними загонами. */
+const BAY_GAP = 400;
+/** Высота бирки с номером заказа — верхняя полоса внутри периметра. */
+const TAG_H = 330;
+/** Минимальная ширина загона: чтобы бирка вида `SO-1042 · ×18` не вылезала за разметку. */
+const BAY_MIN_W = 2400;
+export { BAY_PAD, BAY_GAP, TAG_H, BAY_MIN_W };
+
+type Cargo = Load['cargo'][number];
+
+interface Flow {
+  tiles: PlacedTile[];
+  /** Правый край самой длинной строки — по нему считается ширина загона. */
+  width: number;
+  height: number;
+}
+
+/** Сегодняшняя раскладка рядами с переносом, в координатах от (0,0). Вынесена, чтобы её могли
+ *  разделить весь двор (когда загонов нет) и каждый загон по отдельности. */
+function flowTiles(tiles: BufferTile[], byId: Map<string, Cargo>, maxWidth: number, gap: number): Flow {
+  const out: PlacedTile[] = [];
+  let x = 0;
+  let y = 0;
+  let rowH = 0;
+  let rowStart = 0;
+  for (const tile of tiles) {
+    const c = byId.get(tile.cargoTypeId);
+    if (!c) continue;
+    const [dx, dy] = orientedDims(c.length, c.width, c.height, tile.orientation);
+    // Перенос — но никогда на первой плитке строки: плитка шире отведённой ширины иначе зациклит,
+    // и ей всё равно надо куда-то встать.
+    if (x > 0 && x + dx > maxWidth) {
+      for (let i = rowStart; i < out.length; i++) out[i].rowH = rowH;
+      x = 0;
+      y += rowH + gap;
+      rowH = 0;
+      rowStart = out.length;
+    }
+    out.push({ tile, x, y, dx, dy, rowH: 0, phantom: tile.phantom });
+    x += dx + gap;
+    rowH = Math.max(rowH, dy);
+  }
+  for (let i = rowStart; i < out.length; i++) out[i].rowH = rowH;
+  const width = out.reduce((m, t) => Math.max(m, t.x + t.dx), 0);
+  return { tiles: out, width, height: out.length === 0 ? 0 : y + rowH };
+}
+
+/** Плитки по заказам: порядок групп — по первому появлению, группа без номера всегда последняя,
+ *  поверх — пользовательский `bayOrder` (41e.6). Плитки неизвестного типа выпадают здесь, как и
+ *  раньше выпадали в потоке. */
+function groupByOrder(
+  tiles: BufferTile[],
+  byId: Map<string, Cargo>,
+  bayOrder: string[],
+): { orderId: string; tiles: BufferTile[] }[] {
+  const groups = new Map<string, BufferTile[]>();
+  for (const t of tiles) {
+    const c = byId.get(t.cargoTypeId);
+    if (!c) continue;
+    const key = c.orderId ?? '';
+    const g = groups.get(key);
+    if (g) g.push(t);
+    else groups.set(key, [t]);
+  }
+  const keys = [...groups.keys()];
+  const byDefault = [...keys.filter((k) => k !== ''), ...keys.filter((k) => k === '')];
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const id of bayOrder) {
+    if (groups.has(id) && !seen.has(id)) {
+      ordered.push(id);
+      seen.add(id);
+    }
+  }
+  for (const id of byDefault) if (!seen.has(id)) ordered.push(id);
+  return ordered.map((id) => ({ orderId: id, tiles: groups.get(id)! }));
+}
 
 export function warehouseFloor(
   load: Load,
   tiles: BufferTile[],
-  opts: { width?: number; gap?: number; pad?: number } = {},
+  opts: { width?: number; gap?: number; pad?: number; bayOrder?: string[] } = {},
 ): WarehouseFloorLayout {
   const width = opts.width ?? load.vehicle.length;
   const gap = opts.gap ?? GAP;
   const pad = opts.pad ?? PAD;
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
 
-  const out: PlacedTile[] = [];
-  let x = pad;
-  let y = pad;
-  let rowH = 0;
-  let rowStart = 0; // index of this row's first tile in `out` — backfilled with `rowH` once known
-  for (const tile of tiles) {
-    const c = byId.get(tile.cargoTypeId);
-    if (!c) continue;
-    const [dx, dy] = orientedDims(c.length, c.width, c.height, tile.orientation);
-    // Wrap — but never on the first tile of a row: a tile wider than the floor would otherwise loop
-    // forever, and it has to go somewhere.
-    if (x > pad && x + dx > width - pad) {
-      for (let i = rowStart; i < out.length; i++) out[i].rowH = rowH;
-      x = pad;
-      y += rowH + gap;
-      rowH = 0;
-      rowStart = out.length;
-    }
-    out.push({ tile, x, y, dx, dy, rowH: 0, phantom: tile.phantom }); // rowH backfilled once the row closes, below
-    x += dx + gap;
-    rowH = Math.max(rowH, dy);
+  const groups = groupByOrder(tiles, byId, opts.bayOrder ?? []);
+
+  // Меньше двух заказов — делить нечего: рамка вокруг всего ничего не разделяет. Двор остаётся
+  // ровно таким, каким был до 41e.2.
+  if (groups.length < 2) {
+    const flow = flowTiles(tiles, byId, width - 2 * pad, gap);
+    return {
+      tiles: flow.tiles.map((t) => ({ ...t, x: t.x + pad, y: t.y + pad })),
+      bays: [],
+      width,
+      height: flow.tiles.length === 0 ? 0 : flow.height + 2 * pad,
+    };
   }
-  for (let i = rowStart; i < out.length; i++) out[i].rowH = rowH; // backfill the last (still-open) row
-  return { tiles: out, width, height: out.length === 0 ? 0 : y + rowH + pad };
+
+  // Ширина, отведённая содержимому загона: двор минус свои поля минус поля загона. Отсюда загон
+  // не шире двора — с той же оговоркой, что и у плитки: стопка шире этой ширины распирает загон.
+  const contentMax = width - 2 * pad - 2 * BAY_PAD;
+  const outTiles: PlacedTile[] = [];
+  const bays: PlacedBay[] = [];
+  let bx = pad;
+  let by = pad;
+  let rowH = 0;
+  for (const g of groups) {
+    const flow = flowTiles(g.tiles, byId, contentMax, gap);
+    const w = Math.max(flow.width + 2 * BAY_PAD, BAY_MIN_W);
+    const h = flow.height + TAG_H + 2 * BAY_PAD;
+    if (bx > pad && bx + w > width - pad) {
+      bx = pad;
+      by += rowH + BAY_GAP;
+      rowH = 0;
+    }
+    const startIndex = outTiles.length;
+    for (const t of flow.tiles) {
+      outTiles.push({ ...t, x: t.x + bx + BAY_PAD, y: t.y + by + TAG_H + BAY_PAD });
+    }
+    bays.push({
+      orderId: g.orderId,
+      x: bx,
+      y: by,
+      w,
+      h,
+      units: g.tiles.reduce((s, t) => s + (t.phantom ? 0 : t.units), 0),
+      startIndex,
+      count: outTiles.length - startIndex,
+    });
+    bx += w + BAY_GAP;
+    rowH = Math.max(rowH, h);
+  }
+  return { tiles: outTiles, bays, width, height: by + rowH + pad };
 }
 
 /** Where a point (mm, warehouse frame) falls in the flow order: index in [0..tiles.length].
