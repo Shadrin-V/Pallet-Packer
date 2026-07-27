@@ -84,10 +84,15 @@ const BAY_PAD = 200;
 /** Проход между соседними загонами. */
 const BAY_GAP = 400;
 /** Высота бирки с номером заказа — верхняя полоса внутри периметра. Единственная константа загона,
- *  которая нужна снаружи: по ней `WarehouseBay` рисует плашку и её кегль. Остальные — внутренние. */
-export const TAG_H = 330;
-/** Минимальная ширина загона: чтобы бирка вида `SO-1042 · ×18` не вылезала за разметку. */
-const BAY_MIN_W = 2400;
+ *  которая нужна снаружи: по ней `WarehouseBay` рисует плашку и её кегль. Остальные — внутренние.
+ *
+ *  180 мм — это четверть глубины европоддона (LKWkalk-1f5). Прежние 330 задавались «на глаз» в спеке
+ *  41e.2, до того как загоны увидели в настоящей заявке: полоса съедала треть верхнего ряда стопок и
+ *  читалась заголовком раздела, а не разметкой на полу. */
+export const TAG_H = 180;
+/** Минимальная ширина загона: поддон в длину плюс поля (1200 + 2×BAY_PAD). Бирка (`TAG_W` = 1200)
+ *  укладывается в неё по построению — это та же мера, взятая у того же поддона. */
+const BAY_MIN_W = 1200 + 2 * BAY_PAD;
 
 type Cargo = Load['cargo'][number];
 
@@ -134,11 +139,17 @@ function flowTiles(tiles: SourcedTile[], byId: Map<string, Cargo>, maxWidth: num
   return { tiles: out, width, height: out.length === 0 ? 0 : y + rowH };
 }
 
-/** Плитки по заказам: порядок групп — по первому появлению, группа без номера всегда последняя,
- *  поверх — пользовательский `bayOrder` (41e.6). Плитки неизвестного типа выпадают здесь, как и
- *  раньше выпадали в потоке. */
+/** Плитки по заказам: порядок групп — по ЗАЯВКЕ (порядок `load.cargo`, он же порядок строк на экране
+ *  «Настройка»), группа без номера всегда последняя, поверх — пользовательский `bayOrder` (41e.6).
+ *  Плитки неизвестного типа выпадают здесь, как и раньше выпадали в потоке.
+ *
+ *  Почему заявка, а не первое появление во дворе (LKWkalk-8z2): дворовый порядок плиток — производная
+ *  от заявки, которую ручные броски (`bufferOrder`) переставляют, и вместе с ней уезжали загоны. Из
+ *  заявки же порядок берётся напрямую и от истории перетаскиваний не зависит. Порядок плиток ВНУТРИ
+ *  загона остаётся дворовым: там броском двигают именно стопки. */
 function groupByOrder(
   tiles: SourcedTile[],
+  cargo: readonly Cargo[],
   byId: Map<string, Cargo>,
   bayOrder: string[],
 ): { orderId: string; tiles: SourcedTile[] }[] {
@@ -151,7 +162,13 @@ function groupByOrder(
     if (g) g.push(t);
     else groups.set(key, [t]);
   }
-  const keys = [...groups.keys()];
+  // Порядок заявки — по первому появлению номера в `cargo`; заказы, у которых во дворе ничего не
+  // лежит, загона не открывают (пустая рамка не размечает ничего).
+  const keys: string[] = [];
+  for (const c of cargo) {
+    const key = c.orderId ?? '';
+    if (groups.has(key) && !keys.includes(key)) keys.push(key);
+  }
   const byDefault = [...keys.filter((k) => k !== ''), ...keys.filter((k) => k === '')];
   const seen = new Set<string>();
   const ordered: string[] = [];
@@ -186,7 +203,7 @@ export function warehouseFloor(
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
   const sourced: SourcedTile[] = tiles.map((tile, srcIndex) => ({ tile, srcIndex }));
 
-  const groups = groupByOrder(sourced, byId, opts.bayOrder ?? []);
+  const groups = groupByOrder(sourced, load.cargo, byId, opts.bayOrder ?? []);
 
   // Группировка не запрошена, либо меньше двух заказов — делить нечего: рамка вокруг всего ничего
   // не разделяет. Двор остаётся ровно таким, каким был до 41e.2.

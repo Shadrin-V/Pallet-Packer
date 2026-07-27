@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
 import { WarehouseBackdrop, WAREHOUSE_ASSET, FLOOR } from './WarehouseBackdrop';
 
-function renderBackdrop(width = 13600, height = 2430) {
+function renderBackdrop(width = 13600, height = 2430, dockHeight = height) {
   render(
     <svg>
-      <WarehouseBackdrop width={width} height={height} />
+      <WarehouseBackdrop width={width} height={height} dockHeight={dockHeight} />
     </svg>,
   );
   return document.querySelector('[data-testid="warehouse-backdrop"]')!;
@@ -59,6 +59,33 @@ describe('WarehouseBackdrop', () => {
     expect(Number(right.getAttribute('height'))).toBe(height);
     expect(Number(right.getAttribute('width'))).toBeCloseTo(capR, 3);
     expect(Number(right.getAttribute('x'))).toBeCloseTo(width - capR, 3);
+  });
+
+  // LKWkalk-jen: сценерия перестала расти вместе с буфером. Высота доков ограничена постоянной мерой
+  // (`dockHeight` — минимальная глубина двора, ширина кузова), и лишнюю глубину они не занимают:
+  // прижаты к верхнему краю, ниже них — просто асфальт.
+  it('доки не растут вместе с глубиной двора: высота ограничена, доки прижаты к верху', () => {
+    const dockHeight = 2430;
+    const g = renderBackdrop(13600, 9000, dockHeight);
+
+    for (const cap of ['left', 'right'] as const) {
+      const img = g.querySelector(`image[data-cap="${cap}"]`)!;
+      expect(Number(img.getAttribute('height'))).toBe(dockHeight);
+      expect(Number(img.getAttribute('y'))).toBe(0);
+      // Пропорция считается от ОГРАНИЧЕННОЙ высоты — картинка не растягивается и не съезжает с края.
+      const a = WAREHOUSE_ASSET[cap];
+      expect(Number(img.getAttribute('width'))).toBeCloseTo((a.w / a.h) * dockHeight, 3);
+    }
+    const right = g.querySelector('image[data-cap="right"]')!;
+    const capR = (WAREHOUSE_ASSET.right.w / WAREHOUSE_ASSET.right.h) * dockHeight;
+    expect(Number(right.getAttribute('x'))).toBeCloseTo(13600 - capR, 3);
+  });
+
+  // Обратная сторона того же правила: ограничение не может СДЕЛАТЬ док выше двора — иначе сценерия
+  // вылезет за асфальт на мелком дворе.
+  it('док не выше самого двора, даже если разрешённая высота больше', () => {
+    const g = renderBackdrop(13600, 1500, 2430);
+    expect(Number(g.querySelector('image[data-cap="left"]')!.getAttribute('height'))).toBe(1500);
   });
 
   // Two distinct dock images — left dock, and right dock with the forklift.
