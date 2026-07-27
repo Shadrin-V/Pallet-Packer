@@ -15,3 +15,6 @@ dist/
 
 # Superpowers visual brainstorm companion (local mockups)
 .superpowers/
+
+# macOS
+.DS_Store
