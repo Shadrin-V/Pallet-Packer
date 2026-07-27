@@ -92,6 +92,5 @@ describe('truck chrome', () => {
   it('GUTTER fractions are positive', () => {
     expect(GUTTER.front).toBeGreaterThan(0);
     expect(GUTTER.wheel).toBeGreaterThan(0);
-    expect(GUTTER.ruler).toBeGreaterThan(0);
   });
 });

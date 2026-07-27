@@ -25,7 +25,8 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
-import { GUTTER, RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
+import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
+import { truckFrame } from './truckFrame';
 
 /** Where a dragged stack would land, and whether it may — the engine's answer, drawn. */
 export interface DropPreview {
@@ -137,18 +138,9 @@ export function CrossSection({
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
 
-  // Outer chrome gutters, in the cutaway's own mm units. Sourced from the same GUTTER constants
-  // truckChrome.tsx renders into, so the cargo viewport's exact 1:1 box and the chrome's footprint can
-  // never drift apart. The front gutter is reserved in BOTH views (identical outerW → same mm→px scale
-  // → top and side stay column-aligned on vehicle length); wheels sit below the floor on the side only.
-  // Nothing is drawn past the box rear, so there is no rear gutter.
-  const frontGutter = height * GUTTER.front;
-  const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
-  // The length ruler sits ABOVE the box (owner: numbers along the top edge). Its lane must clear the
-  // number, which grows upward from the box top by ~1.9 font + half a line; font = length*RULER_FONT.
-  const topGutter = length * RULER_FONT * 2.8;
-  const outerW = frontGutter + length;
-  const outerH = topGutter + spanY + wheelGutter;
+  // Поля рамки и внешние габариты — из truckFrame: этими числами владеет не только разрез, но и двор
+  // склада, который обещает груз в том же масштабе (LKWkalk-6n4).
+  const { frontGutter, topGutter, wheelGutter, outerW, outerH } = truckFrame(load.vehicle, view);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
