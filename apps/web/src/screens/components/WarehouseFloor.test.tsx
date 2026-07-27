@@ -232,7 +232,7 @@ describe('WarehouseFloor — загоны по заказу', () => {
     const bays = document.querySelectorAll('[data-testid="warehouse-bay"]');
     expect(bays).toHaveLength(2);
     expect([...bays].map((b) => b.getAttribute('data-order'))).toEqual(['SO-1', 'SO-2']);
-    expect(screen.getByText(/SO-1 ×18/)).toBeInTheDocument();
+    expect(screen.getByText(/SO-1 · ×18/)).toBeInTheDocument();
   });
 
   it('один заказ — разметки нет, двор как раньше', () => {

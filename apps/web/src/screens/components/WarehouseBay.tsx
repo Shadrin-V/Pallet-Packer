@@ -14,13 +14,30 @@
 // Доступность: весь двор объявлен одним `role="img"` с ярлыком на уровне <svg> в WarehouseFloor,
 // поэтому текст внутри вспомогательные технологии не читают — здесь ничего не добавляем, чтобы не
 // изображать доступность, которой нет.
+import { useId } from 'react';
 import { TAG_H, type PlacedBay } from './warehouseLayout';
 
-/** Отступ текста от левого края бирки, мм. */
+/** Отступ текста от края бирки, мм — с обеих сторон. */
 const TAG_PAD = 120;
-/** Номинальная ширина бирки, мм — под `SO-1042 · ×18` при кегле 0.62·TAG_H. Узкий загон обрезает
- *  её до своей ширины: разметка — граница, за которую бирка не выходит. */
+/** Номинальная ширина бирки, мм — под `SO-1042 · ×18` при полном кегле. */
 const TAG_W = 2200;
+/** Полный кегль бирки, мм. */
+const TAG_FONT = TAG_H * 0.62;
+/** Ниже этого кегля ярлык перестаёт читаться: дальше ужимать бессмысленно, работает обрезка. */
+const TAG_FONT_MIN = TAG_H * 0.3;
+/** Средняя ширина знака жирного гротеска в долях кегля. Это ОЦЕНКА, а не замер: во дворе ничего не
+ *  измеряется в JS (тот же принцип, что и у масштаба 1:1 — геометрия выводится, а не меряется), а
+ *  `textLength` растянул бы короткий ярлык на всю плашку вместо того, чтобы ужать длинный. */
+const CHAR_EM = 0.62;
+
+/** Кегль, при котором строка `text` помещается в плашку шириной `plateW` с полями TAG_PAD.
+ *  Короткий ярлык рисуется полным кеглем; длинный ужимается ровно настолько, чтобы влезть, но не
+ *  ниже TAG_FONT_MIN — за этой границей строку подрезает clip. */
+function fitFontSize(text: string, plateW: number): number {
+  const inner = plateW - 2 * TAG_PAD;
+  const fit = inner / Math.max(text.length, 1) / CHAR_EM;
+  return Math.floor(Math.max(TAG_FONT_MIN, Math.min(TAG_FONT, fit)));
+}
 
 export function WarehouseBay({
   bay,
@@ -33,8 +50,17 @@ export function WarehouseBay({
   series: number;
   label: string;
 }) {
-  // Узкий загон (один маленький груз) не должен выпускать бирку за разметку.
+  // Страховка, а не рабочая ветка: сегодня `BAY_MIN_W` (2400) больше `TAG_W` (2200), поэтому загон
+  // уже бирки раскладка выдать не может и `Math.min` не срабатывает. Оставлено на случай, если
+  // минимальная ширина загона когда-нибудь опустится ниже — плашка не должна вылезать за разметку.
   const tagW = Math.min(bay.w, TAG_W);
+  // Форма из §1 дизайна: `{orderId} · ×{units}`. Собирается одной строкой, потому что от её длины
+  // зависит кегль — считать длину по разрозненным JSX-узлам было бы уже не то же самое, что рисуется.
+  const text = `${label} · ×${bay.units}`;
+  const fontSize = fitFontSize(text, tagW);
+  // Обрезка — последний рубеж под патологический ярлык, который не спасает и минимальный кегль.
+  // Не замена ужиманию: обрезанный на полузнаке текст — не решение, а его имитация.
+  const clipId = `bay-tag-${useId().replace(/:/g, '')}`;
   return (
     <g data-testid="warehouse-bay" data-order={bay.orderId} pointerEvents="none">
       <rect
@@ -49,16 +75,20 @@ export function WarehouseBay({
         strokeDasharray="10 7"
         vectorEffect="non-scaling-stroke"
       />
+      <clipPath id={clipId}>
+        <rect x={bay.x} y={bay.y} width={tagW} height={TAG_H} />
+      </clipPath>
       <rect data-tag x={bay.x} y={bay.y} width={tagW} height={TAG_H} fill={`var(--s${series})`} />
       <text
         x={bay.x + TAG_PAD}
         y={bay.y + TAG_H / 2}
         fill="var(--brand-ink)"
-        fontSize={TAG_H * 0.62}
+        fontSize={fontSize}
         fontWeight={700}
         dominantBaseline="central"
+        clipPath={`url(#${clipId})`}
       >
-        {label} ×{bay.units}
+        {text}
       </text>
     </g>
   );
