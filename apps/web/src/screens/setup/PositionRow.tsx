@@ -10,6 +10,12 @@ import { useT } from '../../i18n/LocaleContext';
 import { ruleChip } from './positionRules';
 import { activeStep, applySuggestion, dimsComplete, toCargo, type PositionState } from './setupState';
 
+/** Stable id of the rules panel (wide `<aside>` or narrow drawer — SetupScreen.tsx renders exactly
+ *  one of the two at a time), so the row's chip can point `aria-controls` at whichever is mounted
+ *  (review finding 3, final wave): the chip opens/selects the panel but had no DOM/AX relationship
+ *  to it at all. */
+export const RULES_PANEL_ID = 'setup-rules-panel';
+
 export interface PositionRowProps {
   position: PositionState;
   index: number; // палитра заказа
@@ -98,7 +104,8 @@ export function PositionRow({
         ref={chipRef}
         type="button"
         data-testid="rule-chip"
-        aria-pressed={selected}
+        aria-expanded={selected}
+        aria-controls={RULES_PANEL_ID}
         onClick={onSelect}
         className={`ml-auto inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-caption transition-colors ${
           invalid ? 'border-danger text-danger'

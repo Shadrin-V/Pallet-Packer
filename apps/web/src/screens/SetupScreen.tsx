@@ -16,6 +16,7 @@ import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
 import { RulesPanel } from './setup/RulesPanel';
+import { RULES_PANEL_ID } from './setup/PositionRow';
 import { useIsWide } from './setup/useIsWide';
 
 import {
@@ -434,7 +435,11 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
           ))}
         </div>
         {wide && (
-          <div className="w-full shrink-0 xl:sticky xl:top-4 xl:w-[20rem]">
+          // `id` (review finding 3, final wave): stable target for the chip's `aria-controls`
+          // (PositionRow.tsx) so assistive tech can relate the two, even though the panel sits after
+          // the whole order list in DOM order. `<aside>` names the landmark; `w-80` replaces the
+          // arbitrary `xl:w-[20rem]` with the equivalent step already on the scale (design-system.md).
+          <aside id={RULES_PANEL_ID} className="w-full shrink-0 xl:sticky xl:top-4 xl:w-80">
             <RulesPanel
               // Review finding (Task 5, round 2): RulesPanel keeps its own `saveError` state, and this
               // is now a SINGLE persistent instance (unlike the old per-row accordion, which unmounted
@@ -450,7 +455,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
               onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
               onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
             />
-          </div>
+          </aside>
         )}
       </div>
 
@@ -459,7 +464,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
           above, which fires regardless of where focus is — see that effect's comment for why) and
           focus returns to the chip that opened it (closePanel / the effect's own handler). */}
       {!wide && selectedPosition && (
+        // `id` (review finding 3, final wave): lets the chip's `aria-controls` (PositionRow.tsx)
+        // point at this panel too, same as the wide `<aside>` above.
         <div
+          id={RULES_PANEL_ID}
           role="dialog"
           aria-modal="true"
           aria-label={tt('setup.panel.rules')}
