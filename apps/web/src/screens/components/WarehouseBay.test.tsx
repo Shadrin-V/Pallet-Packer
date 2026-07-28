@@ -9,6 +9,7 @@ const bay: PlacedBay = {
   y: 200,
   w: 3000,
   h: 1530,
+  rowH: 1530,
   units: 18,
   startIndex: 0,
   count: 3,

@@ -65,6 +65,11 @@ export interface PlacedBay {
    *  честнее, чем пересканировать `tiles` по `orderId` на каждый кадр драга. */
   startIndex: number;
   count: number;
+  /** мм — высота самого высокого загона в СТРОКЕ этого загона, а не его собственная `h`. Строка
+   *  смешивает загоны разной высоты, поэтому собственная `h` низкого загона обрывает его полосу
+   *  раньше строки — и точка под ним уезжает к следующему загону. Та же болезнь и то же лекарство,
+   *  что у `PlacedTile.rowH`. Читает `reorderBaysAt`. */
+  rowH: number;
 }
 
 export interface WarehouseFloorLayout {
@@ -231,14 +236,18 @@ export function warehouseFloor(
   let bx = pad;
   let by = pad;
   let rowH = 0;
+  let rowStart = 0;
   for (const g of groups) {
     const flow = flowTiles(g.tiles, byId, contentMax, gap);
     const w = Math.max(flow.width + 2 * BAY_PAD, BAY_MIN_W);
     const h = flow.height + TAG_H + 2 * BAY_PAD;
     if (bx > pad && bx + w > width - pad) {
+      // Строка закрыта — её высота известна только сейчас, поэтому проставляется задним числом.
+      for (let i = rowStart; i < bays.length; i++) bays[i].rowH = rowH;
       bx = pad;
       by += rowH + BAY_GAP;
       rowH = 0;
+      rowStart = bays.length;
     }
     const startIndex = outTiles.length;
     for (const t of flow.tiles) {
@@ -250,6 +259,7 @@ export function warehouseFloor(
       y: by,
       w,
       h,
+      rowH: 0,
       units: g.tiles.reduce((s, { tile: t }) => s + (t.phantom ? 0 : t.units), 0),
       startIndex,
       count: outTiles.length - startIndex,
@@ -257,6 +267,7 @@ export function warehouseFloor(
     bx += w + BAY_GAP;
     rowH = Math.max(rowH, h);
   }
+  for (let i = rowStart; i < bays.length; i++) bays[i].rowH = rowH;
   return { tiles: outTiles, bays, width, height: by + rowH + pad };
 }
 
@@ -312,4 +323,41 @@ export function insertionIndexAt(
   // are built from tiles — so `end - 1` is always a real tile of this bay.
   const at = inside ? bay.startIndex + flowIndexAt(tiles.slice(bay.startIndex, end), point) : end;
   return at < end ? tiles[at].srcIndex : tiles[end - 1].srcIndex + 1;
+}
+
+/** Куда точка попадает в ряду загонов: индекс в [0..bays.length]. Строка читается по `rowH` (полоса
+ *  СТРОКИ, а не собственная высота загона — иначе низкая площадка обрывает полосу раньше времени),
+ *  затем x по центру загона. Точка правее всех — в конец. Тот же двухшаговый разбор, что
+ *  `flowIndexAt` делает для плиток, только мера строки другая. */
+function bayIndexAt(bays: PlacedBay[], point: { x: number; y: number }): number {
+  for (let i = 0; i < bays.length; i++) {
+    const b = bays[i];
+    if (point.y > b.y + b.rowH) continue; // строка этого загона уже позади точки
+    if (point.y < b.y) return i; // точка выше этой строки — вставка перед ней
+    if (point.x <= b.x + b.w / 2) return i; // та же строка, левее центра
+  }
+  return bays.length;
+}
+
+/** Порядок загонов после переноса бирки `orderId` в точку `point` (мм, система координат двора).
+ *  Возвращает ПОЛНЫЙ список id — годится как `bayOrder` целиком (41e.6).
+ *
+ *  Загона нет среди `bays` (исчез между кадрами драга, или группировка выключена) — порядок
+ *  возвращается как есть: жест ничего не ломает, ему просто нечего двигать. */
+export function reorderBaysAt(
+  layout: WarehouseFloorLayout,
+  orderId: string,
+  point: { x: number; y: number },
+): string[] {
+  const order = layout.bays.map((b) => b.orderId);
+  const from = order.indexOf(orderId);
+  if (from < 0) return order;
+  const at = bayIndexAt(layout.bays, point);
+  // Индекс вставки считался при ещё стоящем на месте загоне; после изъятия всё правее него
+  // сдвигается на один. Без поправки перенос на один слот вправо был бы тождественным.
+  const to = at > from ? at - 1 : at;
+  const next = [...order];
+  next.splice(from, 1);
+  next.splice(to, 0, orderId);
+  return next;
 }
