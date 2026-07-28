@@ -39,7 +39,11 @@ describe('PositionRow', () => {
 
   it('omits the count while dimensions are incomplete', () => {
     renderRow({ height: '' });
-    expect(screen.getByTestId('rule-chip')).not.toHaveTextContent('0');
+    // The per-stack count only renders as a dedicated element carrying an aria-label built from
+    // `setup.chip.perStack` ("{count} pro Stapel"); asserting `not.toHaveTextContent('0')` would
+    // also pass if the badge rendered as "1" (or any non-zero count) — it doesn't prove the badge is
+    // absent. Query the marker itself instead.
+    expect(screen.queryByLabelText(/pro Stapel$/)).toBeNull();
   });
 
   it('selects the position when the chip is pressed', async () => {
@@ -50,8 +54,12 @@ describe('PositionRow', () => {
 
   it('no longer renders the orientation select or the state toggle', () => {
     renderRow();
-    expect(screen.queryByRole('combobox', { name: 'cargoType.orientation.label' })).toBeNull();
-    expect(screen.queryByRole('group', { name: 'cargoType.nesting.label' })).toBeNull();
+    // `renderRow` wraps in `<LocaleProvider initial="de">`, so accessible names are the real German
+    // dictionary values ("Ausrichtung" / "Verschachtelung" — de.ts), never the raw translation keys.
+    // Querying by key here would never match regardless of what the component renders, making these
+    // assertions vacuous (see review finding 2: proven with a temporary revert, see task report).
+    expect(screen.queryByRole('combobox', { name: 'Ausrichtung' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Verschachtelung' })).toBeNull();
   });
 
   it('has no hardcoded English label left', () => {
