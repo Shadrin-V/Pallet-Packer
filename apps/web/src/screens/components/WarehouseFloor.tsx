@@ -255,6 +255,7 @@ export function WarehouseFloor({
                 series={orderColorToken(slot).series}
                 label={bay.orderId || tt('warehouse.bay.noOrder')}
                 reorderLabel={tt('warehouse.bay.reorder')}
+                carried={dragBay?.orderId === bay.orderId}
                 onTagDown={
                   onBayOrderChange
                     ? (e) => {

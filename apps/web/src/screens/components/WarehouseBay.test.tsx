@@ -131,8 +131,24 @@ describe('WarehouseBay', () => {
     expect(onTagDown).toHaveBeenCalledTimes(1);
   });
 
-  // 41e.2 §5: двор — один role="img", поэтому без явного имени ручка для скринридера не существует.
-  it('у ручки есть доступное имя', () => {
+  // Курсор — вся обратная связь ручки о том, что жест ИДЁТ: сама бирка едет вместе с загоном, но
+  // сомкнувшаяся рука отличает «тяну» от «могу потянуть».
+  it('курсор ручки смыкается на время переноса своего загона', () => {
+    const idle = drawGrip(vi.fn()).querySelector('[data-tag-grip]') as SVGElement;
+    expect(idle.style.cursor).toBe('grab');
+
+    const carried = render(
+      <svg>
+        <WarehouseBay bay={bay} series={2} label={bay.orderId} onTagDown={vi.fn()} reorderLabel="x" carried />
+      </svg>,
+    ).container.querySelector('[data-tag-grip]') as SVGElement;
+    expect(carried.style.cursor).toBe('grabbing');
+  });
+
+  // Роль и имя стоят под будущую клавиатурную операбельность (LKWkalk-e8x). Сами по себе доступной
+  // ручку они не делают — она потомок `role="img"` всего двора и из дерева доступности вырезана;
+  // тест пришпиливает разметку, а не заявляет, что скринридер до неё дотягивается.
+  it('у ручки есть роль и имя — задел под клавиатуру', () => {
     const c = drawGrip(vi.fn());
     const grip = c.querySelector('[data-tag-grip]')!;
     expect(grip.getAttribute('role')).toBe('button');

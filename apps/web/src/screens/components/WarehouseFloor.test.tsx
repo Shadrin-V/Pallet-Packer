@@ -504,6 +504,20 @@ describe('WarehouseFloor — перенос загонов (LKWkalk-36f)', () =>
     expect(onBayOrderChange).toHaveBeenCalledWith(['', 'SO-1']);
   });
 
+  it('на время жеста курсор смыкается — и только у того загона, который тянут', () => {
+    renderYard();
+    const cursorOf = (orderId: string) => (grip(orderId) as SVGElement).style.cursor;
+    expect(cursorOf('SO-3')).toBe('grab');
+
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    expect(cursorOf('SO-3')).toBe('grabbing');
+    expect(cursorOf('SO-1')).toBe('grab');
+
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(cursorOf('SO-3')).toBe('grab');
+  });
+
   it('загон едет вместе со своими стопками, а не одной биркой', () => {
     renderYard();
     const tileX = (label: string) =>

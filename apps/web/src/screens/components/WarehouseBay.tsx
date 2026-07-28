@@ -48,6 +48,7 @@ export function WarehouseBay({
   label,
   onTagDown,
   reorderLabel,
+  carried = false,
 }: {
   bay: PlacedBay;
   /** Слот палитры 1..8 — тот же, что у стопок этого заказа. */
@@ -59,6 +60,10 @@ export function WarehouseBay({
   /** Доступное имя ручки (`warehouse.bay.reorder`). Резолвит вызывающий — компонент, как и с
    *  `label`, локалей не читает. */
   reorderLabel?: string;
+  /** Тянут ли ЭТОТ загон прямо сейчас: курсор на ручке становится `grabbing` — рука сомкнулась.
+   *  Загон презентационный и про жест сам не знает: состояние спускает `WarehouseFloor`, у которого
+   *  жест и живёт. */
+  carried?: boolean;
 }) {
   // Страховка, а не рабочая ветка: сегодня `BAY_MIN_W` (1600) больше `TAG_W` (1200), поэтому загон
   // уже бирки раскладка выдать не может и `Math.min` не срабатывает. Оставлено на случай, если
@@ -95,11 +100,13 @@ export function WarehouseBay({
       <g
         data-tag-grip
         pointerEvents={onTagDown ? 'auto' : undefined}
-        style={onTagDown ? { cursor: 'grab' } : undefined}
+        style={onTagDown ? { cursor: carried ? 'grabbing' : 'grab' } : undefined}
         onPointerDown={onTagDown}
-        // Двор — один `role="img"`, поэтому у интерактивной ручки должно быть собственное имя,
-        // иначе для скринридера её нет (41e.2 §5). Без жеста ни роли, ни имени: неинтерактивная
-        // разметка не должна изображать кнопку.
+        // Роль и имя лежат здесь ЗАРАНЕЕ — под клавиатурную операбельность, которой ещё нет
+        // (LKWkalk-e8x). Сами по себе доступной ручку они не делают: она потомок `role="img"` всего
+        // двора, то есть вырезана из дерева доступности, и объявленная «кнопка» сегодня ни фокуса не
+        // берёт, ни нажатия с клавиатуры. Без жеста нет и их: неинтерактивная разметка не должна
+        // изображать кнопку даже в разметке.
         role={onTagDown ? 'button' : undefined}
         aria-label={onTagDown ? reorderLabel : undefined}
       >
