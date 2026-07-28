@@ -22,7 +22,7 @@
 //
 // It is a workbench, not a document: screen-only (print:hidden), and the PNG export ignores it — it
 // picks up `svg[data-cutaway]` only, and nothing here carries that marker.
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { type Load } from '@shadrin-v/engine';
 import { orderColorToken } from '../../lib/orderColor';
 import { useT } from '../../i18n/LocaleContext';
@@ -32,7 +32,7 @@ import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
 import { WarehouseBackdrop, FLOOR } from './WarehouseBackdrop';
 import { WarehouseBay } from './WarehouseBay';
-import { warehouseFloor, type BufferTile } from './warehouseLayout';
+import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
 
@@ -49,6 +49,8 @@ export function WarehouseFloor({
   phantomAt,
   grouped = false,
   onGroupedChange,
+  bayOrder,
+  onBayOrderChange,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -69,6 +71,11 @@ export function WarehouseFloor({
   /** Отсутствует — переключатель не рисуется (двор без органов управления, например в тестах
    *  соседних экранов). */
   onGroupedChange?: (next: boolean) => void;
+  /** Пользовательский порядок загонов (41e.6): упомянутые заказы идут первыми. Владеет им
+   *  `LadeplanScreen` — тот же список обязаны получать все его вызовы `warehouseFloor`. */
+  bayOrder?: string[];
+  /** Перенос загона завершён. Отсутствует — бирки инертны, переноса загонов нет. */
+  onBayOrderChange?: (next: string[]) => void;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -76,6 +83,71 @@ export function WarehouseFloor({
   const total = tiles.reduce((s, t) => s + t.units, 0);
   const [sel, setSel] = useState<number | null>(null);
   const downAt = useRef<{ x: number; y: number } | null>(null);
+  // Жест переноса загона живёт ЗДЕСЬ, а не в родителе, в отличие от переноса стопки: тот уходит на
+  // разрез, и ни один элемент не видит его целиком, — а этот начинается и кончается во дворе.
+  // `order` — ПРОВИЗОРНЫЙ порядок: им рисуется двор, пока идёт жест, и это и есть обратная связь
+  // (загон едет целиком со стопками, соседи расступаются). Родителю он не поднимается на каждый
+  // кадр: тому он нужен только по завершении, а перерисовывать весь экран на каждый pointermove
+  // незачем.
+  const [dragBay, setDragBay] = useState<
+    { orderId: string; pointerId: number; order: string[] } | null
+  >(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  /** Точка указателя в мм двора. Как и всюду в проекте, через CTM самого svg, а не через замеры
+   *  бокса: viewBox и есть система координат раскладки. `null`, когда SVG-геометрии нет. */
+  const toYardMm = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM?.();
+    if (!svg || !ctm || !svg.createSVGPoint) return null;
+    const p = svg.createSVGPoint();
+    p.x = clientX;
+    p.y = clientY;
+    const q = p.matrixTransform(ctm.inverse());
+    return { x: q.x, y: q.y };
+  };
+
+  // Слушатели глобальные и без списка зависимостей — тот же приём, что у переноса стопки в
+  // LadeplanScreen: жест продолжается и когда указатель ушёл с бирки, а переподписка на каждый
+  // рендер держит `floor` и `dragBay` в замыкании свежими.
+  useEffect(() => {
+    if (!dragBay) return;
+    /** Чужой указатель жеста не ведёт: второй палец не должен ни двигать, ни завершать этот
+     *  перенос. `pointerId` фиксируется на `pointerdown` и дальше только сверяется. */
+    const mine = (e: PointerEvent) => e.pointerId === dragBay.pointerId;
+    const orderAt = (e: PointerEvent) => {
+      const pt = toYardMm(e.clientX, e.clientY);
+      return pt ? reorderBaysAt(floor, dragBay.orderId, pt) : null;
+    };
+    const move = (e: PointerEvent) => {
+      if (!mine(e)) return;
+      const order = orderAt(e);
+      if (order) setDragBay({ ...dragBay, order });
+    };
+    const up = (e: PointerEvent) => {
+      if (!mine(e)) return;
+      // Порядок считается от координат ОТПУСКАНИЯ, а не берётся из состояния последнего
+      // `pointermove`: браузер вправе слить движения и отпустить указатель там, где ни одного
+      // `pointermove` не пришло, — и тогда зафиксировался бы предпоследний слот. Перенос стопки в
+      // LadeplanScreen по той же причине резолвит бросок из `pointerup` по `e.clientX/clientY`.
+      // Точка вне SVG-геометрии (её нет) — падаем на последний известный порядок.
+      onBayOrderChange?.(orderAt(e) ?? dragBay.order);
+      setDragBay(null);
+    };
+    // Указатель забрала система (жест ОС, переключение приложения): фиксировать нечего, а без этой
+    // ветки провизорная раскладка залипла бы до следующего клика.
+    const cancel = (e: PointerEvent) => {
+      if (mine(e)) setDragBay(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+  });
 
   // The phantom is spliced into the FLOW, not overlaid afterwards — inserting it before real tiles
   // at `phantomAt.index` is what pushes them aside in `warehouseFloor`'s row-wrap layout, the same way
@@ -83,7 +155,7 @@ export function WarehouseFloor({
   const renderTiles: BufferTile[] = phantomAt
     ? [...tiles.slice(0, phantomAt.index), { ...phantomAt.tile, phantom: true }, ...tiles.slice(phantomAt.index)]
     : tiles;
-  const floor = warehouseFloor(load, renderTiles, { grouped });
+  const floor = warehouseFloor(load, renderTiles, { grouped, bayOrder: dragBay?.order ?? bayOrder });
   // Сколько различимых заказов лежит во дворе — по тому же ключу, по которому группирует раскладка
   // (груз без номера — это тоже группа). Меньше двух — делить нечего, и переключатель был бы мёртвым.
   const distinctOrders = new Set(
@@ -134,6 +206,7 @@ export function WarehouseFloor({
           asphalt to the rounded corners, and the asphalt tone is a fallback behind the svg. */}
       <div className="overflow-hidden rounded-card" style={{ background: FLOOR }}>
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
           width="100%"
           preserveAspectRatio="xMidYMid meet"
@@ -162,6 +235,19 @@ export function WarehouseFloor({
                 bay={bay}
                 series={orderColorToken(slot).series}
                 label={bay.orderId || tt('warehouse.bay.noOrder')}
+                reorderLabel={tt('warehouse.bay.reorder')}
+                onTagDown={
+                  onBayOrderChange
+                    ? (e) =>
+                        // Отсчёт ведётся от того, что СЕЙЧАС на экране: порядок по умолчанию уже
+                        // мог быть перекрыт пропом, и переносить надо видимую расстановку.
+                        setDragBay({
+                          orderId: bay.orderId,
+                          pointerId: e.pointerId,
+                          order: floor.bays.map((b) => b.orderId),
+                        })
+                    : undefined
+                }
               />
             );
           })}
