@@ -952,6 +952,118 @@ describe('LadeplanScreen — mergeBayOrder (порядок загонов сли
   });
 });
 
+// А это — сама ПРОВОДКА: `setBayOrder(prev => mergeBayOrder(next, prev))`. Правило выше её не
+// закрепляет: замени слияние на голое `setBayOrder(next)`, и все тесты остаются зелёными, потому
+// что каждый из них сливает в ПУСТОЙ прежний порядок.
+//
+// Различить слияние и замену можно только двумя «забытыми» заказами, чей взаимный порядок разошёлся
+// с заявкой: одинокий забытый заказ обе ветки дописывают в конец (слияние — в `bayOrder`, замена —
+// уже в `groupByOrder`, как неупомянутого), и двор выходит один и тот же. Отсюда четыре заказа и
+// рейс двух стопок в кузов и обратно — стенд дорогой, но дешевле его этой проводки не поймать.
+describe('LadeplanScreen — bayOrder помнит заказ, уехавший в кузов между жестами', () => {
+  // Кузов нарочно неглубокий (600 мм): бросок «наружу» разрез считает по СВОИМ границам
+  // (0,0)–(length, width), и в широком кузове точка над двором оказалась бы всё ещё внутри него.
+  const V4 = { id: 'v4', name: 'LKW', length: 13600, width: 600, height: 1000 };
+  const box = (id: string, name: string, orderId: string) => ({
+    id,
+    name,
+    length: 500,
+    width: 500,
+    height: 500,
+    quantity: 1,
+    rotation: 'none' as const,
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt' as const,
+    orderId,
+  });
+  const fourLoad: Load = {
+    vehicle: V4,
+    cargo: [box('a', 'A', 'SO-1'), box('b', 'B', 'SO-2'), box('c', 'C', 'SO-3'), box('d', 'D', 'SO-4')],
+  };
+  // Кузов пуст, все четыре стопки во дворе: четыре загона в одну строку (по 1600 мм, проход 400).
+  const fourLayout: Layout = {
+    placements: [],
+    unplaced: [
+      { cargoTypeId: 'a', count: 1 },
+      { cargoTypeId: 'b', count: 1 },
+      { cargoTypeId: 'c', count: 1 },
+      { cargoTypeId: 'd', count: 1 },
+    ],
+    metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.14.0',
+  };
+
+  const bays = () =>
+    [...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'));
+  const yardSvg = () => document.querySelector('svg[data-warehouse]')!;
+  const holdSvg = (container: HTMLElement) => container.querySelector('svg[data-cutaway="top"] svg')!;
+  const dragBayTo = (orderId: string, x: number, y: number) => {
+    const grip = document.querySelector(`[data-testid="warehouse-bay"][data-order="${orderId}"] [data-tag-grip]`)!;
+    fireEvent.pointerDown(grip, { clientX: 2400, clientY: 300 });
+    fireEvent.pointerMove(yardSvg(), { clientX: x, clientY: y });
+    fireEvent.pointerUp(yardSvg(), { clientX: x, clientY: y });
+  };
+  /** Стопку двора — в кузов: нажатие на плитку, движение и отпускание над видом сверху. */
+  const carryToHold = (container: HTMLElement, name: string, x: number, y: number) => {
+    const tile = screen
+      .getAllByTestId('warehouse-tile')
+      .find((t) => t.getAttribute('aria-label')!.startsWith(name))!;
+    fireEvent.pointerDown(tile, { clientX: 300, clientY: 600 });
+    fireEvent.pointerMove(holdSvg(container), { clientX: x, clientY: y });
+    fireEvent.pointerUp(holdSvg(container), { clientX: x, clientY: y });
+  };
+  /** И обратно: стопку кузова — во двор. */
+  const carryToYard = (container: HTMLElement, cargoTypeId: string) => {
+    const svg = holdSvg(container);
+    fireEvent.pointerDown(svg.querySelector(`[data-stack-ref^="${cargoTypeId}@"]`)!, { clientX: 600, clientY: 300 });
+    // Отпускание НИЖЕ кузова (глубина 600) и над двором — это и есть «наружу».
+    fireEvent.pointerMove(svg, { clientX: 300, clientY: 1500 });
+    fireEvent.pointerUp(svg, { clientX: 300, clientY: 1500 });
+  };
+
+  it('второй жест не стирает порядок, зафиксированный первым, для отсутствующих заказов', () => {
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
+    const origRect = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, right: 4000, top: 0, bottom: 2000, width: 4000, height: 2000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={fourLoad} layout={fourLayout} />
+        </LocaleProvider>,
+      );
+      expect(bays()).toEqual(['SO-1', 'SO-2', 'SO-3', 'SO-4']);
+
+      // Жест 1: SO-4 — в левую половину SO-3 (центр 5000). Взаимный порядок SO-4 и SO-3 теперь
+      // ОБРАТЕН заявке — только этим их и различить, когда оба выпадут из списка жеста.
+      dragBayTo('SO-4', 4500, 600);
+      expect(bays()).toEqual(['SO-1', 'SO-2', 'SO-4', 'SO-3']);
+
+      // Оба уезжают в кузов: их загоны исчезают, и следующий жест о них уже не знает.
+      carryToHold(container, 'C', 600, 300);
+      carryToHold(container, 'D', 1600, 300);
+      expect(bays()).toEqual(['SO-1', 'SO-2']);
+
+      // Жест 2: SO-2 в начало. Его список — только ['SO-2', 'SO-1'].
+      dragBayTo('SO-2', 400, 600);
+      expect(bays()).toEqual(['SO-2', 'SO-1']);
+
+      // Стопки возвращаются во двор — и с ними должен вернуться порядок, заданный жестом 1.
+      carryToYard(container, 'c');
+      carryToYard(container, 'd');
+      // Замена вместо слияния дала бы ['SO-2', 'SO-1', 'SO-3', 'SO-4']: забытые заказы встали бы по
+      // заявке, а не так, как их поставил пользователь.
+      expect(bays()).toEqual(['SO-2', 'SO-1', 'SO-4', 'SO-3']);
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  });
+});
+
 describe('LadeplanScreen — figures (D1 + D3)', () => {
   const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
 
