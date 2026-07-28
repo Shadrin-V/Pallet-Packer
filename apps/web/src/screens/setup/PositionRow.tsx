@@ -1,7 +1,6 @@
 // Строка позиции (LKWkalk-5nb, спека §2): только то, что вбивается руками, плюс чип правил.
 // Правила, объяснение расчёта и каталог живут в RulesPanel — сюда они не возвращаются.
 import { computeStack, type StackPreview, type Vehicle } from '@shadrin-v/engine';
-import type { TranslationKey } from '@shadrin-v/i18n';
 import { ArticleCombobox } from '../components/ArticleCombobox';
 import { ArmedDelete } from '../components/ArmedDelete';
 import { fillTemplate, stepInvalid } from '../components/stackFormula';
@@ -16,7 +15,6 @@ export interface PositionRowProps {
   index: number; // палитра заказа
   vehicle: Vehicle;
   selected: boolean;
-  tt: (k: TranslationKey) => string;
   onSelect: () => void; // клик по чипу — выбрать строку и открыть панель
   onChange: (patch: Partial<PositionState>) => void;
   armed: boolean;
@@ -33,12 +31,12 @@ export interface PositionRowProps {
 }
 
 export function PositionRow({
-  position: p, index, vehicle, selected, tt, onSelect, onChange, armed, onArm, onRemove, chipRef,
+  position: p, index, vehicle, selected, onSelect, onChange, armed, onArm, onRemove, chipRef,
 }: PositionRowProps) {
-  // Chip text always comes from the live locale, never from the caller's `tt` — the rule chip is
-  // the row's one load-bearing piece of prose and must read correctly even if a caller (a future
-  // task, a test) hands in a stand-in translator for its own labels.
-  const rtt = useT();
+  // One translation source for the whole row — the dominant pattern in this repo (ArticleCombobox,
+  // WarehouseFloor, Legend, HeroHeader, EmptyPlan, ...). Threading `tt` down as a prop is a
+  // SetupScreen.tsx-only holdover, and this component is part of dismantling that file.
+  const tt = useT();
   const invalid = stepInvalid(p.state, activeStep(p), p.height);
   let preview: StackPreview | null = null;
   if (dimsComplete(p) && !invalid) {
@@ -92,10 +90,10 @@ export function PositionRow({
             : selected ? 'border-brand text-brand' : 'border-line bg-sub text-muted hover:border-brand hover:text-brand'
         }`}
       >
-        <span>{fillTemplate(rtt(chip.text.key), chip.text.vars)}</span>
-        {chip.restricted && <span aria-label={rtt('setup.chip.restricted')}>⊘</span>}
+        <span>{fillTemplate(tt(chip.text.key), chip.text.vars)}</span>
+        {chip.restricted && <span aria-label={tt('setup.chip.restricted')}>⊘</span>}
         {chip.count !== null && (
-          <span className="font-semibold tabular-nums text-ink" aria-label={fillTemplate(rtt('setup.chip.perStack'), { count: chip.count })}>
+          <span className="font-semibold tabular-nums text-ink" aria-label={fillTemplate(tt('setup.chip.perStack'), { count: chip.count })}>
             ↕ {chip.count}
           </span>
         )}
