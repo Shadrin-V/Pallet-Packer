@@ -1184,3 +1184,19 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
   });
 });
+
+describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
+  it('closes the narrow-screen drawer on Escape and returns focus to the chip', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+    renderSetup(() => {});
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip);
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(chip).toHaveFocus();
+    vi.unstubAllGlobals();
+  });
+});

@@ -28,6 +28,9 @@ export interface OrderCardProps {
    *  состояние либо разбирается позиция другого заказа). */
   selectedPositionId: string | null;
   onSelectPosition: (pid: string) => void;
+  /** Registers/unregisters a position's chip button with the parent, keyed by position id — Task 6
+   *  uses this to return focus to the chip that opened the narrow-screen drawer when it closes. */
+  onChipRef?: (pid: string, el: HTMLButtonElement | null) => void;
 }
 
 export function OrderCard({
@@ -47,6 +50,7 @@ export function OrderCard({
   onRemovePosition,
   selectedPositionId,
   onSelectPosition,
+  onChipRef,
 }: OrderCardProps) {
   const tt = useT();
   const colorVar = `var(--s${((index % 8) + 1)})`;
@@ -123,6 +127,7 @@ export function OrderCard({
             armed={armed?.kind === 'position' && armed.key === p.id}
             onArm={() => onArm({ kind: 'position', key: p.id })}
             onRemove={() => onRemovePosition(p.id)}
+            chipRef={onChipRef ? (el) => onChipRef(p.id, el) : undefined}
           />
         ))}
       </div>

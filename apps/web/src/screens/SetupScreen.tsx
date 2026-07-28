@@ -16,6 +16,7 @@ import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
 import { RulesPanel } from './setup/RulesPanel';
+import { useIsWide } from './setup/useIsWide';
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
@@ -88,6 +89,35 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   const [selection, setSelection] = useState<Selection | null>(null);
   const selectedOrder = orders.find((o) => o.key === selection?.orderKey) ?? null;
   const selectedPosition = selectedOrder?.positions.find((p) => p.id === selection?.positionId) ?? null;
+
+  // Below the two-column threshold (spec §7) the panel becomes a drawer over the list instead of a
+  // sticky sidebar. `wide` picks the layout; `chipRefs` remembers each row's chip button so closing
+  // the drawer can return focus to it — otherwise a keyboard user is dropped onto <body> (the same
+  // class of bug fixed for ArmedDelete in LKWkalk-yxn).
+  const wide = useIsWide();
+  const chipRefs = useRef(new Map<string, HTMLButtonElement>());
+  const closePanel = () => {
+    const id = selection?.positionId;
+    setSelection(null);
+    if (id) chipRefs.current.get(id)?.focus();
+  };
+  // Esc closes the drawer. A document-level listener (not onKeyDown on the dialog element) because
+  // opening the drawer does not move focus into it — the chip that opened it keeps focus, so a
+  // handler scoped to the dialog's own subtree would never see the keydown bubble through it.
+  // Depends on `selection` (not just the open/closed flag) so switching to a different row while
+  // the drawer stays open still returns focus to THAT row's chip, not a stale one.
+  const drawerOpen = !wide && !!selectedPosition;
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closePanel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // `closePanel` closes over `selection`, so it must be treated as reactive: the effect is
+    // re-established (with a fresh closePanel closure) whenever selection changes, so switching to a
+    // different row while the drawer stays open still returns focus to THAT row's chip.
+  }, [drawerOpen, selection]);
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -337,8 +367,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       )}
 
       {/* Master-detail (spec §7): order cards + the selected position's rules panel. From xl
-          (1280px) side by side, panel ≈320px and sticky; below that threshold, single column —
-          the panel simply follows the list. */}
+          (1280px) side by side, panel ≈320px and sticky. Below that threshold (`!wide`) the list
+          keeps the full width and the panel becomes a drawer over it instead — there simply isn't
+          room for two columns (useIsWide). */}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {orders.map((o, oi) => (
@@ -360,17 +391,46 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
               onRemovePosition={(pid) => removePosition(o.key, pid)}
               selectedPositionId={selection?.orderKey === o.key ? selection.positionId : null}
               onSelectPosition={(pid) => setSelection({ orderKey: o.key, positionId: pid })}
+              onChipRef={(pid, el) => {
+                if (el) chipRefs.current.set(pid, el);
+                else chipRefs.current.delete(pid);
+              }}
             />
           ))}
         </div>
-        <div className="w-full shrink-0 xl:sticky xl:top-4 xl:w-[20rem]">
+        {wide && (
+          <div className="w-full shrink-0 xl:sticky xl:top-4 xl:w-[20rem]">
+            <RulesPanel
+              // Review finding (Task 5, round 2): RulesPanel keeps its own `saveError` state, and this
+              // is now a SINGLE persistent instance (unlike the old per-row accordion, which unmounted
+              // with the row). Without a `key` tied to the selected row, a failed save on row A would
+              // still show "Speichern fehlgeschlagen…" once the user selected row B, though B was never
+              // saved. Keying on the selection forces React to remount (and so reset saveError) on
+              // every row change, and on entering/leaving the empty state.
+              key={selection ? `${selection.orderKey}/${selection.positionId}` : 'empty'}
+              position={selectedPosition}
+              orderId={selectedOrder?.orderId ?? null}
+              index={selectedOrder?.colorIndex ?? 0}
+              vehicle={vehicle}
+              onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
+              onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Drawer mode (Task 6, spec §7): below the two-column threshold the panel opens over the list
+          on selection instead of sitting beside it. Esc closes it (via the document-level effect
+          above, which fires regardless of where focus is — see that effect's comment for why) and
+          focus returns to the chip that opened it (closePanel / the effect's own handler). */}
+      {!wide && selectedPosition && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={tt('setup.panel.rules')}
+          className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto bg-card shadow-pop"
+        >
           <RulesPanel
-            // Review finding (Task 5, round 2): RulesPanel keeps its own `saveError` state, and this
-            // is now a SINGLE persistent instance (unlike the old per-row accordion, which unmounted
-            // with the row). Without a `key` tied to the selected row, a failed save on row A would
-            // still show "Speichern fehlgeschlagen…" once the user selected row B, though B was never
-            // saved. Keying on the selection forces React to remount (and so reset saveError) on
-            // every row change, and on entering/leaving the empty state.
             key={selection ? `${selection.orderKey}/${selection.positionId}` : 'empty'}
             position={selectedPosition}
             orderId={selectedOrder?.orderId ?? null}
@@ -378,9 +438,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             vehicle={vehicle}
             onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
             onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+            onClose={closePanel}
           />
         </div>
-      </div>
+      )}
 
       {/* Duplicate add-order action below the last order (E10). */}
       <div className="mt-3 flex justify-center">
