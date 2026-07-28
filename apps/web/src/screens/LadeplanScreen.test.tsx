@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { calculateLayout, findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
-import { LadeplanScreen } from './LadeplanScreen';
+import { LadeplanScreen, mergeBayOrder } from './LadeplanScreen';
 import { installSvgGeometry } from './components/svgTestGeometry';
 import * as exportPlan from '../lib/exportPlan';
 
@@ -779,6 +779,16 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
     }
   };
 
+  /** Тянет бирку загона `orderId` в точку (мм = client px под installSvgGeometry). События движения
+   *  шлются на сам двор и всплывают к глобальным слушателям — как в тестах переноса стопки. */
+  const dragBayTo = (orderId: string, x: number, y: number) => {
+    const grip = document.querySelector(`[data-testid="warehouse-bay"][data-order="${orderId}"] [data-tag-grip]`)!;
+    const yard = document.querySelector('svg[data-warehouse]')!;
+    fireEvent.pointerDown(grip, { clientX: 2400, clientY: 300 });
+    fireEvent.pointerMove(yard, { clientX: x, clientY: y });
+    fireEvent.pointerUp(yard, { clientX: x, clientY: y });
+  };
+
   it('уводит стопку в конец своего уже существующего загона, а не туда, куда воткнул бы общий поток', () => {
     // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
     localStorage.setItem('ladungsplaner.yardGrouping', 'true');
@@ -826,6 +836,119 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
 
       fireEvent.pointerUp(svg, { clientX: 100, clientY: 100 });
     });
+  });
+
+  // Грабли 77g (находка №4), теперь втроём: `warehouseFloor` в этом экране вызывается ТРИЖДЫ —
+  // отрисовка (внутри WarehouseFloor), `phantomAt` и `onDropOutside`. Забудь `bayOrder` в любом из
+  // них — и магнит будет целиться в загоны, которых на экране нет. Точка броска (300, 600) лежит
+  // внутри ПЕРВОГО загона двора: после переноса это чужой для C загон SO-2, и C обязана уйти в
+  // хвост своего; без `bayOrder` тот же расчёт считает первым загоном SO-1 и втыкает C перед A.
+  it('после переноса загонов бросок целится в НОВУЮ расстановку, а не в порядок по умолчанию', () => {
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
+    withTwoBaysRig((container) => {
+      dragBayTo('SO-2', 300, 600);
+      expect([...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'))).toEqual(['SO-2', 'SO-1']);
+
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 300, clientY: 600 });
+      fireEvent.pointerUp(svg, { clientX: 300, clientY: 600 });
+
+      const labels = screen.getAllByTestId('warehouse-tile').map((t) => t.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('B'),
+        expect.stringContaining('A'),
+        expect.stringContaining('C'),
+      ]);
+    });
+  });
+
+  it('превью фантома тоже знает о переносе загонов', () => {
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
+    withTwoBaysRig((container) => {
+      dragBayTo('SO-2', 300, 600);
+      const own = document.querySelector('[data-testid="warehouse-bay"][data-order="SO-1"] [data-outline]')!;
+      const bx = Number(own.getAttribute('x'));
+
+      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 300, clientY: 600 });
+
+      // Фантом — внутри переехавшего загона SO-1, а не там, где тот стоял по умолчанию.
+      const phantomX = Number(screen.getByTestId('warehouse-phantom').getAttribute('x'));
+      expect(phantomX).toBeGreaterThanOrEqual(bx);
+      expect(phantomX).toBeLessThanOrEqual(bx + Number(own.getAttribute('width')));
+      // И именно ПРАВЕЕ уже стоящей там A — то есть в хвосте своего загона. Это и есть
+      // различающая проверка: забудь `bayOrder` в `phantomAt`, и точка (300, 600) прочтётся как
+      // «внутри загона SO-1, левее центра A», а фантом встанет ПЕРЕД A. Одной только рамкой
+      // загона эти два исхода не различить — она в обоих случаях та же.
+      const aX = Number(
+        screen
+          .getAllByTestId('warehouse-tile')
+          .find((t) => t.getAttribute('aria-label')!.startsWith('A'))!
+          .querySelector('rect')!
+          .getAttribute('x'),
+      );
+      expect(phantomX).toBeGreaterThan(aX);
+
+      fireEvent.pointerUp(svg, { clientX: 300, clientY: 600 });
+    });
+  });
+
+  // Порядок загонов говорил о ПРЕЖНЕМ плане: новый пересчёт может не содержать этих заказов вовсе.
+  it('новый layout сбрасывает порядок загонов вместе с bufferOrder', () => {
+    localStorage.setItem('ladungsplaner.yardGrouping', 'true');
+    const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 4000, height: 2000 });
+    const origRect = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, right: 4000, top: 0, bottom: 2000, width: 4000, height: 2000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      const { rerender } = render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={twoBaysLoad} layout={twoBaysLayout} />
+        </LocaleProvider>,
+      );
+      const grip = document.querySelector('[data-testid="warehouse-bay"][data-order="SO-2"] [data-tag-grip]')!;
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      fireEvent.pointerDown(grip, { clientX: 2400, clientY: 300 });
+      fireEvent.pointerMove(yard, { clientX: 300, clientY: 600 });
+      fireEvent.pointerUp(yard, { clientX: 300, clientY: 600 });
+      expect([...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'))).toEqual(['SO-2', 'SO-1']);
+
+      // Свежий объект раскладки — тот самый сигнал «план пересчитан».
+      rerender(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={twoBaysLoad} layout={{ ...twoBaysLayout }} />
+        </LocaleProvider>,
+      );
+      expect([...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'))).toEqual(['SO-1', 'SO-2']);
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = origRect;
+      restoreSvg();
+    }
+  });
+});
+
+// Спека §3, решение 7. Жест знает только про загоны, которые СЕЙЧАС во дворе, а `bayOrder` помнит и
+// те заказы, чьи стопки временно уехали в кузов, — поэтому фиксируется слияние, а не замена.
+//
+// Почему это проверяется на самом правиле, а не броском через двор: одинокий «забытый» заказ в
+// отрисовке неразличим. Слияние дописывает его В КОНЕЦ, а `groupByOrder` при замене дописывает
+// неупомянутые тоже в конец — обе ветки дадут один и тот же двор. Различить их можно только двумя
+// отсутствующими заказами, чей взаимный порядок разошёлся с заявкой, то есть четырьмя заказами и
+// четырьмя рейсами стопок в кузов и обратно — стенд, который проверял бы транспорт, а не правило.
+describe('LadeplanScreen — mergeBayOrder (порядок загонов сливается, а не заменяется)', () => {
+  it('заказ, которого нет в списке жеста, переживает фиксацию', () => {
+    expect(mergeBayOrder(['SO-2', 'SO-1'], ['SO-3', 'SO-1', 'SO-2'])).toEqual(['SO-2', 'SO-1', 'SO-3']);
+  });
+
+  it('уцелевшие сохраняют свой прежний относительный порядок', () => {
+    expect(mergeBayOrder(['SO-1'], ['SO-4', 'SO-3', 'SO-1'])).toEqual(['SO-1', 'SO-4', 'SO-3']);
+  });
+
+  it('первый жест поверх пустого порядка — это просто список жеста', () => {
+    expect(mergeBayOrder(['SO-2', 'SO-1'], [])).toEqual(['SO-2', 'SO-1']);
   });
 });
 

@@ -118,6 +118,20 @@ const EDIT_ERROR_KEYS = [
   'ERR_EDIT_NOTHING_TO_PLACE',
 ] as const;
 type EditErrorKey = (typeof EDIT_ERROR_KEYS)[number];
+/** Новый порядок загонов поверх прежнего (41e.6, спека §3 решение 7): сначала список из жеста,
+ *  затем те id прежнего `bayOrder`, которых в нём нет, в прежнем относительном порядке.
+ *
+ *  Слияние, а не замена: жест знает только про загоны, которые СЕЙЧАС во дворе, а `bayOrder` помнит
+ *  и заказы, чьи стопки временно уехали в кузов. Замена стёрла бы их, и такой заказ вернулся бы во
+ *  двор на место по умолчанию, хотя пользователь его уже переставлял. Чистить список не нужно:
+ *  `groupByOrder` молча игнорирует id, которых в заявке нет.
+ *
+ *  Экспортируется ради теста: в отрисовке двора одинокий «забытый» заказ неразличим — слияние
+ *  дописывает его в конец, и туда же его кладёт `groupByOrder` как неупомянутого. */
+export function mergeBayOrder(next: string[], prev: string[]): string[] {
+  return [...next, ...prev.filter((id) => !next.includes(id))];
+}
+
 const isEditErrorKey = (code: string): code is EditErrorKey =>
   (EDIT_ERROR_KEYS as readonly string[]).includes(code);
 
@@ -145,6 +159,7 @@ export function LadeplanScreen({
     setEdited(layout);
     setEditError(null); // the refusal spoke about the previous layout; this one is fresh
     setBufferOrder([]); // the release order spoke about the previous plan's buffer; this one is fresh
+    setBayOrder([]); // порядок загонов говорил о прежнем плане — в новом этих заказов может не быть
   }, [layout]);
   // The top view keeps its own selection and drag state, and those are only meaningful for the plan
   // they were made on: a selection is a list of floor coordinates, and a recompute repacks the hold
@@ -234,6 +249,14 @@ export function LadeplanScreen({
     for (const q of queues.values()) out.push(...q);
     return out;
   })();
+
+  // ---- bayOrder (41e.6): пользовательский порядок ЗАГОНОВ, слой поверх порядка по умолчанию
+  // (заявка, 8z2) — как `bufferOrder` для стопок, но без FIFO-очередей: `orderId` уникален, и
+  // достаточно «упомянутые сначала, остальные следом». Неизвестные и исчезнувшие id `groupByOrder`
+  // игнорирует, поэтому пересчёт плана его не ломает.
+  // Не переживает перезагрузку, в отличие от `yardGrouping`: это порядок содержимого КОНКРЕТНОГО
+  // плана, а не настройка вида.
+  const [bayOrder, setBayOrder] = useState<string[]>([]);
 
   /** Заказ типа груза — он же заказ любой его стопки: броском заказ не меняется, поэтому именно он
    *  выбирает загон, в который стопка сядет (41e.2). */
@@ -415,10 +438,15 @@ export function LadeplanScreen({
     if (!carry) return null;
     const pt = toWarehouseMm(carry.x, carry.y);
     if (!pt) return null;
-    // Тот же режим, что рисует двор: иначе магнит целился бы в загоны, которых на экране нет.
-    const index = insertionIndexAt(warehouseFloor(load, orderedTiles, { grouped: yardGrouped }), pt, {
-      orderId: orderOfType(carry.cargoTypeId),
-    });
+    // Тот же режим, что рисует двор: иначе магнит целился бы в загоны, которых на экране нет. И тот
+    // же ПОРЯДОК: вызовов `warehouseFloor` на этом экране три (отрисовка, `phantomAt`,
+    // `onDropOutside`), и разошедшийся `bayOrder` целит магнит ровно туда же — в загоны, которых на
+    // экране нет (грабли 77g, находка №4).
+    const index = insertionIndexAt(
+      warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder }),
+      pt,
+      { orderId: orderOfType(carry.cargoTypeId) },
+    );
     return {
       index,
       tile: { cargoTypeId: carry.cargoTypeId, units: carry.units, orientation: carry.orientation },
@@ -446,10 +474,13 @@ export function LadeplanScreen({
         // раскладка всё равно разведёт их по своим загонам — точка броска задаёт лишь относительное
         // место внутри своего загона.
         // Тот же режим, что рисует двор (77g): с выключенной группировкой загонов нет, и точка
-        // броска задаёт место в общем потоке — поведение до 41e.2.
-        const idx = insertionIndexAt(warehouseFloor(load, orderedTiles, { grouped: yardGrouped }), pt, {
-          orderId: orderOfType(refs[0].cargoTypeId),
-        });
+        // броска задаёт место в общем потоке — поведение до 41e.2. И тот же ПОРЯДОК загонов
+        // (41e.6): третий из трёх вызовов `warehouseFloor`, и разойтись ему нельзя ровно так же.
+        const idx = insertionIndexAt(
+          warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder }),
+          pt,
+          { orderId: orderOfType(refs[0].cargoTypeId) },
+        );
         const snapshot = orderedTiles.map((t) => t.cargoTypeId);
         snapshot.splice(idx, 0, ...refs.map((r) => r.cargoTypeId));
         setBufferOrder(snapshot);
@@ -675,6 +706,8 @@ export function LadeplanScreen({
               phantomAt={phantomAt}
               grouped={yardGrouped}
               onGroupedChange={changeYardGrouping}
+              bayOrder={bayOrder}
+              onBayOrderChange={(next) => setBayOrder((prev) => mergeBayOrder(next, prev))}
             />
             {editError && (
               <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">
