@@ -434,6 +434,21 @@ describe('WarehouseFloor — перенос загонов (LKWkalk-36f)', () =>
     expect(onBayOrderChange).toHaveBeenCalledWith(['SO-3', 'SO-1', 'SO-2']);
   });
 
+  // Спека §3, решение 6: клик по бирке — это pointerdown + pointerup без движения, и он НЕ должен
+  // превращать порядок по умолчанию в явный пользовательский. Иначе после случайного клика
+  // перестановка грузов на экране «Настройка» перестала бы двигать загоны, а причину этого никто
+  // бы не связал с кликом.
+  it('клик по бирке без движения не фиксирует ничего', () => {
+    const onBayOrderChange = renderYard();
+    // Точка — сама бирка загона SO-3: под installSvgGeometry мм и client-px совпадают.
+    const tag = grip('SO-3').querySelector('[data-tag]')!;
+    const at = { clientX: Number(tag.getAttribute('x')) + 10, clientY: Number(tag.getAttribute('y')) + 10 };
+    fireEvent.pointerDown(grip('SO-3'), at);
+    fireEvent.pointerUp(yard(), at);
+    expect(onBayOrderChange).not.toHaveBeenCalled();
+    expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
+  });
+
   it('pointercancel бросает жест: порядок не фиксируется и двор возвращается к пропу', () => {
     const onBayOrderChange = renderYard();
     fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });

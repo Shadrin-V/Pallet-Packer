@@ -39,6 +39,9 @@ export type { BufferTile };
 /** Below this pointer travel (px) a press is a click (select), not a drag (carry). */
 const CLICK_SLOP_PX = 5;
 
+/** Совпадают ли два порядка загонов поэлементно. */
+const sameOrder = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+
 export function WarehouseFloor({
   load,
   tiles,
@@ -89,8 +92,10 @@ export function WarehouseFloor({
   // (загон едет целиком со стопками, соседи расступаются). Родителю он не поднимается на каждый
   // кадр: тому он нужен только по завершении, а перерисовывать весь экран на каждый pointermove
   // незачем.
+  // `from` — порядок, от которого жест начался; с ним сверяется итог, чтобы жест, ничего не
+  // изменивший, ничего и не фиксировал (спека §3, решение 6).
   const [dragBay, setDragBay] = useState<
-    { orderId: string; pointerId: number; order: string[] } | null
+    { orderId: string; pointerId: number; from: string[]; order: string[] } | null
   >(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -122,7 +127,9 @@ export function WarehouseFloor({
     const move = (e: PointerEvent) => {
       if (!mine(e)) return;
       const order = orderAt(e);
-      if (order) setDragBay({ ...dragBay, order });
+      // Порядок, ничего не изменивший, не перекладывает двор: иначе каждый кадр движения внутри
+      // одного и того же слота пересобирал бы раскладку и переподписывал слушателей впустую.
+      if (order && !sameOrder(order, dragBay.order)) setDragBay({ ...dragBay, order });
     };
     const up = (e: PointerEvent) => {
       if (!mine(e)) return;
@@ -131,7 +138,14 @@ export function WarehouseFloor({
       // `pointermove` не пришло, — и тогда зафиксировался бы предпоследний слот. Перенос стопки в
       // LadeplanScreen по той же причине резолвит бросок из `pointerup` по `e.clientX/clientY`.
       // Точка вне SVG-геометрии (её нет) — падаем на последний известный порядок.
-      onBayOrderChange?.(orderAt(e) ?? dragBay.order);
+      const next = orderAt(e) ?? dragBay.order;
+      // Жест, не сдвинувший ни одного загона, не фиксирует НИЧЕГО (спека §3, решение 6): клик по
+      // бирке — это `pointerdown` + `pointerup` без движения, и он не должен превращать порядок по
+      // умолчанию (заявка) в ЯВНЫЙ пользовательский. Иначе после случайного клика перестановка
+      // грузов на экране «Настройка» перестала бы двигать загоны — и причину этого никто бы с
+      // кликом не связал. Сверяется с началом жеста, а не с последним кадром: уехать и вернуться
+      // на своё место — тоже ничего не изменить.
+      if (!sameOrder(next, dragBay.from)) onBayOrderChange?.(next);
       setDragBay(null);
     };
     // Указатель забрала система (жест ОС, переключение приложения): фиксировать нечего, а без этой
@@ -238,14 +252,17 @@ export function WarehouseFloor({
                 reorderLabel={tt('warehouse.bay.reorder')}
                 onTagDown={
                   onBayOrderChange
-                    ? (e) =>
+                    ? (e) => {
                         // Отсчёт ведётся от того, что СЕЙЧАС на экране: порядок по умолчанию уже
                         // мог быть перекрыт пропом, и переносить надо видимую расстановку.
+                        const start = floor.bays.map((b) => b.orderId);
                         setDragBay({
                           orderId: bay.orderId,
                           pointerId: e.pointerId,
-                          order: floor.bays.map((b) => b.orderId),
-                        })
+                          from: start,
+                          order: start,
+                        });
+                      }
                     : undefined
                 }
               />
