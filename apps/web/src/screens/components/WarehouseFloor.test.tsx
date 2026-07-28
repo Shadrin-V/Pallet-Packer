@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
@@ -6,6 +7,7 @@ import { LocaleProvider } from '../../i18n/LocaleContext';
 import { WarehouseFloor } from './WarehouseFloor';
 import type { BufferTile } from './warehouseLayout';
 import { truckFrame } from './truckFrame';
+import { installSvgGeometry } from './svgTestGeometry';
 
 const V = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
 const load: Load = {
@@ -353,5 +355,308 @@ describe('WarehouseFloor — загоны по заказу', () => {
     const nodes = [...svg.querySelectorAll('[data-testid="warehouse-bay"], [data-testid="warehouse-tile"]')];
     expect(nodes[0].getAttribute('data-testid')).toBe('warehouse-bay');
     expect(nodes.at(-1)!.getAttribute('data-testid')).toBe('warehouse-tile');
+  });
+});
+
+describe('WarehouseFloor — перенос загонов (LKWkalk-36f)', () => {
+  const threeOrders: Load = {
+    vehicle: V,
+    cargo: [
+      { ...load.cargo[0], id: 'p', orderId: 'SO-1' },
+      { ...load.cargo[1], id: 'fixed', orderId: 'SO-2' },
+      { ...load.cargo[1], id: 'third', name: 'Third', orderId: 'SO-3' },
+    ],
+  };
+  const threeTiles: BufferTile[] = [
+    { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+    { cargoTypeId: 'fixed', units: 2, orientation: 'lwh' },
+    { cargoTypeId: 'third', units: 3, orientation: 'lwh' },
+  ];
+  let restore: (() => void) | null = null;
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+  const renderYard = (onBayOrderChange = vi.fn()) => {
+    restore = installSvgGeometry({ left: 0, top: 0, width: 14000, height: 4000 });
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={threeOrders}
+          tiles={threeTiles}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+          grouped
+          onBayOrderChange={onBayOrderChange}
+        />
+      </LocaleProvider>,
+    );
+    return onBayOrderChange;
+  };
+  const bayOrders = () =>
+    [...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'));
+  const grip = (orderId: string) =>
+    document.querySelector(`[data-testid="warehouse-bay"][data-order="${orderId}"] [data-tag-grip]`)!;
+  /** Слушатели жеста глобальные; события шлём на сам двор и даём им всплыть — так же, как это
+   *  делают тесты переноса стопки. `fireEvent` на `window` в этом репозитории не используется. */
+  const yard = () => document.querySelector('svg[data-warehouse]')!;
+
+  it('двор перекомпоновывается ЕЩЁ ДО отпускания — видно результат, а не курсор', () => {
+    const onBayOrderChange = renderYard();
+    expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
+
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    // Левая половина первого загона (он открывается в x = 200): SO-3 встаёт перед SO-1.
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']);
+    // Порядок ещё провизорный: родителю о нём не сообщают на каждый кадр.
+    expect(onBayOrderChange).not.toHaveBeenCalled();
+  });
+
+  it('отпускание сообщает родителю итоговый порядок', () => {
+    const onBayOrderChange = renderYard();
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(onBayOrderChange).toHaveBeenCalledWith(['SO-3', 'SO-1', 'SO-2']);
+  });
+
+  // Браузер вправе слить движения и отпустить указатель там, где ни одного pointermove не пришло.
+  // Порядок обязан считаться от точки ОТПУСКАНИЯ; иначе фиксируется предпоследний слот.
+  it('отпускание в точке, о которой не было движения, считает порядок по ней же', () => {
+    const onBayOrderChange = renderYard();
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    // Единственное движение — в середину двора, где порядок ещё не меняется (правее центра SO-1).
+    fireEvent.pointerMove(yard(), { clientX: 3000, clientY: 600 });
+    // А отпускание — сразу в левой половине SO-1, без промежуточного pointermove.
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(onBayOrderChange).toHaveBeenCalledWith(['SO-3', 'SO-1', 'SO-2']);
+  });
+
+  // Спека §3, решение 6: клик по бирке — это pointerdown + pointerup без движения, и он НЕ должен
+  // превращать порядок по умолчанию в явный пользовательский. Иначе после случайного клика
+  // перестановка грузов на экране «Настройка» перестала бы двигать загоны, а причину этого никто
+  // бы не связал с кликом.
+  it('клик по бирке без движения не фиксирует ничего', () => {
+    const onBayOrderChange = renderYard();
+    // Точка — сама бирка загона SO-3: под installSvgGeometry мм и client-px совпадают.
+    const tag = grip('SO-3').querySelector('[data-tag]')!;
+    const at = { clientX: Number(tag.getAttribute('x')) + 10, clientY: Number(tag.getAttribute('y')) + 10 };
+    fireEvent.pointerDown(grip('SO-3'), at);
+    fireEvent.pointerUp(yard(), at);
+    expect(onBayOrderChange).not.toHaveBeenCalled();
+    expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
+  });
+
+  it('pointercancel бросает жест: порядок не фиксируется и двор возвращается к пропу', () => {
+    const onBayOrderChange = renderYard();
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']); // провизорный порядок на экране
+
+    fireEvent.pointerCancel(yard(), { clientX: 400, clientY: 600 });
+    expect(onBayOrderChange).not.toHaveBeenCalled();
+    expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
+  });
+
+  // Отмена — такая же часть жеста, как движение и отпускание, и сверка pointerId ей нужна ровно так
+  // же: систему, забравшую ВТОРОЙ палец, этот перенос не касается. Без проверки набор оставался
+  // зелёным — «свою» отмену пришпиливал тест выше, чужую не пришпиливал никто.
+  it('чужой указатель жеста не бросает', () => {
+    const onBayOrderChange = renderYard();
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600, pointerId: 1 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']);
+
+    fireEvent.pointerCancel(yard(), { clientX: 400, clientY: 600, pointerId: 2 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']); // жест жив
+
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600, pointerId: 1 });
+    expect(onBayOrderChange).toHaveBeenCalledWith(['SO-3', 'SO-1', 'SO-2']);
+  });
+
+  it('чужой указатель жеста не ведёт и не завершает', () => {
+    const onBayOrderChange = renderYard();
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300, pointerId: 1 });
+    // Второй палец: ни его движение, ни его отпускание к этому переносу отношения не имеют.
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600, pointerId: 2 });
+    expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600, pointerId: 2 });
+    expect(onBayOrderChange).not.toHaveBeenCalled();
+
+    // А свой — ведёт.
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600, pointerId: 1 });
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600, pointerId: 1 });
+    expect(onBayOrderChange).toHaveBeenCalledWith(['SO-3', 'SO-1', 'SO-2']);
+  });
+
+  // Спека §3, решение 1: правило «группа без номера всегда последняя» — это умолчание, а не запрет.
+  it('загон без номера заказа тянется как любой другой', () => {
+    restore = installSvgGeometry({ left: 0, top: 0, width: 14000, height: 4000 });
+    const onBayOrderChange = vi.fn();
+    const anon: Load = {
+      vehicle: V,
+      cargo: [threeOrders.cargo[0], { ...threeOrders.cargo[1], orderId: undefined }],
+    };
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={anon}
+          tiles={threeTiles.slice(0, 2)}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+          grouped
+          onBayOrderChange={onBayOrderChange}
+        />
+      </LocaleProvider>,
+    );
+    expect(bayOrders()).toEqual(['SO-1', '']); // безномерный по умолчанию последний
+    fireEvent.pointerDown(grip(''), { clientX: 2400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(onBayOrderChange).toHaveBeenCalledWith(['', 'SO-1']);
+  });
+
+  it('на время жеста курсор смыкается — и только у того загона, который тянут', () => {
+    renderYard();
+    const cursorOf = (orderId: string) => (grip(orderId) as SVGElement).style.cursor;
+    expect(cursorOf('SO-3')).toBe('grab');
+
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    expect(cursorOf('SO-3')).toBe('grabbing');
+    expect(cursorOf('SO-1')).toBe('grab');
+
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(cursorOf('SO-3')).toBe('grab');
+  });
+
+  it('загон едет вместе со своими стопками, а не одной биркой', () => {
+    renderYard();
+    const tileX = (label: string) =>
+      Number(
+        screen
+          .getAllByTestId('warehouse-tile')
+          .find((t) => t.getAttribute('aria-label')!.startsWith(label))!
+          .querySelector('rect')!
+          .getAttribute('x'),
+      );
+    const before = tileX('Third');
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    expect(tileX('Third')).toBeLessThan(before);
+  });
+
+  // Внутри загона жест принадлежит стопке: нажатие на площадку не должно уводить загон.
+  // jsdom не считает `pointer-events`, поэтому тест проверяет разводку обработчиков (на периметре
+  // его нет), а не браузерный хит-тест; сам `pointer-events` пришпилен в WarehouseBay.test.tsx.
+  it('нажатие на площадку загона переноса не начинает', () => {
+    const onBayOrderChange = renderYard();
+    const outline = document.querySelector('[data-testid="warehouse-bay"][data-order="SO-3"] [data-outline]')!;
+    fireEvent.pointerDown(outline, { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(onBayOrderChange).not.toHaveBeenCalled();
+    expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
+  });
+
+  it('без onBayOrderChange бирки инертны — двор без переноса загонов', () => {
+    restore = installSvgGeometry({ left: 0, top: 0, width: 14000, height: 4000 });
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor load={threeOrders} tiles={threeTiles} onRotate={vi.fn()} onPickUp={vi.fn()} dragging={null} grouped />
+      </LocaleProvider>,
+    );
+    expect(grip('SO-3').getAttribute('pointer-events')).toBeNull();
+  });
+
+  // Финальное ревью 36f, находка 1: выделение хранилось позицией в отрисовке, а перенос загона
+  // переставляет `floor.tiles`, не меняя набор плиток, — кольцо оставалось на слоте и оказывалось уже
+  // на ЧУЖОЙ стопке, а ⟳ поворачивал её. Та же дырка достижима и одним флажком группировки.
+  it('выделение держится за свою стопку, а не за слот: перенос загонов его не перевешивает', async () => {
+    restore = installSvgGeometry({ left: 0, top: 0, width: 14000, height: 4000 });
+    // Все три типа поворотные: иначе у выделенной стопки не будет ручки ⟳, а именно ею проверяется,
+    // КАКУЮ стопку повернёт нажатие.
+    const rotatable: Load = {
+      vehicle: V,
+      cargo: [
+        { ...load.cargo[0], id: 'p', name: 'Erst', orderId: 'SO-1' },
+        { ...load.cargo[0], id: 'second', name: 'Zweit', orderId: 'SO-2' },
+        { ...load.cargo[0], id: 'third', name: 'Dritt', orderId: 'SO-3' },
+      ],
+    };
+    const rotatableTiles: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'second', units: 2, orientation: 'lwh' },
+      { cargoTypeId: 'third', units: 3, orientation: 'lwh' },
+    ];
+    const onRotate = vi.fn();
+    // Двор с ЗАПОМИНАЮЩИМСЯ порядком: в приложении `bayOrder` держит родитель, и после отпускания
+    // расстановка остаётся новой. Без этого жест откатился бы к пропу, и проверять было бы нечего.
+    function ControlledYard() {
+      const [order, setOrder] = useState<string[]>([]);
+      return (
+        <WarehouseFloor
+          load={rotatable}
+          tiles={rotatableTiles}
+          onRotate={onRotate}
+          onPickUp={vi.fn()}
+          dragging={null}
+          grouped
+          bayOrder={order}
+          onBayOrderChange={setOrder}
+        />
+      );
+    }
+    render(
+      <LocaleProvider initial="de">
+        <ControlledYard />
+      </LocaleProvider>,
+    );
+
+    // Выделяем стопку заказа SO-2 — вход 1, вторая и в отрисовке.
+    const picked = screen.getByRole('button', { name: /Zweit/ });
+    picked.focus();
+    await userEvent.keyboard('{Enter}');
+    const ring = (tile: Element) => tile.querySelector('rect[stroke-dasharray="6 4"]');
+    expect(ring(picked)).not.toBeNull();
+
+    // Тянем бирку SO-3 в начало двора: набор плиток тот же, порядок отрисовки другой.
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']);
+
+    // Кольцо — на той же стопке, и больше ни на одной.
+    const tilesNow = screen.getAllByTestId('warehouse-tile');
+    const ringed = tilesNow.filter((t) => ring(t));
+    expect(ringed).toHaveLength(1);
+    expect(ringed[0].getAttribute('aria-label')).toBe('Zweit ×2');
+
+    // И ⟳ поворачивает именно её — вход 1, хотя рисуется она теперь последней.
+    await userEvent.click(screen.getByRole('button', { name: 'Stapel im Lager drehen' }));
+    expect(onRotate).toHaveBeenCalledWith(1);
+  });
+
+  it('порядок из пропа bayOrder рисуется, пока никто ничего не тянет', () => {
+    restore = installSvgGeometry({ left: 0, top: 0, width: 14000, height: 4000 });
+    render(
+      <LocaleProvider initial="de">
+        <WarehouseFloor
+          load={threeOrders}
+          tiles={threeTiles}
+          onRotate={vi.fn()}
+          onPickUp={vi.fn()}
+          dragging={null}
+          grouped
+          bayOrder={['SO-2']}
+          onBayOrderChange={vi.fn()}
+        />
+      </LocaleProvider>,
+    );
+    expect(bayOrders()).toEqual(['SO-2', 'SO-1', 'SO-3']);
   });
 });

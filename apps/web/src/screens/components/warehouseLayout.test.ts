@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Load } from '@shadrin-v/engine';
-import { warehouseFloor, insertionIndexAt } from './warehouseLayout';
+import { warehouseFloor, insertionIndexAt, reorderBaysAt } from './warehouseLayout';
 import type { BufferTile } from './warehouseLayout';
 import { truckFrame } from './truckFrame';
 
@@ -387,5 +387,135 @@ describe('warehouseFloor — загоны по заказу', () => {
   it('детерминирована', () => {
     const build = () => warehouseFloor(twoOrders, [tile('a'), tile('b'), tile('a')], { grouped: true });
     expect(build()).toEqual(build());
+  });
+
+  // Строка загонов смешивает высоты: у низкого загона своя `h` обрывает полосу раньше строки, и
+  // точка под ним уезжала бы к следующему загону. Та же болезнь, что `rowH` лечит у плиток.
+  it('rowH загона — высота его СТРОКИ, а не его собственная', () => {
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
+    expect(fl.bays[0]).toMatchObject({ h: 1380, rowH: 1380 });
+    // SO-2 ниже (h = 400 + 180 + 2*200 = 980), но стоит в той же строке.
+    expect(fl.bays[1]).toMatchObject({ h: 980, rowH: 1380 });
+  });
+
+  it('у новой строки загонов свой rowH', () => {
+    const fl = warehouseFloor(twoOrders, [tile('a'), tile('a'), tile('b')], {
+      grouped: true,
+      width: 5000,
+      gap: 200,
+      pad: 200,
+    });
+    expect(fl.bays[1].y).toBeGreaterThan(fl.bays[0].y); // перенос состоялся
+    expect(fl.bays[0].rowH).toBe(1380);
+    expect(fl.bays[1].rowH).toBe(980);
+  });
+});
+
+describe('reorderBaysAt', () => {
+  const threeOrders: Load = {
+    vehicle: V,
+    cargo: [
+      cargo('a', 1200, 800, 'SO-1'),
+      cargo('b', 600, 400, 'SO-2'),
+      cargo('c', 600, 400, 'SO-3'),
+    ],
+  };
+  /** Три загона в одну строку: SO-1 (x 200..1800, центр 1000, h 1380), SO-2 (x 2200..3800,
+   *  центр 3000, h 980), SO-3 (x 4200..5800, центр 5000, h 980). rowH у всех — 1380. */
+  const floor3 = () =>
+    warehouseFloor(threeOrders, [tile('a'), tile('b'), tile('c')], {
+      grouped: true,
+      gap: 200,
+      pad: 200,
+    });
+
+  it('переносит загон назад — точка левее центра чужого загона', () => {
+    // Точка в левой половине SO-1 → SO-3 встаёт перед ним.
+    expect(reorderBaysAt(floor3(), 'SO-3', { x: 500, y: 600 })).toEqual(['SO-3', 'SO-1', 'SO-2']);
+  });
+
+  it('переносит загон вперёд — индекс вставки поправлен на изъятие', () => {
+    // Точка правее центра SO-2 (3000): без поправки на изъятие SO-1 перенос «на один слот вправо»
+    // оказался бы тождественным.
+    expect(reorderBaysAt(floor3(), 'SO-1', { x: 3500, y: 600 })).toEqual(['SO-2', 'SO-1', 'SO-3']);
+  });
+
+  it('точка правее всех загонов уводит загон в конец', () => {
+    expect(reorderBaysAt(floor3(), 'SO-1', { x: 9000, y: 600 })).toEqual(['SO-2', 'SO-3', 'SO-1']);
+  });
+
+  // Ровно то, ради чего заведён rowH: точка ниже собственной высоты низкого загона, но внутри его
+  // СТРОКИ. Без rowH обе низкие площадки читались бы как «строка уже позади», и загон уехал бы в
+  // конец вместо места перед SO-2.
+  it('читает строку по rowH, а не по высоте самого загона', () => {
+    expect(reorderBaysAt(floor3(), 'SO-3', { x: 2500, y: 1300 })).toEqual(['SO-1', 'SO-3', 'SO-2']);
+  });
+
+  // Ветка «точка ВЫШЕ этой строки» (`point.y < b.y`) — единственная, до сих пор не закреплённая
+  // прямо: удаление её оставляло набор зелёным, потому что идемпотентность держится и без неё.
+  // Точка лежит в проходе МЕЖДУ строками загонов и правее всех: без ветки она читается как «правее
+  // всего ряда» и загон уезжает в самый конец, а не в начало второй строки.
+  it('точка в проходе над второй строкой вставляет загон в её начало, а не в конец двора', () => {
+    // Двор шириной 5000: SO-1 (x 200..1800) и SO-2 (2200..3800) укладываются в первую строку
+    // (rowH 1380), SO-3 переносится во вторую (y 1980..2960).
+    const opts = { grouped: true, gap: 200, pad: 200, width: 5000 };
+    const wrapped = warehouseFloor(threeOrders, [tile('a'), tile('b'), tile('c')], opts);
+    expect(wrapped.bays.map((b) => b.y)).toEqual([200, 200, 1980]);
+
+    // y = 1700 — ниже полосы первой строки (200 + 1380) и выше второй; x = 4500 правее всего, что
+    // на экране есть.
+    expect(reorderBaysAt(wrapped, 'SO-1', { x: 4500, y: 1700 })).toEqual(['SO-2', 'SO-1', 'SO-3']);
+  });
+
+  it('неизвестный загон порядка не меняет', () => {
+    expect(reorderBaysAt(floor3(), 'SO-9', { x: 500, y: 600 })).toEqual(['SO-1', 'SO-2', 'SO-3']);
+  });
+
+  it('без загонов возвращает пустой порядок', () => {
+    const flat = warehouseFloor(threeOrders, [tile('a'), tile('b')], { gap: 200, pad: 200 });
+    expect(reorderBaysAt(flat, 'SO-1', { x: 500, y: 600 })).toEqual([]);
+  });
+
+  // ИНВАРИАНТ ЖИВОЙ ПЕРЕКОМПОНОВКИ (спека §3.5). Кросс-модельное ревью назвало живой отсчёт
+  // блокером: якобы перестановка меняет геометрию так, что та же точка гонит загон обратно, и от
+  // дрожания курсора двор мерцает. Численно не воспроизвелось (200 тыс. конфигураций + 300 тыс. пар
+  // соседних точек — ноль циклов), и вот почему: смещаются только загоны МЕЖДУ старым и новым
+  // местом, и смещаются ВПРАВО, а значит их центры только растут — условие «центр ≥ точки» не
+  // переворачивается. Здесь этот инвариант закреплён на самом опасном случае: разные ширины плюс
+  // перенос строк.
+  it('идемпотентна: тот же кадр с тем же курсором порядка больше не меняет', () => {
+    const wide: Load = {
+      vehicle: V,
+      cargo: [
+        cargo('a', 1200, 800, 'SO-1'),
+        cargo('b', 600, 400, 'SO-2'),
+        cargo('c', 600, 400, 'SO-3'),
+      ],
+    };
+    // Двор нарочно узкий: три загона не влезают в строку, и перестановка меняет ПЕРЕНОС СТРОК —
+    // ровно та геометрия, на которой живой отсчёт подозревали.
+    const opts = { grouped: true, gap: 200, pad: 200, width: 5000 };
+    const tiles = [tile('a'), tile('a'), tile('b'), tile('c')];
+    const point = { x: 2500, y: 1300 };
+    const first = reorderBaysAt(warehouseFloor(wide, tiles, opts), 'SO-3', point);
+    const second = reorderBaysAt(
+      warehouseFloor(wide, tiles, { ...opts, bayOrder: first }),
+      'SO-3',
+      point,
+    );
+    expect(second).toEqual(first);
+  });
+
+  // Замыкание круга: результат функции подаётся обратно как `bayOrder` и должен давать именно тот
+  // порядок загонов — иначе жест и раскладка понимают список по-разному.
+  it('результат, поданный как bayOrder, даёт тот же порядок загонов', () => {
+    const next = reorderBaysAt(floor3(), 'SO-3', { x: 500, y: 600 });
+    const fl = warehouseFloor(threeOrders, [tile('a'), tile('b'), tile('c')], {
+      grouped: true,
+      gap: 200,
+      pad: 200,
+      bayOrder: next,
+    });
+    expect(fl.bays.map((b) => b.orderId)).toEqual(next);
   });
 });

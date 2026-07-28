@@ -9,12 +9,12 @@
 // §6: идентичность заказа — цвет + штриховка). Жёлтой остаётся только краска.
 //
 // Инертная декорация: лежит под стопками и не берёт указатель — жест «потянуть» внутри загона
-// принадлежит стопке. Перетаскивание самой бирки придёт отдельно (LKWkalk-36f).
+// принадлежит стопке. Ручка переноса самого загона — бирка (LKWkalk-36f), см. `data-tag-grip` ниже.
 //
 // Доступность: весь двор объявлен одним `role="img"` с ярлыком на уровне <svg> в WarehouseFloor,
 // поэтому текст внутри вспомогательные технологии не читают — здесь ничего не добавляем, чтобы не
 // изображать доступность, которой нет.
-import { useId } from 'react';
+import { useId, type PointerEvent as ReactPointerEvent } from 'react';
 import { TAG_H, type PlacedBay } from './warehouseLayout';
 
 /** Отступ текста от края бирки, мм — с обеих сторон. */
@@ -46,11 +46,24 @@ export function WarehouseBay({
   series,
   /** Готовый ярлык: номер заказа либо локализованное «без заказа» — резолвит вызывающий. */
   label,
+  onTagDown,
+  reorderLabel,
+  carried = false,
 }: {
   bay: PlacedBay;
   /** Слот палитры 1..8 — тот же, что у стопок этого заказа. */
   series: number;
   label: string;
+  /** Нажатие на бирку — начало переноса загона (41e.6). Отсутствует — бирка инертна, как и вся
+   *  разметка: двор без переноса загонов (например, стенды соседних экранов). */
+  onTagDown?: (e: ReactPointerEvent) => void;
+  /** Доступное имя ручки (`warehouse.bay.reorder`). Резолвит вызывающий — компонент, как и с
+   *  `label`, локалей не читает. */
+  reorderLabel?: string;
+  /** Тянут ли ЭТОТ загон прямо сейчас: курсор на ручке становится `grabbing` — рука сомкнулась.
+   *  Загон презентационный и про жест сам не знает: состояние спускает `WarehouseFloor`, у которого
+   *  жест и живёт. */
+  carried?: boolean;
 }) {
   // Страховка, а не рабочая ветка: сегодня `BAY_MIN_W` (1600) больше `TAG_W` (1200), поэтому загон
   // уже бирки раскладка выдать не может и `Math.min` не срабатывает. Оставлено на случай, если
@@ -80,18 +93,36 @@ export function WarehouseBay({
       <clipPath id={clipId}>
         <rect x={bay.x} y={bay.y} width={tagW} height={TAG_H} />
       </clipPath>
-      <rect data-tag x={bay.x} y={bay.y} width={tagW} height={TAG_H} fill={`var(--s${series})`} />
-      <text
-        x={bay.x + TAG_PAD}
-        y={bay.y + TAG_H / 2}
-        fill="var(--brand-ink)"
-        fontSize={fontSize}
-        fontWeight={700}
-        dominantBaseline="central"
-        clipPath={`url(#${clipId})`}
+      {/* Ручка переноса: единственный узел загона, который берёт указатель. Внешняя группа остаётся
+          `pointer-events: none`, а этот потомок возвращает себе попадание — в SVG, как и в CSS,
+          `auto` у потомка сильнее унаследованного `none`. Периметр и стопки не задеты: внутри
+          загона жест принадлежит стопке. */}
+      <g
+        data-tag-grip
+        pointerEvents={onTagDown ? 'auto' : undefined}
+        style={onTagDown ? { cursor: carried ? 'grabbing' : 'grab' } : undefined}
+        onPointerDown={onTagDown}
+        // Роль и имя лежат здесь ЗАРАНЕЕ — под клавиатурную операбельность, которой ещё нет
+        // (LKWkalk-e8x). Сами по себе доступной ручку они не делают: она потомок `role="img"` всего
+        // двора, то есть вырезана из дерева доступности, и объявленная «кнопка» сегодня ни фокуса не
+        // берёт, ни нажатия с клавиатуры. Без жеста нет и их: неинтерактивная разметка не должна
+        // изображать кнопку даже в разметке.
+        role={onTagDown ? 'button' : undefined}
+        aria-label={onTagDown ? reorderLabel : undefined}
       >
-        {text}
-      </text>
+        <rect data-tag x={bay.x} y={bay.y} width={tagW} height={TAG_H} fill={`var(--s${series})`} />
+        <text
+          x={bay.x + TAG_PAD}
+          y={bay.y + TAG_H / 2}
+          fill="var(--brand-ink)"
+          fontSize={fontSize}
+          fontWeight={700}
+          dominantBaseline="central"
+          clipPath={`url(#${clipId})`}
+        >
+          {text}
+        </text>
+      </g>
     </g>
   );
 }

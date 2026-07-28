@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, fireEvent } from '@testing-library/react';
 import { WarehouseBay } from './WarehouseBay';
 import type { PlacedBay } from './warehouseLayout';
 
@@ -9,6 +9,7 @@ const bay: PlacedBay = {
   y: 200,
   w: 3000,
   h: 1530,
+  rowH: 1530,
   units: 18,
   startIndex: 0,
   count: 3,
@@ -18,6 +19,19 @@ const draw = (b: PlacedBay = bay, label = b.orderId) =>
   render(
     <svg>
       <WarehouseBay bay={b} series={2} label={label} />
+    </svg>,
+  ).container;
+
+const drawGrip = (onTagDown: () => void) =>
+  render(
+    <svg>
+      <WarehouseBay
+        bay={bay}
+        series={2}
+        label={bay.orderId}
+        onTagDown={onTagDown}
+        reorderLabel="Auftragsbereich verschieben"
+      />
     </svg>,
   ).container;
 
@@ -105,5 +119,55 @@ describe('WarehouseBay', () => {
     // Ниже читаемого минимума кегль не проваливается — за этой границей работает обрезка.
     expect(fontSizeOf(c)).toBeGreaterThanOrEqual(54);
     expect(tagText(c).getAttribute('clip-path')).toBeTruthy();
+  });
+
+  // Тянется БИРКА, а не площадка: внутри загона жест «потянуть» уже принадлежит стопке.
+  it('бирка отдаёт указателю нажатие, когда перенос загонов включён', () => {
+    const onTagDown = vi.fn();
+    const c = drawGrip(onTagDown);
+    const grip = c.querySelector('[data-tag-grip]')!;
+    expect(grip.getAttribute('pointer-events')).toBe('auto');
+    fireEvent.pointerDown(grip);
+    expect(onTagDown).toHaveBeenCalledTimes(1);
+  });
+
+  // Курсор — вся обратная связь ручки о том, что жест ИДЁТ: сама бирка едет вместе с загоном, но
+  // сомкнувшаяся рука отличает «тяну» от «могу потянуть».
+  it('курсор ручки смыкается на время переноса своего загона', () => {
+    const idle = drawGrip(vi.fn()).querySelector('[data-tag-grip]') as SVGElement;
+    expect(idle.style.cursor).toBe('grab');
+
+    const carried = render(
+      <svg>
+        <WarehouseBay bay={bay} series={2} label={bay.orderId} onTagDown={vi.fn()} reorderLabel="x" carried />
+      </svg>,
+    ).container.querySelector('[data-tag-grip]') as SVGElement;
+    expect(carried.style.cursor).toBe('grabbing');
+  });
+
+  // Роль и имя стоят под будущую клавиатурную операбельность (LKWkalk-e8x). Сами по себе доступной
+  // ручку они не делают — она потомок `role="img"` всего двора и из дерева доступности вырезана;
+  // тест пришпиливает разметку, а не заявляет, что скринридер до неё дотягивается.
+  it('у ручки есть роль и имя — задел под клавиатуру', () => {
+    const c = drawGrip(vi.fn());
+    const grip = c.querySelector('[data-tag-grip]')!;
+    expect(grip.getAttribute('role')).toBe('button');
+    expect(grip.getAttribute('aria-label')).toBe('Auftragsbereich verschieben');
+  });
+
+  // РЕГРЕССИОННЫЕ СТРАЖИ, а не движущие тесты: они проходят и до реализации. Их работа — поймать
+  // соблазн включить указатель на всей группе загона; TDD-шаги ведут тесты выше.
+  it('периметр загона указателя не берёт даже при включённом переносе', () => {
+    const c = drawGrip(vi.fn());
+    // Внешняя группа остаётся инертной: перехватывает только сама плашка.
+    expect(c.querySelector('[data-testid="warehouse-bay"]')!.getAttribute('pointer-events')).toBe('none');
+    expect(c.querySelector('[data-outline]')!.getAttribute('pointer-events')).toBeNull();
+  });
+
+  it('без обработчика бирка остаётся инертной и безымянной — двор без переноса загонов', () => {
+    const c = draw();
+    const grip = c.querySelector('[data-tag-grip]')!;
+    expect(grip.getAttribute('pointer-events')).toBeNull();
+    expect(grip.getAttribute('role')).toBeNull();
   });
 });
