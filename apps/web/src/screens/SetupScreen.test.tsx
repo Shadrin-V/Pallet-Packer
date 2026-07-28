@@ -443,11 +443,23 @@ describe('SetupScreen — rules panel selection (5nb)', () => {
     expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
   });
 
+  // Review finding (Task 5, round 2): the original version of this test only had ONE position row
+  // in scope (the fixture's default), so `getAllByLabelText('Länge')[1]` — meant to be "some OTHER
+  // row" — was actually the very row the chip had just selected. The assertion still caught "typing
+  // closes the panel", but never exercised the scenario the name promises: the selection surviving
+  // an edit made to a DIFFERENT row. Naming the first row makes its identity in the panel checkable,
+  // so editing the second row can be proven not to have moved the selection.
   it('keeps the panel on the selected position while another row is edited', async () => {
     renderSetup(() => {});
-    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
-    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'Erste');
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ })); // a second row to edit instead
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // select the FIRST row
+    // getAllByLabelText('Länge')[2]: [0] vehicle bar, [1] first position, [2] second position — the
+    // one NOT selected.
+    await userEvent.type(screen.getAllByLabelText('Länge')[2], '1200');
     expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+    // the panel still names the FIRST row, not the second one that was just edited
+    expect(screen.getByText('Erste')).toBeInTheDocument();
   });
 
   it('does not persist the selection across a remount', async () => {
@@ -584,10 +596,6 @@ describe('SetupScreen article combobox', () => {
 
   // Finding 3: «активна при введённом артикуле и заполненных габаритах» — present, disabled, not
   // conditionally hidden.
-  // Explicit timeout: this test's 15 real keystrokes (article name + three dimensions) each now
-  // re-render both PositionRow AND the always-mounted RulesPanel (master-detail, Task 5) — on a
-  // loaded machine that occasionally brushes vitest's 5000ms default. Not a correctness issue (the
-  // assertions never fail, only the wall clock does), so widening the budget rather than the query.
   it('the save button is always present in the details panel, disabled until article + dimensions are complete (Finding 3)', async () => {
     renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
@@ -605,7 +613,7 @@ describe('SetupScreen article combobox', () => {
 
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
     expect(saveButton()).toBeEnabled();
-  }, 10000);
+  });
 
   it('a row without a picked article still computes (free text, manual dimensions)', async () => {
     const onCalculate = vi.fn();
@@ -673,6 +681,33 @@ describe('SetupScreen article combobox', () => {
     expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
 
     await userEvent.click(saveButton());
+    expect(screen.queryByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).not.toBeInTheDocument();
+  });
+
+  // Review finding (Task 5, round 2): RulesPanel owns `saveError` in its own component state, but
+  // the screen now renders a SINGLE panel instance that never unmounts across a selection change —
+  // unlike the old per-row accordion, which died with the row it belonged to. Without a reset, a
+  // failed save on row A leaves its error message hanging under row B's save button once the user
+  // selects B, even though B was never saved. Only a later SUCCESSFUL save cleared it, which
+  // instead misdescribes it as the correct row's own submission.
+  it('does not leak a stale save error from one row into the panel of another (Task 5 review)', async () => {
+    const upsertArticle = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ })); // a second row to select
+
+    // fail a save on the FIRST row
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    await userEvent.type(screen.getAllByRole('combobox', { name: 'Artikel' })[0], 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+    expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+
+    // select the SECOND row — its own save was never attempted, so its panel must be clean
+    await userEvent.click(screen.getAllByTestId('rule-chip')[1]);
     expect(screen.queryByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).not.toBeInTheDocument();
   });
 

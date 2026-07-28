@@ -365,6 +365,13 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         </div>
         <div className="w-full shrink-0 xl:sticky xl:top-4 xl:w-[20rem]">
           <RulesPanel
+            // Review finding (Task 5, round 2): RulesPanel keeps its own `saveError` state, and this
+            // is now a SINGLE persistent instance (unlike the old per-row accordion, which unmounted
+            // with the row). Without a `key` tied to the selected row, a failed save on row A would
+            // still show "Speichern fehlgeschlagen…" once the user selected row B, though B was never
+            // saved. Keying on the selection forces React to remount (and so reset saveError) on
+            // every row change, and on entering/leaving the empty state.
+            key={selection ? `${selection.orderKey}/${selection.positionId}` : 'empty'}
             position={selectedPosition}
             orderId={selectedOrder?.orderId ?? null}
             index={selectedOrder?.colorIndex ?? 0}
