@@ -461,6 +461,22 @@ describe('WarehouseFloor — перенос загонов (LKWkalk-36f)', () =>
     expect(bayOrders()).toEqual(['SO-1', 'SO-2', 'SO-3']);
   });
 
+  // Отмена — такая же часть жеста, как движение и отпускание, и сверка pointerId ей нужна ровно так
+  // же: систему, забравшую ВТОРОЙ палец, этот перенос не касается. Без проверки набор оставался
+  // зелёным — «свою» отмену пришпиливал тест выше, чужую не пришпиливал никто.
+  it('чужой указатель жеста не бросает', () => {
+    const onBayOrderChange = renderYard();
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600, pointerId: 1 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']);
+
+    fireEvent.pointerCancel(yard(), { clientX: 400, clientY: 600, pointerId: 2 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']); // жест жив
+
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600, pointerId: 1 });
+    expect(onBayOrderChange).toHaveBeenCalledWith(['SO-3', 'SO-1', 'SO-2']);
+  });
+
   it('чужой указатель жеста не ведёт и не завершает', () => {
     const onBayOrderChange = renderYard();
     fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300, pointerId: 1 });
