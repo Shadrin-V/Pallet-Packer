@@ -466,10 +466,14 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
       {!wide && selectedPosition && (
         // `id` (review finding 3, final wave): lets the chip's `aria-controls` (PositionRow.tsx)
         // point at this panel too, same as the wide `<aside>` above.
+        // `aria-modal` removed (review finding 4, final wave): it asserts everything else on the
+        // page is inert, but focus is deliberately left wherever it was (the Esc listener on
+        // `document` depends on that — see the effect above) and there is no focus trap or `inert`
+        // on the list behind it. Keeping the claim without the behavior actively misleads assistive
+        // tech; full modality is tracked separately (LKWkalk-tn9).
         <div
           id={RULES_PANEL_ID}
           role="dialog"
-          aria-modal="true"
           aria-label={tt('setup.panel.rules')}
           className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto bg-card shadow-pop"
         >
