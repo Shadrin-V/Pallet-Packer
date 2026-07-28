@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -540,6 +541,74 @@ describe('WarehouseFloor — перенос загонов (LKWkalk-36f)', () =>
       </LocaleProvider>,
     );
     expect(grip('SO-3').getAttribute('pointer-events')).toBeNull();
+  });
+
+  // Финальное ревью 36f, находка 1: выделение хранилось позицией в отрисовке, а перенос загона
+  // переставляет `floor.tiles`, не меняя набор плиток, — кольцо оставалось на слоте и оказывалось уже
+  // на ЧУЖОЙ стопке, а ⟳ поворачивал её. Та же дырка достижима и одним флажком группировки.
+  it('выделение держится за свою стопку, а не за слот: перенос загонов его не перевешивает', async () => {
+    restore = installSvgGeometry({ left: 0, top: 0, width: 14000, height: 4000 });
+    // Все три типа поворотные: иначе у выделенной стопки не будет ручки ⟳, а именно ею проверяется,
+    // КАКУЮ стопку повернёт нажатие.
+    const rotatable: Load = {
+      vehicle: V,
+      cargo: [
+        { ...load.cargo[0], id: 'p', name: 'Erst', orderId: 'SO-1' },
+        { ...load.cargo[0], id: 'second', name: 'Zweit', orderId: 'SO-2' },
+        { ...load.cargo[0], id: 'third', name: 'Dritt', orderId: 'SO-3' },
+      ],
+    };
+    const rotatableTiles: BufferTile[] = [
+      { cargoTypeId: 'p', units: 18, orientation: 'lwh' },
+      { cargoTypeId: 'second', units: 2, orientation: 'lwh' },
+      { cargoTypeId: 'third', units: 3, orientation: 'lwh' },
+    ];
+    const onRotate = vi.fn();
+    // Двор с ЗАПОМИНАЮЩИМСЯ порядком: в приложении `bayOrder` держит родитель, и после отпускания
+    // расстановка остаётся новой. Без этого жест откатился бы к пропу, и проверять было бы нечего.
+    function ControlledYard() {
+      const [order, setOrder] = useState<string[]>([]);
+      return (
+        <WarehouseFloor
+          load={rotatable}
+          tiles={rotatableTiles}
+          onRotate={onRotate}
+          onPickUp={vi.fn()}
+          dragging={null}
+          grouped
+          bayOrder={order}
+          onBayOrderChange={setOrder}
+        />
+      );
+    }
+    render(
+      <LocaleProvider initial="de">
+        <ControlledYard />
+      </LocaleProvider>,
+    );
+
+    // Выделяем стопку заказа SO-2 — вход 1, вторая и в отрисовке.
+    const picked = screen.getByRole('button', { name: /Zweit/ });
+    picked.focus();
+    await userEvent.keyboard('{Enter}');
+    const ring = (tile: Element) => tile.querySelector('rect[stroke-dasharray="6 4"]');
+    expect(ring(picked)).not.toBeNull();
+
+    // Тянем бирку SO-3 в начало двора: набор плиток тот же, порядок отрисовки другой.
+    fireEvent.pointerDown(grip('SO-3'), { clientX: 4400, clientY: 300 });
+    fireEvent.pointerMove(yard(), { clientX: 400, clientY: 600 });
+    fireEvent.pointerUp(yard(), { clientX: 400, clientY: 600 });
+    expect(bayOrders()).toEqual(['SO-3', 'SO-1', 'SO-2']);
+
+    // Кольцо — на той же стопке, и больше ни на одной.
+    const tilesNow = screen.getAllByTestId('warehouse-tile');
+    const ringed = tilesNow.filter((t) => ring(t));
+    expect(ringed).toHaveLength(1);
+    expect(ringed[0].getAttribute('aria-label')).toBe('Zweit ×2');
+
+    // И ⟳ поворачивает именно её — вход 1, хотя рисуется она теперь последней.
+    await userEvent.click(screen.getByRole('button', { name: 'Stapel im Lager drehen' }));
+    expect(onRotate).toHaveBeenCalledWith(1);
   });
 
   it('порядок из пропа bayOrder рисуется, пока никто ничего не тянет', () => {

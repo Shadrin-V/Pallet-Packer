@@ -84,6 +84,11 @@ export function WarehouseFloor({
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
   const oidx = orderIndexMap(load);
   const total = tiles.reduce((s, t) => s + t.units, 0);
+  // Выделенная стопка — в индексах ВХОДНОГО массива `tiles` (тот же `realIndex`, что уходит в
+  // `onPickUp`/`onRotate`), а не в позициях отрисовки. Позиция в отрисовке — не имя стопки: и
+  // группировка по заказам, и перенос загона переставляют `floor.tiles`, не трогая сам набор, — и
+  // выделение, привязанное к слоту, оставалось бы на месте, оказавшись уже на ЧУЖОЙ стопке, а ⟳
+  // поворачивал бы её (финальное ревью 36f, находка 1).
   const [sel, setSel] = useState<number | null>(null);
   const downAt = useRef<{ x: number; y: number } | null>(null);
   // Жест переноса загона живёт ЗДЕСЬ, а не в родителе, в отличие от переноса стопки: тот уходит на
@@ -346,13 +351,13 @@ export function WarehouseFloor({
                     // rotate action) rather than treating it as a carry that went nowhere.
                     const d = downAt.current;
                     if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) >= CLICK_SLOP_PX) return;
-                    setSel((cur) => (cur === i ? null : i));
+                    setSel((cur) => (cur === realIndex ? null : realIndex));
                   }}
                   onKeyDown={(e) => {
                     // The ⟳ button is gone — without this, so is rotation from the keyboard.
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setSel((cur) => (cur === i ? null : i));
+                      setSel((cur) => (cur === realIndex ? null : realIndex));
                     }
                   }}
                 >
@@ -370,7 +375,7 @@ export function WarehouseFloor({
                   >
                     ×{pt.tile.units}
                   </text>
-                  {sel === i && (
+                  {sel === realIndex && (
                     <>
                       <rect
                         x={pt.x}
