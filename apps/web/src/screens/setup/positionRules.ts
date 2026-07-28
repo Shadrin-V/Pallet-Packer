@@ -2,8 +2,8 @@
 // Возвращает КЛЮЧИ и подстановки, не готовые строки: перевод — дело компонента, как в stackFormula.
 import type { StackPreview } from '@shadrin-v/engine';
 import type { TranslationKey } from '@shadrin-v/i18n';
-import type { PositionState } from '../SetupScreen';
-import { activeStep } from '../SetupScreen';
+import type { PositionState } from './setupState';
+import { activeStep } from './setupState';
 import { orientationChoiceOf } from '../components/orientationChoice';
 
 export interface RuleText {
