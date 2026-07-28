@@ -45,6 +45,11 @@ export const ru: Dictionary = {
   'setup.rule.orientFree': 'Можно разворачивать вокруг вертикали (длина ↔ ширина).',
   'setup.rule.orientTwoSidedLength': 'Вилы заходят только с двух сторон, вдоль длины.',
   'setup.rule.orientTwoSidedWidth': 'Вилы заходят только с двух сторон, вдоль ширины.',
+  'setup.panel.rules': 'Правила',
+  'setup.panel.calc': 'Как это считается',
+  'setup.panel.catalogue': 'Каталог',
+  'setup.panel.empty': 'Выберите позицию, чтобы увидеть её правила.',
+  'setup.panel.close': 'Закрыть правила',
   'warehouse.title': 'Склад',
   'warehouse.hint':
     'Неразмещённые стопки в масштабе 1:1, как в кузове. Перетащите стопку в кузов, чтобы поставить — или вытащите стопку из кузова сюда, чтобы освободить место (например, для поворота).',

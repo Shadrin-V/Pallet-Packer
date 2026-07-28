@@ -48,6 +48,12 @@ export const TRANSLATION_KEYS = [
   'setup.rule.orientFree',
   'setup.rule.orientTwoSidedLength',
   'setup.rule.orientTwoSidedWidth',
+  // Setup: rules panel (RulesPanel, LKWkalk-5nb)
+  'setup.panel.rules',
+  'setup.panel.calc',
+  'setup.panel.catalogue',
+  'setup.panel.empty',
+  'setup.panel.close',
   'warehouse.title',
   'warehouse.hint',
   'warehouse.count',

@@ -45,6 +45,11 @@ export const de: Dictionary = {
   'setup.rule.orientFree': 'Darf um die Hochachse gedreht werden (Länge ↔ Breite).',
   'setup.rule.orientTwoSidedLength': 'Gabeln kommen nur von zwei Seiten, längs.',
   'setup.rule.orientTwoSidedWidth': 'Gabeln kommen nur von zwei Seiten, quer.',
+  'setup.panel.rules': 'Regeln',
+  'setup.panel.calc': 'So wird gerechnet',
+  'setup.panel.catalogue': 'Katalog',
+  'setup.panel.empty': 'Position auswählen, um ihre Regeln zu sehen.',
+  'setup.panel.close': 'Regeln schließen',
   'warehouse.title': 'Lager',
   'warehouse.hint':
     'Nicht platzierte Stapel, im Maßstab 1:1 wie im Laderaum. Einen Stapel in den Laderaum ziehen, um ihn zu setzen — oder einen Stapel aus dem Laderaum hierher ziehen, um Platz zu schaffen (z. B. zum Drehen).',
