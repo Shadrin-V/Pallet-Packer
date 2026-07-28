@@ -93,9 +93,9 @@ export function WarehouseFloor({
   // A minimum depth of one vehicle width, always: empty, the floor still needs a comfortable drop
   // target (8fy — a stack pulled out of the hold must have somewhere to land); with content, a single
   // shallow row must not shrink the surface (nor its scenery) to a sliver. A deeper buffer grows past
-  // it. Pinning the minimum to the vehicle width also fixes the scenery's size for good: the backdrop's
-  // yard depth is the same width, so its `unit` is now constant at every buffer depth.
-  const floorHeight = Math.max(floor.height, Math.round(load.vehicle.width));
+  // it.
+  const yardUnit = Math.round(load.vehicle.width);
+  const floorHeight = Math.max(floor.height, yardUnit);
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
 
@@ -149,7 +149,9 @@ export function WarehouseFloor({
         >
           {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
               decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
-          <WarehouseBackdrop width={floor.width} height={floorHeight} />
+          {/* Доки меряются `yardUnit` — МИНИМАЛЬНОЙ глубиной двора, а не текущей: иначе сценерия
+              растёт вместе с буфером и начинает доминировать над грузом (LKWkalk-jen). */}
+          <WarehouseBackdrop width={floor.width} height={floorHeight} dockHeight={yardUnit} />
           {/* Загоны заказов (41e.2): пустой массив, когда различимых заказов меньше двух — тогда
               двор выглядит как раньше. Рисуются между фоном и стопками, указателя не берут. */}
           {floor.bays.map((bay) => {

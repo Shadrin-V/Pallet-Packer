@@ -50,7 +50,7 @@ describe('WarehouseBay', () => {
   });
 
   it('бирка уже загона', () => {
-    expect(Number(draw().querySelector('[data-tag]')!.getAttribute('width'))).toBe(2200);
+    expect(Number(draw().querySelector('[data-tag]')!.getAttribute('width'))).toBe(1200);
   });
 
   // Номера заказов приходят из ERPNext (`SAL-ORD-2026-00001`) и из свободного поля в настройках — на
@@ -70,6 +70,23 @@ describe('WarehouseBay', () => {
     return run + 2 * padLeft <= Number(plate(c).getAttribute('width'));
   };
 
+  // Бирка — краска на полу, а не заголовок раздела (LKWkalk-1f5: на проде плашка перекрывала треть
+  // верхнего ряда стопок). Мера — сам груз: европоддон 1200×800 мм, единица масштаба двора.
+  const EPAL_L = 1200;
+  const EPAL_D = 800;
+  /** Кегль счётчика «×N» на стопке во дворе: `load.vehicle.width * 0.05` (WarehouseFloor), то есть
+   *  124 мм у стандартного 2480-мм кузова — самый мелкий из «настоящих» текстов двора. */
+  const STACK_COUNT_FONT = 2480 * 0.05;
+
+  it('плашка держится масштаба разметки: не длиннее поддона и мельче счётчика стопки', () => {
+    const c = draw();
+    expect(Number(plate(c).getAttribute('width'))).toBeLessThanOrEqual(EPAL_L);
+    // Полоса бирки — не больше четверти глубины поддона, иначе она съедает ряд, который подписывает.
+    expect(Number(plate(c).getAttribute('height'))).toBeLessThanOrEqual(EPAL_D / 4);
+    // Бирка вторична по отношению к грузу: её кегль не спорит со счётчиком на самой стопке.
+    expect(fontSizeOf(c)).toBeLessThanOrEqual(STACK_COUNT_FONT);
+  });
+
   it('длинный номер заказа не вылезает за плашку — кегль ужимается', () => {
     const short = draw();
     expect(fitsInPlate(short)).toBe(true);
@@ -80,13 +97,13 @@ describe('WarehouseBay', () => {
     expect(fitsInPlate(long)).toBe(true);
     // Ужался именно кегль, а не «повезло с длиной»; плашка при этом не растянулась — она и есть граница.
     expect(fontSizeOf(long)).toBeLessThan(fontSizeOf(short));
-    expect(Number(plate(long).getAttribute('width'))).toBe(2200);
+    expect(Number(plate(long).getAttribute('width'))).toBe(1200);
   });
 
   it('патологически длинный ярлык дополнительно обрезается по плашке', () => {
     const c = draw({ ...bay, orderId: 'X'.repeat(400) }, 'X'.repeat(400));
     // Ниже читаемого минимума кегль не проваливается — за этой границей работает обрезка.
-    expect(fontSizeOf(c)).toBeGreaterThanOrEqual(99);
+    expect(fontSizeOf(c)).toBeGreaterThanOrEqual(54);
     expect(tagText(c).getAttribute('clip-path')).toBeTruthy();
   });
 });

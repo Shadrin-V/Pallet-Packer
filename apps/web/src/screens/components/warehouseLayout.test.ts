@@ -290,29 +290,64 @@ describe('warehouseFloor — загоны по заказу', () => {
     expect(fl.bays[0]).toMatchObject({ startIndex: 0, count: 2, units: 2 });
     expect(fl.bays[1]).toMatchObject({ startIndex: 2, count: 1, units: 1 });
     // Первый загон: x=pad=200, y=pad=200; контент 2×'a' = 1200+200+1200 = 2600 → w = 2600+2*200 = 3000;
-    // h = 800 + TAG_H(330) + 2*BAY_PAD(400) = 1530.
-    expect(fl.bays[0]).toMatchObject({ x: 200, y: 200, w: 3000, h: 1530 });
-    // Второй встаёт правее: 200 + 3000 + BAY_GAP(400) = 3600. Контент 600 → w = max(1000, BAY_MIN_W) = 2400.
-    expect(fl.bays[1]).toMatchObject({ x: 3600, y: 200, w: 2400, h: 1130 });
+    // h = 800 + TAG_H(180) + 2*BAY_PAD(400) = 1380.
+    expect(fl.bays[0]).toMatchObject({ x: 200, y: 200, w: 3000, h: 1380 });
+    // Второй встаёт правее: 200 + 3000 + BAY_GAP(400) = 3600. Контент 600 → w = max(1000, BAY_MIN_W) = 1600.
+    expect(fl.bays[1]).toMatchObject({ x: 3600, y: 200, w: 1600, h: 980 });
   });
 
   it('плитки смещены внутрь своего загона — под бирку и поля', () => {
     const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
-    // 200 (bay.x) + 200 (BAY_PAD) = 400 по x; 200 (bay.y) + 330 (TAG_H) + 200 (BAY_PAD) = 730 по y.
-    expect(fl.tiles[0]).toMatchObject({ x: 400, y: 730 });
+    // 200 (bay.x) + 200 (BAY_PAD) = 400 по x; 200 (bay.y) + 180 (TAG_H) + 200 (BAY_PAD) = 580 по y.
+    expect(fl.tiles[0]).toMatchObject({ x: 400, y: 580 });
   });
 
   it('загоны переносятся на новую строку, когда следующий не влезает', () => {
     // Ширина задана явно: тест про перенос загонов, а не про рамку разреза.
     const fl = warehouseFloor(twoOrders, [tile('a'), tile('a'), tile('b')], {
       grouped: true,
-      width: 6000,
+      width: 5000,
       gap: 200,
       pad: 200,
     });
-    // Загон SO-1 занял x=200..3200; SO-2 (w=2400) с x=3600 упёрся бы в 6000 > 6000-200.
+    // Загон SO-1 занял x=200..3200; SO-2 (w=1600) с x=3600 упёрся бы в 5200 > 5000-200.
     expect(fl.bays[1].x).toBe(200);
     expect(fl.bays[1].y).toBe(200 + fl.bays[0].h + 400); // строка + BAY_GAP
+  });
+
+  // LKWkalk-8z2: очерёдность загонов задаёт ЗАЯВКА (порядок `load.cargo`, он же порядок строк на
+  // экране «Настройка»), а не порядок плиток во дворе — тот переставляют ручные броски.
+  it('порядок загонов следует заявке, а не порядку плиток во дворе', () => {
+    const threeOrders: Load = {
+      vehicle: V,
+      cargo: [
+        cargo('a', 1200, 800, 'SO-1'),
+        cargo('b', 600, 400, 'SO-2'),
+        cargo('c', 600, 400, 'SO-3'),
+      ],
+    };
+    // Плитки перетасованы броском: первой во дворе лежит стопка последнего заказа заявки.
+    const fl = warehouseFloor(threeOrders, [tile('c'), tile('b'), tile('a')], {
+      grouped: true,
+      gap: 200,
+      pad: 200,
+    });
+    expect(fl.bays.map((b) => b.orderId)).toEqual(['SO-1', 'SO-2', 'SO-3']);
+    // Плитки внутри загона по-прежнему в своём дворовом порядке — заявка задаёт порядок ЗАГОНОВ.
+    expect(fl.tiles.map((t) => t.srcIndex)).toEqual([2, 1, 0]);
+  });
+
+  it('заказ без стопок во дворе загона не открывает', () => {
+    const withEmptyOrder: Load = {
+      vehicle: V,
+      cargo: [cargo('a', 1200, 800, 'SO-1'), cargo('b', 600, 400, 'SO-2'), cargo('c', 600, 400, 'SO-3')],
+    };
+    const fl = warehouseFloor(withEmptyOrder, [tile('c'), tile('a')], {
+      grouped: true,
+      gap: 200,
+      pad: 200,
+    });
+    expect(fl.bays.map((b) => b.orderId)).toEqual(['SO-1', 'SO-3']);
   });
 
   it('грузы без номера заказа собираются в загон, который идёт последним', () => {
@@ -346,7 +381,7 @@ describe('warehouseFloor — загоны по заказу', () => {
 
   it('высота двора покрывает самую высокую строку загонов', () => {
     const fl = warehouseFloor(twoOrders, [tile('a'), tile('b')], { gap: 200, pad: 200, grouped: true });
-    expect(fl.height).toBe(200 + 1530 + 200);
+    expect(fl.height).toBe(200 + 1380 + 200);
   });
 
   it('детерминирована', () => {
