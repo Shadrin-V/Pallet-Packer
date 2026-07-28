@@ -36,6 +36,7 @@ export const de: Dictionary = {
   'warehouse.dropHint': 'Zum Setzen in den Laderaum ziehen',
   'warehouse.dropZone': 'Stapel aus dem Laderaum hierher ziehen',
   'warehouse.bay.noOrder': 'Ohne Auftrag',
+  'warehouse.bay.reorder': 'Auftragsbereich verschieben',
   'warehouse.groupByOrder': 'Nach Auftrag gruppieren',
   'article.label': 'Artikel',
   'article.source.erp': 'ERP',

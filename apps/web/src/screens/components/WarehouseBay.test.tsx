@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, fireEvent } from '@testing-library/react';
 import { WarehouseBay } from './WarehouseBay';
 import type { PlacedBay } from './warehouseLayout';
 
@@ -19,6 +19,19 @@ const draw = (b: PlacedBay = bay, label = b.orderId) =>
   render(
     <svg>
       <WarehouseBay bay={b} series={2} label={label} />
+    </svg>,
+  ).container;
+
+const drawGrip = (onTagDown: () => void) =>
+  render(
+    <svg>
+      <WarehouseBay
+        bay={bay}
+        series={2}
+        label={bay.orderId}
+        onTagDown={onTagDown}
+        reorderLabel="Auftragsbereich verschieben"
+      />
     </svg>,
   ).container;
 
@@ -106,5 +119,39 @@ describe('WarehouseBay', () => {
     // Ниже читаемого минимума кегль не проваливается — за этой границей работает обрезка.
     expect(fontSizeOf(c)).toBeGreaterThanOrEqual(54);
     expect(tagText(c).getAttribute('clip-path')).toBeTruthy();
+  });
+
+  // Тянется БИРКА, а не площадка: внутри загона жест «потянуть» уже принадлежит стопке.
+  it('бирка отдаёт указателю нажатие, когда перенос загонов включён', () => {
+    const onTagDown = vi.fn();
+    const c = drawGrip(onTagDown);
+    const grip = c.querySelector('[data-tag-grip]')!;
+    expect(grip.getAttribute('pointer-events')).toBe('auto');
+    fireEvent.pointerDown(grip);
+    expect(onTagDown).toHaveBeenCalledTimes(1);
+  });
+
+  // 41e.2 §5: двор — один role="img", поэтому без явного имени ручка для скринридера не существует.
+  it('у ручки есть доступное имя', () => {
+    const c = drawGrip(vi.fn());
+    const grip = c.querySelector('[data-tag-grip]')!;
+    expect(grip.getAttribute('role')).toBe('button');
+    expect(grip.getAttribute('aria-label')).toBe('Auftragsbereich verschieben');
+  });
+
+  // РЕГРЕССИОННЫЕ СТРАЖИ, а не движущие тесты: они проходят и до реализации. Их работа — поймать
+  // соблазн включить указатель на всей группе загона; TDD-шаги ведут тесты выше.
+  it('периметр загона указателя не берёт даже при включённом переносе', () => {
+    const c = drawGrip(vi.fn());
+    // Внешняя группа остаётся инертной: перехватывает только сама плашка.
+    expect(c.querySelector('[data-testid="warehouse-bay"]')!.getAttribute('pointer-events')).toBe('none');
+    expect(c.querySelector('[data-outline]')!.getAttribute('pointer-events')).toBeNull();
+  });
+
+  it('без обработчика бирка остаётся инертной и безымянной — двор без переноса загонов', () => {
+    const c = draw();
+    const grip = c.querySelector('[data-tag-grip]')!;
+    expect(grip.getAttribute('pointer-events')).toBeNull();
+    expect(grip.getAttribute('role')).toBeNull();
   });
 });

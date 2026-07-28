@@ -37,6 +37,7 @@ export const TRANSLATION_KEYS = [
   'warehouse.dropHint',
   'warehouse.dropZone',
   'warehouse.bay.noOrder',
+  'warehouse.bay.reorder',
   'warehouse.groupByOrder',
   'article.label',
   'article.source.erp',
