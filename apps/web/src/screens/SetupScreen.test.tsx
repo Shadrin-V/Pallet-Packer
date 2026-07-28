@@ -890,6 +890,18 @@ describe('SetupScreen — removing from the calculation', () => {
     expect(before[1]).toHaveFocus();
   });
 
+  it('after deleting the LAST row of a multi-row order focus lands on the PREVIOUS row', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition());
+    await userEvent.click(addPosition()); // three positions in SO-1
+
+    const before = rows();
+    await userEvent.click(trashes()[2]); // arm the third (last) row
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(before[1]).toHaveFocus(); // the second row — there is no "next" one to fall to
+  });
+
   it('after deleting the last position of an order focus lands on "+ Auftrag hinzufügen"', async () => {
     renderSetup(() => {});
     // The default order has exactly one position — deleting it takes the whole order with it
