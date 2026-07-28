@@ -1,36 +1,24 @@
-// Setup screen (LKWkalk-gxp) — эталон docs/lovable/setup-reference.html, палитра/компоненты по
-// docs/design/design-system.md (Direction D). Token-only, i18n de/ru, движок для предпросмотра штабеля.
+// Setup screen (LKWkalk-gxp, пересобран в мастер-деталь LKWkalk-5nb) — эталон
+// docs/lovable/setup-reference.html, палитра/компоненты по docs/design/design-system.md
+// (Direction D). Token-only, i18n de/ru, движок для предпросмотра штабеля.
+// Тонкий координатор: состояние, выбор строки, персистентность, сборка Load, раскладка в две
+// колонки от xl. Собственно строка (PositionRow), карточка заказа (OrderCard) и разбор правил
+// (RulesPanel) живут в ./setup/ — здесь их только соединяют.
 import { useEffect, useRef, useState } from 'react';
-import type {
-  Load,
-  Vehicle,
-  ForkAxis,
-  NestingMode,
-  StackPreview,
-} from '@shadrin-v/engine';
-import { computeStack, FORK_AXES } from '@shadrin-v/engine';
-import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components/stackFormula';
-import {
-  ORIENTATION_CHOICES,
-  orientationChoiceOf,
-  orientationFieldsFor,
-  type OrientationChoice,
-} from './components/orientationChoice';
-import { StackDiagram } from './components/StackDiagram';
-import { ArmedDelete } from './components/ArmedDelete';
+import type { Load, Vehicle } from '@shadrin-v/engine';
+import { fillTemplate, stepInvalid } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
-import { OrderSwatch } from '../lib/swatch';
-import { orderColorToken } from '../lib/orderColor';
-import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
+import { Measure, Select, Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
-import { ArticleCombobox } from './components/ArticleCombobox';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
+import { OrderCard } from './setup/OrderCard';
+import { RulesPanel } from './setup/RulesPanel';
 
 import {
-  activeStep, activeStepField, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
+  activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
   emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, saveSetup,
   SETUP_STORAGE_KEY, toCargo,
   type LockedFields, type Num, type OrderState, type PositionState,
@@ -75,6 +63,15 @@ export function keepsArmed(target: EventTarget | null): boolean {
   return el.closest('[data-armed-delete]') !== null;
 }
 
+/** Which position is being examined in the rules panel: a slot in the plan, not part of it — the
+ *  same view/content boundary already drawn for `bayOrder` (LKWkalk-36f). Never persisted; if the
+ *  row it names disappears (deleted, or an order it belonged to was replaced), the panel simply
+ *  shows its empty state instead of crashing (spec §7). */
+interface Selection {
+  orderKey: string;
+  positionId: string;
+}
+
 // ---- component ------------------------------------------------------------
 export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onReset }: SetupScreenProps) {
   const tt = useT();
@@ -85,6 +82,12 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Article catalogue (Task 8): saving a row's article goes through the DataProvider seam, so it
   // must tolerate rendering outside a provider (existing tests do this).
   const dp = useOptionalDataProvider();
+
+  // Which position's rules are open in the panel. View state only — not persisted, not part of the
+  // saved draft (see the Selection doc comment above).
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const selectedOrder = orders.find((o) => o.key === selection?.orderKey) ?? null;
+  const selectedPosition = selectedOrder?.positions.find((p) => p.id === selection?.positionId) ?? null;
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -244,7 +247,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   };
 
   // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
-  // provider. Returns the saved Article so the caller (PositionRow) can bind the row to it —
+  // provider. Returns the saved Article so the caller (RulesPanel) can bind the row to it —
   // otherwise the row stays unbound after a successful save and the button never flips to
   // "update" (Finding 1).
   const saveArticle = async (p: PositionState): Promise<Article | undefined> => {
@@ -333,28 +336,43 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         </p>
       )}
 
-      <div className="flex flex-col gap-4">
-        {orders.map((o, oi) => (
-          <OrderCard
-            key={o.key}
-            order={o}
-            index={o.colorIndex}
+      {/* Master-detail (spec §7): order cards + the selected position's rules panel. From xl
+          (1280px) side by side, panel ≈320px and sticky; below that threshold, single column —
+          the panel simply follows the list. */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {orders.map((o, oi) => (
+            <OrderCard
+              key={o.key}
+              order={o}
+              index={o.colorIndex}
+              vehicle={vehicle}
+              reorderable={orders.length > 1}
+              canMoveUp={oi > 0}
+              canMoveDown={oi < orders.length - 1}
+              onMove={(dir) => moveOrder(o.key, dir)}
+              onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
+              onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
+              onAddPosition={() => addPosition(o.key)}
+              armed={armed}
+              onArm={(a) => setArmed(a)}
+              onRemoveOrder={() => removeOrder(o.key)}
+              onRemovePosition={(pid) => removePosition(o.key, pid)}
+              selectedPositionId={selection?.orderKey === o.key ? selection.positionId : null}
+              onSelectPosition={(pid) => setSelection({ orderKey: o.key, positionId: pid })}
+            />
+          ))}
+        </div>
+        <div className="w-full shrink-0 xl:sticky xl:top-4 xl:w-[20rem]">
+          <RulesPanel
+            position={selectedPosition}
+            orderId={selectedOrder?.orderId ?? null}
+            index={selectedOrder?.colorIndex ?? 0}
             vehicle={vehicle}
-            tt={tt}
-            reorderable={orders.length > 1}
-            canMoveUp={oi > 0}
-            canMoveDown={oi < orders.length - 1}
-            onMove={(dir) => moveOrder(o.key, dir)}
-            onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
-            onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
-            onAddPosition={() => addPosition(o.key)}
-            onSaveArticle={saveArticle}
-            armed={armed}
-            onArm={(a) => setArmed(a)}
-            onRemoveOrder={() => removeOrder(o.key)}
-            onRemovePosition={(pid) => removePosition(o.key, pid)}
+            onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
+            onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
           />
-        ))}
+        </div>
       </div>
 
       {/* Duplicate add-order action below the last order (E10). */}
@@ -380,440 +398,5 @@ function MeasureField({ label, value, onChange }: { label: string; value: Num; o
         <Measure ariaLabel={label} value={value} onChange={onChange} />
       </span>
     </label>
-  );
-}
-
-// ---- order card -----------------------------------------------------------
-function OrderCard({
-  order,
-  index,
-  vehicle,
-  tt,
-  reorderable,
-  canMoveUp,
-  canMoveDown,
-  onMove,
-  onOrderIdChange,
-  onPositionChange,
-  onAddPosition,
-  onSaveArticle,
-  armed,
-  onArm,
-  onRemoveOrder,
-  onRemovePosition,
-}: {
-  order: OrderState;
-  index: number;
-  vehicle: Vehicle;
-  tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
-  reorderable: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMove: (dir: -1 | 1) => void;
-  onOrderIdChange: (v: string) => void;
-  onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
-  onAddPosition: () => void;
-  onSaveArticle: (p: PositionState) => Promise<Article | undefined>;
-  armed: { kind: 'position' | 'order'; key: string } | null;
-  onArm: (a: { kind: 'position' | 'order'; key: string }) => void;
-  onRemoveOrder: () => void;
-  onRemovePosition: (pid: string) => void;
-}) {
-  // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
-  const [openId, setOpenId] = useState<string | null>(null);
-  const colorVar = `var(--s${((index % 8) + 1)})`;
-  return (
-    <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
-      {/* flex-wrap (Finding 6, final review wave): this header only survived unwrapped because the
-          order-ID field carries min-w-0 — an accident, not a guarantee. Wrap explicitly so the wide
-          armed confirm button (ArmedDelete) has somewhere to go instead of overflowing the
-          overflow-hidden section, same fix already applied to the position row below. */}
-      <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
-        <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
-        <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
-        <span className="ml-auto text-caption text-muted">
-          {order.positions.length} × {tt('cargoType.label')}
-        </span>
-        {/* Reorder the order queue — list order = priority (4bj.11). Hidden when there is nothing
-            to reorder; ends are disabled. Only UI: moving a card reorders the semantic cargo list. */}
-        {reorderable && (
-          <div className="flex items-center">
-            <button
-              type="button"
-              aria-label={tt('setup.moveOrderUp')}
-              disabled={!canMoveUp}
-              onClick={() => onMove(-1)}
-              className="px-1 text-muted hover:text-brand disabled:opacity-30 disabled:hover:text-muted"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              aria-label={tt('setup.moveOrderDown')}
-              disabled={!canMoveDown}
-              onClick={() => onMove(1)}
-              className="px-1 text-muted hover:text-brand disabled:opacity-30 disabled:hover:text-muted"
-            >
-              ↓
-            </button>
-          </div>
-        )}
-        {/* Remove the whole order from THIS calculation — the catalogue is untouched (ADR 022). */}
-        <ArmedDelete
-          armed={armed?.kind === 'order' && armed.key === order.key}
-          onArm={() => onArm({ kind: 'order', key: order.key })}
-          onConfirm={onRemoveOrder}
-          label={tt('setup.deleteOrder')}
-          confirmLabel={tt('action.confirmDelete')}
-        />
-      </div>
-
-      {/* Column headings for the position fields (rgv.6). The vehicle bar has always had them; the
-          position row did not, so its numbers read as a bare "1200 · 800 · 144 · 186". Widths mirror
-          PositionRow exactly. Only from xl: below that the row wraps and a header would not line up
-          with anything — the per-field aria-labels carry the meaning there. */}
-      <div className="hidden xl:flex items-center gap-1.5 border-b border-line bg-sub px-4 pb-1 pt-2 text-label uppercase tracking-wide text-faint">
-        <span className="w-3 shrink-0" />
-        <span className="w-64 shrink-0">{tt('article.label')}</span>
-        <span className="w-24">{tt('field.length')}</span>
-        <span className="w-24">{tt('field.width')}</span>
-        <span className="w-24">{tt('field.height')}</span>
-        <span className="w-20">{tt('field.quantity')}</span>
-      </div>
-
-      <div className="divide-y divide-line">
-        {order.positions.map((p) => (
-          <PositionRow
-            key={p.id}
-            position={p}
-            index={index}
-            vehicle={vehicle}
-            tt={tt}
-            open={openId === p.id}
-            onSetOpen={(o) => setOpenId(o ? p.id : null)}
-            onChange={(patch) => onPositionChange(p.id, patch)}
-            onSaveArticle={() => onSaveArticle(p)}
-            armed={armed?.kind === 'position' && armed.key === p.id}
-            onArm={() => onArm({ kind: 'position', key: p.id })}
-            onRemove={() => onRemovePosition(p.id)}
-          />
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => {
-          setOpenId(null); // adding an article collapses the open nesting panel (E16/#1)
-          onAddPosition();
-        }}
-        className="w-full border-t border-dashed border-line-strong bg-sub py-2 text-caption font-semibold text-muted hover:text-brand"
-      >
-        + {tt('setup.addPosition')}
-      </button>
-    </section>
-  );
-}
-
-// ---- position row ---------------------------------------------------------
-function PositionRow({
-  position: p,
-  index,
-  vehicle,
-  tt,
-  open,
-  onSetOpen,
-  onChange,
-  onSaveArticle,
-  armed,
-  onArm,
-  onRemove,
-}: {
-  position: PositionState;
-  index: number;
-  vehicle: Vehicle;
-  tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
-  open: boolean;
-  onSetOpen: (open: boolean) => void;
-  onChange: (patch: Partial<PositionState>) => void;
-  onSaveArticle: () => Promise<Article | undefined>;
-  armed: boolean;
-  onArm: () => void;
-  onRemove: () => void;
-}) {
-  // Task 8 review fix: a failed save must be visible and must never escape as an unhandled
-  // rejection. This is the panel that owns the save button, so it owns the message too — cleared
-  // on the next successful save, never shown after one.
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const handleSaveArticle = async () => {
-    try {
-      const saved = await onSaveArticle();
-      setSaveError(null);
-      // Finding 1: bind the row to what the server actually stored — otherwise articleCode stays
-      // unset and the button keeps reading "save" instead of flipping to "update".
-      if (saved)
-        onChange({
-          articleCode: saved.itemCode,
-          locked: lockedFieldsFrom(saved.erpFields),
-          unboundFromErp: undefined,
-        });
-    } catch {
-      setSaveError(tt('article.saveError'));
-    }
-  };
-  const dimsPresent = dimsComplete(p);
-  const invalid = stepInvalid(p.state, activeStep(p), p.height);
-  // Finding 3: the hint names the article the field is locked by, not just "somewhere in ERPNext".
-  const lockedHint = fillTemplate(tt('article.lockedHint'), { code: p.articleCode ?? '' });
-  // Finding 3: "активна при введённом артикуле и заполненных габаритах" — the save button is always
-  // present in the details panel, disabled (not hidden) until both conditions hold.
-  const saveDisabled = (p.articleCode ?? p.name).trim() === '' || !dimsPresent;
-  let preview: StackPreview | null = null;
-  if (dimsPresent && !invalid) {
-    try {
-      preview = computeStack(toCargo(p, 'preview'), vehicle);
-    } catch {
-      preview = null;
-    }
-  }
-
-  // Any click outside this row (add order/position, another row, elsewhere) collapses the panel.
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    // Listen on 'click', NOT 'mousedown': collapsing on mousedown reflows the page before mouseup,
-    // so the browser dispatches the click on an ancestor instead of the button the user pressed
-    // (e.g. "+ Position") and its handler never runs. On 'click' the button's React handler (root
-    // delegation) fires first, then this closes the panel.
-    const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onSetOpen(false);
-    };
-    document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
-  }, [open, onSetOpen]);
-
-  return (
-    <div ref={rootRef} className="px-4 py-2.5">
-      {/* flex-wrap (no forced nowrap): a normal row still fits one line, but the wider two-sided
-          variant (fork-axis select + info hint) wraps its tail to a second line instead of
-          overflowing and overlapping the length fields (QA). */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <OrderSwatch index={index} width={12} height={26} />
-        {/* Article combobox replaces the old preset select + separate name field (Task 8, closes
-            rgv.8): one control both names the row and, when a suggestion is picked, fills its
-            dimensions/rules and locks the fields ERPNext actually supplied. */}
-        <span className="inline-flex w-64 shrink-0 items-center gap-1">
-          <ArticleCombobox
-            ariaLabel={tt('article.label')}
-            value={p.name}
-            onChange={(name) =>
-              onChange({
-                name,
-                articleCode: undefined,
-                locked: {},
-                // Keep the first binding we left, not the latest keystroke's.
-                unboundFromErp:
-                  p.unboundFromErp ??
-                  (p.articleCode && p.locked?.name ? { itemCode: p.articleCode, name: p.name } : undefined),
-              })
-            }
-            onPick={(s) => {
-              const patch = applySuggestion(s);
-              // Picking another article collapses the nesting panel (E16) — unless the article's
-              // own rules are verschachtelt, in which case it auto-expands, same as toggling the
-              // Segmented control by hand (E9).
-              onSetOpen(patch.state === 'verschachtelt');
-              onChange(patch);
-            }}
-            className="w-full"
-          />
-          {/* Finding 3 (final review wave): the name lock (ADR 022 §3) was only explained AFTER the
-              user started retyping (the unboundFromErp notice), and only inside the collapsed
-              details panel. length/width/height each get an InfoHint right next to the field the
-              moment they are locked — the name combobox got none. It must stay editable (no
-              readOnly — that is the search input), so the affordance is the same InfoHint pattern,
-              not a lock. */}
-          {p.locked?.name && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
-          {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} />
-          {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
-          {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
-        <Segmented
-          ariaLabel={tt('cargoType.nesting.label')}
-          value={p.state}
-          onChange={(state) => {
-            onChange({ state });
-            // Verschachtelt exposes nesting rules → auto-open the details panel (E9).
-            if (state === 'verschachtelt') onSetOpen(true);
-          }}
-          options={[
-            { value: 'entschachtelt', label: tt('setup.state.ent') },
-            { value: 'verschachtelt', label: tt('setup.state.ver') },
-          ]}
-        />
-        {/* Orientation = rotation + forklift access as one choice (ADR 018). Fixed width + truncate so
-            a long RU label can't blow out the row; the fork-axis picker appears only for two-sided. */}
-        <span className="w-36 shrink-0">
-          <Select
-            ariaLabel={tt('cargoType.orientation.label')}
-            value={orientationChoiceOf(p.rotation, p.forkAccess)}
-            onChange={(choice) => onChange(orientationFieldsFor(choice as OrientationChoice))}
-            options={ORIENTATION_CHOICES.map((c) => ({ value: c, label: tt(`cargoType.orientation.${c}`) }))}
-            className="w-full"
-          />
-        </span>
-        {orientationChoiceOf(p.rotation, p.forkAccess) === 'twoSided' && (
-          <>
-            <span className="w-[8.5rem] shrink-0">
-              <Select
-                ariaLabel={tt('cargoType.forkAxis.label')}
-                value={p.forkAxis ?? 'length'}
-                onChange={(forkAxis) => onChange({ forkAxis: forkAxis as ForkAxis })}
-                options={FORK_AXES.map((a) => ({ value: a, label: tt(`cargoType.forkAxis.${a}`) }))}
-                className="w-full"
-              />
-            </span>
-            {/* Two-sided access only constrains packing under rear/side loading; under the default
-                combined mode both doors are open, so it is a no-op. Explain that (4bj.13). */}
-            <InfoHint
-              ariaLabel={tt('cargoType.orientation.twoSided')}
-              text={tt('cargoType.orientation.twoSidedHint')}
-              align="right"
-            />
-          </>
-        )}
-        {preview && preview.count > 0 && (
-          <Chip tone={p.state === 'verschachtelt' ? 'mint' : 'default'}>
-            {tt('setup.stack')} {preview.count}
-          </Chip>
-        )}
-        <button type="button" aria-label="details" aria-expanded={open} onClick={() => onSetOpen(!open)} className="ml-auto text-muted hover:text-brand">
-          {open ? '⌃' : '⌄'}
-        </button>
-        {/* Drop this position from THIS calculation; the catalogue article stays (ADR 022). */}
-        <ArmedDelete
-          armed={armed}
-          onArm={onArm}
-          onConfirm={onRemove}
-          label={tt('setup.deletePosition')}
-          confirmLabel={tt('action.confirmDelete')}
-        />
-      </div>
-
-      {open && (
-        <div className="mt-2 flex flex-col gap-3 border-t border-dashed border-line bg-sub px-2 py-2">
-          <div className="flex flex-wrap items-end gap-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-label uppercase font-semibold text-faint inline-flex items-center gap-1.5">
-                {tt('cargoType.stacking.label')}
-                <InfoHint ariaLabel={tt('cargoType.stacking.label')} text={tt('cargoType.stacking.hint')} />
-              </span>
-              <span className="w-24"><Measure ariaLabel={tt('cargoType.stacking.label')} unit="×" value={p.maxTiers} onChange={(maxTiers) => onChange({ maxTiers })} /></span>
-            </label>
-
-            {p.state === 'verschachtelt' && (
-              <>
-                <label className="flex flex-col gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.mode')}</span>
-                  <Select
-                    ariaLabel={tt('cargoType.nesting.mode')}
-                    value={p.nestingMode}
-                    onChange={(nestingMode) => onChange({ nestingMode })}
-                    options={[
-                      { value: 'sequential' as NestingMode, label: tt('cargoType.nesting.modeSequential') },
-                      { value: 'pairwise' as NestingMode, label: tt('cargoType.nesting.modePairwise') },
-                    ]}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">
-                    {tt(p.nestingMode === 'pairwise' ? 'cargoType.nesting.stepHeightPair' : 'cargoType.nesting.stepHeightSeq')}
-                  </span>
-                  <span className="w-24">
-                    <Measure
-                      ariaLabel={tt('cargoType.nesting.stepHeightSeq')}
-                      value={activeStep(p)}
-                      onChange={(v) => onChange({ [activeStepField(p)]: v })}
-                      invalid={invalid}
-                    />
-                  </span>
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.maxNested')}</span>
-                  <span className="w-24"><Measure ariaLabel={tt('cargoType.nesting.maxNested')} unit="×" value={p.maxNested} onChange={(maxNested) => onChange({ maxNested })} /></span>
-                </label>
-
-                {p.nestingMode === 'pairwise' && (
-                  <label className="flex items-center gap-2 pb-1.5 text-body">
-                    <input type="checkbox" checked={p.allowUnpairedTop} onChange={(e) => onChange({ allowUnpairedTop: e.target.checked })} />
-                    {tt('cargoType.nesting.allowUnpairedTop')}
-                  </label>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Save the row's dimensions/rules to the article catalogue — in the details panel, the
-              row itself is already at its width limit (long RU labels). Label switches to "update"
-              once the row is bound to an existing article (Task 8). Finding 3: always present,
-              disabled (not hidden) until an article and full dimensions are entered — the panel's
-              layout doesn't jump as the user fills the row in. */}
-          <div>
-            <Button variant="ghost" onClick={handleSaveArticle} disabled={saveDisabled}>
-              {tt(p.articleCode ? 'article.update' : 'article.save')}
-            </Button>
-            {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
-            {/* Finding 2 (review): show whenever the row is unbound from an ERP-named article, not
-                only while the typed text still differs from the remembered name. Typing the exact
-                ERP name back does not re-bind the row — Save still creates a brand-new article — so
-                hiding the notice the moment the text matches again would silently re-open the very
-                duplicate-fork bug this notice exists to prevent. */}
-            {p.unboundFromErp && (
-              <p className="text-caption text-muted">{tt('article.renameInErp')}</p>
-            )}
-          </div>
-
-          {/* validation hint + live formula */}
-          {p.state === 'verschachtelt' && (
-            <p className={`text-caption ${invalid ? 'text-danger' : 'text-muted'}`}>
-              {fillTemplate(tt('cargoType.nesting.stepHeightHint'), { H: numOr0(p.height) })}
-            </p>
-          )}
-          {preview && (
-            <div className="flex flex-wrap items-stretch gap-3 rounded-ctl bg-card px-3 py-2">
-              <div className="min-w-[12rem] flex-1">
-                <div className="text-caption text-muted">
-                  {fillTemplate(tt('stack.result'), { count: preview.count, height: `${preview.height} mm` })}
-                </div>
-                <div className="mt-1 font-mono text-formula text-ink">
-                  <span className="text-faint">{tt('stack.formula.label')}: </span>
-                  {fillTemplate(tt(formulaKey(preview)), formulaVars(preview))}
-                  {preview.cappedBy && preview.cappedBy !== 'notStackable' && (
-                    <> {fillTemplate(tt('stack.formula.cap'), formulaVars(preview))}</>
-                  )}
-                </div>
-              </div>
-              {preview.count > 0 && (
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">{tt('stack.diagram')}</span>
-                  <StackDiagram preview={preview} length={numOr0(p.length)} width={numOr0(p.width)} label={tt('stack.diagram')} series={orderColorToken(index).series} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }

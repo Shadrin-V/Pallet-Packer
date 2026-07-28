@@ -74,9 +74,21 @@ export function PositionRow({
         />
         {p.locked?.name && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
       </span>
-      <span className="w-24"><Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} /></span>
-      <span className="w-24"><Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} /></span>
-      <span className="w-24"><Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} /></span>
+      {/* Task 5 fix: the Task 3 draft of this row only carried the lock hint next to `name`, dropping
+          the per-dimension hint SetupScreen.test.tsx already pinned ("the locked-field hint names the
+          bound article", Finding 3) — restored here, same pattern as the name field above. */}
+      <span className="inline-flex w-24 items-center gap-1">
+        <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
+        {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+      </span>
+      <span className="inline-flex w-24 items-center gap-1">
+        <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} />
+        {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+      </span>
+      <span className="inline-flex w-24 items-center gap-1">
+        <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
+        {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+      </span>
       <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
 
       <button
