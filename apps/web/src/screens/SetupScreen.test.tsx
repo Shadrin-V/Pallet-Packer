@@ -1199,4 +1199,35 @@ describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
     expect(chip).toHaveFocus();
     vi.unstubAllGlobals();
   });
+
+  it('an armed delete on another row wins the first Escape; the drawer only closes on the next one (Important review fix)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+    renderSetup(() => {});
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
+
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip); // open the drawer for row 0
+
+    // Arm row 1's delete while row 0's drawer is open — the drawer has no backdrop below xl, so
+    // the list stays fully interactive underneath it.
+    const trashes = screen.getAllByRole('button', { name: 'Position aus der Berechnung entfernen' });
+    await userEvent.click(trashes[1]);
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+
+    // First Escape: cancels the armed delete (the more dangerous, more recent state) — the drawer
+    // for row 0 must NOT also close from the same keypress.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+
+    // Second Escape: nothing left armed, so now it closes the drawer and returns focus to the chip.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(chip).toHaveFocus();
+
+    vi.unstubAllGlobals();
+  });
 });

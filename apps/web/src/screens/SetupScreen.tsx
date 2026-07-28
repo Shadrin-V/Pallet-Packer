@@ -93,7 +93,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Below the two-column threshold (spec §7) the panel becomes a drawer over the list instead of a
   // sticky sidebar. `wide` picks the layout; `chipRefs` remembers each row's chip button so closing
   // the drawer can return focus to it — otherwise a keyboard user is dropped onto <body> (the same
-  // class of bug fixed for ArmedDelete in LKWkalk-yxn).
+  // class of bug fixed for ArmedDelete in LKWkalk-yxn). The Esc handler itself is wired up further
+  // down (after `armed` exists — see the comment there for why the two must coordinate).
   const wide = useIsWide();
   const chipRefs = useRef(new Map<string, HTMLButtonElement>());
   const closePanel = () => {
@@ -101,23 +102,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     setSelection(null);
     if (id) chipRefs.current.get(id)?.focus();
   };
-  // Esc closes the drawer. A document-level listener (not onKeyDown on the dialog element) because
-  // opening the drawer does not move focus into it — the chip that opened it keeps focus, so a
-  // handler scoped to the dialog's own subtree would never see the keydown bubble through it.
-  // Depends on `selection` (not just the open/closed flag) so switching to a different row while
-  // the drawer stays open still returns focus to THAT row's chip, not a stale one.
   const drawerOpen = !wide && !!selectedPosition;
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closePanel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-    // `closePanel` closes over `selection`, so it must be treated as reactive: the effect is
-    // re-established (with a fresh closePanel closure) whenever selection changes, so switching to a
-    // different row while the drawer stays open still returns focus to THAT row's chip.
-  }, [drawerOpen, selection]);
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -132,6 +117,33 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Exactly one delete may be armed at a time — one value for the whole screen, so that invariant
   // holds by construction instead of by keeping a flag per row in step (ADR 022).
   const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
+
+  // Esc closes the drawer. A document-level listener (not onKeyDown on the dialog element) because
+  // opening the drawer does not move focus into it — the chip that opened it keeps focus, so a
+  // handler scoped to the dialog's own subtree would never see the keydown bubble through it.
+  // Depends on `selection` (not just the open/closed flag) so switching to a different row while
+  // the drawer stays open still returns focus to THAT row's chip, not a stale one.
+  //
+  // Review finding (Task 6): below xl the drawer has no backdrop, so the list (and its per-row
+  // ArmedDelete controls, see the `armed` effect right below) stays fully interactive while the
+  // drawer is open. Without a guard, arming a delete on one row and pressing Esc to cancel it would
+  // ALSO close the drawer for an unrelated row — one keypress undoing two different things the user
+  // did not both ask to undo. `armed` is the more recent, more dangerous state (a slip here deletes
+  // data), so it must win: while something is armed, Esc only disarms (via the effect below) and this
+  // handler no-ops; the drawer only closes on a later Esc once nothing is armed.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || armed) return;
+      closePanel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // `closePanel` closes over `selection`, so it must be treated as reactive: the effect is
+    // re-established (with a fresh closePanel closure) whenever selection changes, so switching to a
+    // different row while the drawer stays open still returns focus to THAT row's chip.
+  }, [drawerOpen, selection, armed]);
+
   useEffect(() => {
     if (!armed) return;
     const disarm = () => setArmed(null);
