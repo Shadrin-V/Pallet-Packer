@@ -46,9 +46,15 @@ export function PositionRow({
   const lockedHint = fillTemplate(tt('article.lockedHint'), { code: p.articleCode ?? '' });
 
   return (
-    <div className={`flex min-w-0 items-center gap-1.5 px-4 py-2.5 ${selected ? 'bg-sub' : ''}`}>
+    // flex-wrap restored (review finding 1, final wave): the article field below used to be the row's
+    // one non-shrinking element (`w-64 shrink-0`) inside an `overflow-hidden` ancestor with no wrap —
+    // below ~700px the tail (dims/qty/chip/delete) ran off the right edge and was silently clipped,
+    // with no scroll and no wrap to recover it. The article field is now the one that shrinks
+    // (`flex-1 basis-64 min-w-0`, spec §2), and `flex-wrap` stays as a safety net for widths where even
+    // shrinking every field isn't enough.
+    <div className={`flex min-w-0 flex-wrap items-center gap-1.5 px-4 py-2.5 ${selected ? 'bg-sub' : ''}`}>
       <OrderSwatch index={index} width={12} height={26} />
-      <span className="inline-flex w-64 shrink-0 items-center gap-1">
+      <span className="inline-flex min-w-0 flex-1 basis-64 items-center gap-1">
         <ArticleCombobox
           ariaLabel={tt('article.label')}
           inputRef={nameRef}

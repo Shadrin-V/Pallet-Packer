@@ -108,9 +108,9 @@ export function OrderCard({
           широком экране — раньше aria-labels на полях несли смысл ниже xl, теперь у экрана всегда
           есть вторая колонка с панелью, так что заголовки нужны на любой ширине). Widths mirror
           PositionRow exactly; the sixth column names the rule chip at the row's trailing edge. */}
-      <div className="flex items-center gap-1.5 border-b border-line bg-sub px-4 pb-1 pt-2 text-label uppercase tracking-wide text-faint">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-line bg-sub px-4 pb-1 pt-2 text-label uppercase tracking-wide text-faint">
         <span className="w-3 shrink-0" />
-        <span className="w-64 shrink-0">{tt('article.label')}</span>
+        <span className="min-w-0 flex-1 basis-64">{tt('article.label')}</span>
         <span className="w-24">{tt('field.length')}</span>
         <span className="w-24">{tt('field.width')}</span>
         <span className="w-24">{tt('field.height')}</span>
