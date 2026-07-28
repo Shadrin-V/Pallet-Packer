@@ -71,7 +71,9 @@ export interface WarehouseFloorLayout {
   tiles: PlacedTile[];
   /** Загоны заказов. Пуст, когда различимых заказов меньше двух — тогда двор выглядит как раньше. */
   bays: PlacedBay[];
-  /** mm — always the vehicle length, so the floor shares the top view's scale. */
+  /** mm — always the cutaway FRAME's width (`truckFrame(...).outerW` = поле под кабину + длина
+   *  кузова), so the floor shares the top view's scale. Не длина кузова: равенство именно рамок и
+   *  держит 1:1 (LKWkalk-6n4) — этот комментарий отстал от кода с PR #37 и правится заодно. */
   width: number;
   /** mm — grows with the content; 0 when the buffer is empty. */
   height: number;
@@ -165,9 +167,13 @@ function groupByOrder(
   // Порядок заявки — по первому появлению номера в `cargo`; заказы, у которых во дворе ничего не
   // лежит, загона не открывают (пустая рамка не размечает ничего).
   const keys: string[] = [];
+  const taken = new Set<string>();
   for (const c of cargo) {
     const key = c.orderId ?? '';
-    if (groups.has(key) && !keys.includes(key)) keys.push(key);
+    if (groups.has(key) && !taken.has(key)) {
+      keys.push(key);
+      taken.add(key);
+    }
   }
   const byDefault = [...keys.filter((k) => k !== ''), ...keys.filter((k) => k === '')];
   const seen = new Set<string>();
