@@ -874,15 +874,50 @@ describe('SetupScreen — removing from the calculation', () => {
 
   // Finding 5 (final review wave): the confirm button ArmedDelete focused while armed unmounts the
   // instant it is clicked; without an explicit refocus, focus falls to <body> and a keyboard user
-  // loses their place. Both delete paths (position, order) must land focus on a surviving control.
-  it('moves focus to "+ Auftrag hinzufügen" after confirming a position delete', async () => {
+  // loses their place. An order delete always lands on "+ Auftrag hinzufügen" — it is the one
+  // control guaranteed to survive that outcome. A position delete is more specific (LKWkalk-78x,
+  // see the two tests below): it only falls back to "+ Auftrag hinzufügen" when the deleted
+  // position was the order's last, taking the whole order with it; otherwise focus stays inside
+  // the card, on a sibling row.
+  it('after deleting a position focus lands on the next row of the same order', async () => {
     renderSetup(() => {});
-    await userEvent.click(addPosition());
+    await userEvent.click(addPosition()); // a second position in SO-1
+
+    const before = rows();
+    await userEvent.click(trashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(before[1]).toHaveFocus();
+  });
+
+  it('after deleting the last position of an order focus lands on "+ Auftrag hinzufügen"', async () => {
+    renderSetup(() => {});
+    // The default order has exactly one position — deleting it takes the whole order with it
+    // (the untouchable cascade rule above), so no sibling row survives to receive focus.
 
     await userEvent.click(trashes()[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
 
     expect(addOrder()).toHaveFocus();
+  });
+
+  // The rules panel names a position by id (SetupScreen's `selection`), which is never persisted
+  // and must never survive the row it names — a dangling selection would either crash the panel
+  // or, worse, silently show stale rules for a row that no longer exists. The order itself must
+  // stay put here (a second position survives), so this pins the case a cascade delete would mask:
+  // the order KEEPS its key, only the selected row within it vanishes.
+  it('clears the panel selection when the selected position is deleted, even though its order survives', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition()); // a second position in SO-1
+    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByTestId('rule-chip')[1]); // select the SECOND row
+    expect(screen.queryByText('Position auswählen, um ihre Regeln zu sehen.')).toBeNull();
+
+    await userEvent.click(trashes()[1]); // delete that same (selected) row
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
   });
 
   it('moves focus to "+ Auftrag hinzufügen" after confirming an order delete', async () => {

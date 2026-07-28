@@ -97,6 +97,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // down (after `armed` exists — see the comment there for why the two must coordinate).
   const wide = useIsWide();
   const chipRefs = useRef(new Map<string, HTMLButtonElement>());
+  // Same idea, keyed the same way, for each row's article-name input — Task 7 (LKWkalk-78x) uses
+  // this to return focus to a sibling row after a position delete instead of evicting it onto
+  // "+ Auftrag hinzufügen" (see removePosition below).
+  const nameRefs = useRef(new Map<string, HTMLInputElement>());
   const closePanel = () => {
     const id = selection?.positionId;
     setSelection(null);
@@ -254,18 +258,32 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Finding 5 (final review wave): ArmedDelete focuses its confirm button while armed, but that
   // button unmounts the instant a delete is confirmed — nothing claimed focus afterwards, so it
   // fell to <body> and a keyboard user lost their place. The "+ Auftrag hinzufügen" button above
-  // the order list (`addOrderRef`) is the target: it is the one control guaranteed to survive
-  // every delete outcome (a single position, a whole order, or the cascade that replaces the last
-  // order/position with a fresh empty one). A row-local target would have to differ per outcome —
-  // after a position delete the order's own "+ Position" survives, but after an order delete or a
-  // cascade it does not — and one stable landing point beats three conditional ones.
+  // the order list (`addOrderRef`) is the target for whichever outcome leaves no row of the same
+  // card behind: a whole-order delete, or the cascade that replaces the last order/position with a
+  // fresh empty one. When a sibling row survives (removePosition below, ordinary case), focus stays
+  // inside the card instead — riding out to this button would make a keyboard user tab back through
+  // the Auftrags-ID, the reorder buttons and every surviving row just to resume editing (LKWkalk-78x).
   const addOrderRef = useRef<HTMLButtonElement>(null);
 
   /** Remove one position from the calculation. The catalogue article is untouched — this says
    *  "not on this truck", not "no such article". An order that loses its last position goes too:
-   *  an order with no positions is a state nothing can compute (ADR 022). */
+   *  an order with no positions is a state nothing can compute (ADR 022).
+   *
+   *  Focus (LKWkalk-78x): a sibling row of the SAME card is the natural landing spot — the next
+   *  one, or the previous one if the last row was deleted. Only when the deleted position was the
+   *  order's last (so the whole card disappears with it) does focus fall back to "+ Auftrag
+   *  hinzufügen", same as removeOrder. `order`/`neighbour` are computed from the pre-delete state,
+   *  since the position being removed is still in it at this point. */
   const removePosition = (okey: string, pid: string) => {
     setArmed(null);
+    // The panel must never name a row that no longer exists, even though the derived
+    // selectedPosition already resolves to null once the row is gone (belt-and-suspenders: the
+    // `selection` value itself should not go on carrying a stale positionId either).
+    if (selection?.positionId === pid) setSelection(null);
+    const order = orders.find((o) => o.key === okey);
+    const i = order?.positions.findIndex((p) => p.id === pid) ?? -1;
+    const neighbour =
+      order && order.positions.length > 1 ? (order.positions[i + 1] ?? order.positions[i - 1]) : undefined;
     setOrders((os) => {
       // Drop-if-now-empty applies only to the order being edited (`okey`) — filtering ALL orders
       // would also delete an unrelated order that happened to already be empty (Finding 4; not
@@ -275,7 +293,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         .filter((o) => o.key !== okey || o.positions.length > 0);
       return next.length > 0 ? next : [emptyOrder(1)];
     });
-    addOrderRef.current?.focus();
+    if (neighbour) nameRefs.current.get(neighbour.id)?.focus();
+    else addOrderRef.current?.focus();
   };
 
   /** Remove a whole order. The last one is replaced by a fresh empty order, never left empty. */
@@ -406,6 +425,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
               onChipRef={(pid, el) => {
                 if (el) chipRefs.current.set(pid, el);
                 else chipRefs.current.delete(pid);
+              }}
+              onNameRef={(pid, el) => {
+                if (el) nameRefs.current.set(pid, el);
+                else nameRefs.current.delete(pid);
               }}
             />
           ))}

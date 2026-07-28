@@ -21,17 +21,13 @@ export interface PositionRowProps {
   onArm: () => void;
   onRemove: () => void;
   /** Регистрируют чип и поле имени в картах родителя: чип нужен Task 6 (возврат фокуса при
-   *  закрытии drawer), поле имени — Task 7 (фокус на соседнюю строку после удаления). Объявлены
-   *  здесь сразу, чтобы поздние задачи не меняли интерфейс компонента.
-   *  ВНИМАНИЕ: `nameRef` доедет до `<input>` только после того, как Task 7 добавит
-   *  `ArticleCombobox` необязательный проп `inputRef` — сегодня компонент ref не принимает.
-   *  В Task 3 проп объявляется и прокидывается, но до Task 7 никуда не крепится. */
+   *  закрытии drawer), поле имени — Task 7 (фокус на соседнюю строку после удаления позиции). */
   chipRef?: (el: HTMLButtonElement | null) => void;
   nameRef?: (el: HTMLInputElement | null) => void;
 }
 
 export function PositionRow({
-  position: p, index, vehicle, selected, onSelect, onChange, armed, onArm, onRemove, chipRef,
+  position: p, index, vehicle, selected, onSelect, onChange, armed, onArm, onRemove, chipRef, nameRef,
 }: PositionRowProps) {
   // One translation source for the whole row — the dominant pattern in this repo (ArticleCombobox,
   // WarehouseFloor, Legend, HeroHeader, EmptyPlan, ...). Threading `tt` down as a prop is a
@@ -55,6 +51,7 @@ export function PositionRow({
       <span className="inline-flex w-64 shrink-0 items-center gap-1">
         <ArticleCombobox
           ariaLabel={tt('article.label')}
+          inputRef={nameRef}
           value={p.name}
           onChange={(name) =>
             onChange({

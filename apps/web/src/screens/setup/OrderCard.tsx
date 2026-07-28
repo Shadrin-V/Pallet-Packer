@@ -31,6 +31,9 @@ export interface OrderCardProps {
   /** Registers/unregisters a position's chip button with the parent, keyed by position id — Task 6
    *  uses this to return focus to the chip that opened the narrow-screen drawer when it closes. */
   onChipRef?: (pid: string, el: HTMLButtonElement | null) => void;
+  /** Same registration, for the row's article-name input — Task 7 (LKWkalk-78x) uses this to return
+   *  focus to a sibling row after a position delete instead of evicting it from the card. */
+  onNameRef?: (pid: string, el: HTMLInputElement | null) => void;
 }
 
 export function OrderCard({
@@ -51,6 +54,7 @@ export function OrderCard({
   selectedPositionId,
   onSelectPosition,
   onChipRef,
+  onNameRef,
 }: OrderCardProps) {
   const tt = useT();
   const colorVar = `var(--s${((index % 8) + 1)})`;
@@ -128,6 +132,7 @@ export function OrderCard({
             onArm={() => onArm({ kind: 'position', key: p.id })}
             onRemove={() => onRemovePosition(p.id)}
             chipRef={onChipRef ? (el) => onChipRef(p.id, el) : undefined}
+            nameRef={onNameRef ? (el) => onNameRef(p.id, el) : undefined}
           />
         ))}
       </div>
