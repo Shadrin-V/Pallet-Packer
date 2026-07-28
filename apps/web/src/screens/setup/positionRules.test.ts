@@ -38,7 +38,7 @@ describe('ruleChip', () => {
   });
 
   it('count is null while there is no preview', () => {
-    expect(ruleChip(base({ length: '' }), null).count).toBeNull();
+    expect(ruleChip(base(), null).count).toBeNull();
   });
 
   it('restricted is true for fixed and for two-sided, false for free', () => {
@@ -74,6 +74,11 @@ describe('ruleSentences', () => {
     expect(out).toContainEqual({ key: 'setup.rule.capTiers', vars: { cap: 2 } });
   });
 
+  it('names the nesting cap when maxNested bit', () => {
+    const out = ruleSentences(base({ maxNested: 5 }), preview({ cappedBy: 'maxNested', cap: 5, count: 3 }));
+    expect(out).toContainEqual({ key: 'setup.rule.capNested', vars: { cap: 5 } });
+  });
+
   it('a not-stackable preview replaces the vertical sentence', () => {
     const out = ruleSentences(base(), preview({ cappedBy: 'notStackable', count: 1 }));
     expect(out[0]).toEqual({ key: 'setup.rule.notStackable', vars: {} });
@@ -86,6 +91,9 @@ describe('ruleSentences', () => {
     ]);
     expect(ruleSentences(base({ forkAccess: 'twoSides', forkAxis: 'width' }), null)).toEqual([
       { key: 'setup.rule.orientTwoSidedWidth', vars: {} },
+    ]);
+    expect(ruleSentences(base({ forkAccess: 'twoSides', forkAxis: 'length' }), null)).toEqual([
+      { key: 'setup.rule.orientTwoSidedLength', vars: {} },
     ]);
   });
 });
