@@ -96,7 +96,7 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
             onClick={onClose}
             className="ml-auto text-muted hover:text-brand"
           >
-            ⌃
+            ✕
           </button>
         )}
       </div>
