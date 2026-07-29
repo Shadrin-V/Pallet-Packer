@@ -2,12 +2,16 @@
 // обработчик скролла на каждый кадр — это работа в главном потоке ради одного булева, а
 // IntersectionObserver отвечает ровно на нужный вопрос («видно ли ещё то, что было над шапкой»).
 // Без IntersectionObserver (старый браузер, jsdom без стаба) шапка просто остаётся полной.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 export function useStickyCompact(): [boolean, (el: HTMLElement | null) => void] {
   const [compact, setCompact] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
-  useEffect(() => () => observer.current?.disconnect(), []);
+  // Отключаемся ТОЛЬКО в самом ref: при размонтировании React зовёт его с null, и это единственный
+  // момент, когда наблюдатель действительно лишний. Отдельный useEffect с disconnect в cleanup здесь
+  // был ловушкой: при повторном монтировании (StrictMode в dev) React сначала навешивает ref заново,
+  // а уже потом выполняет cleanup — и тот отключал свежесозданного наблюдателя. В dev-сборке шапка
+  // из-за этого не ужималась никогда (найдено в Chrome, Задача 6).
   const ref = useCallback((el: HTMLElement | null) => {
     observer.current?.disconnect();
     observer.current = null;
