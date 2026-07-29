@@ -42,7 +42,16 @@ export function App() {
   // below it when a layout has been computed. Both survive a refresh via localStorage.
   // `transient` marks a Demo preview: shown in the UI but never persisted, so a reload returns to
   // the user's saved plan (QA).
-  const [result, setResult] = useState<{ load: Load; layout: Layout; transient?: boolean; orderColors?: Record<string, number> } | null>(() => loadPersistedResult());
+  // Один разбор localStorage на монтирование: loadPersistedResult ещё и пересчитывает layout, а
+  // читают его три состояния сразу. Ленивый инициализатор useState вызывает функцию ровно один раз.
+  const [persisted] = useState(loadPersistedResult);
+  const [result, setResult] = useState<{ load: Load; layout: Layout; transient?: boolean; orderColors?: Record<string, number> } | null>(persisted);
+
+  // Стратегия расчёта живёт здесь, а не в результате: её выбирают ДО первого расчёта, в шапке
+  // «Настройки» (5nb этап 2), и после — переключателями на ладеплане. Один источник, два места
+  // правки; иначе экраны показывали бы разное значение одной настройки.
+  const [loadingMode, setLoadingMode] = useState<LoadingMode>(persisted?.load.loadingMode ?? 'combined');
+  const [orderGrouping, setOrderGrouping] = useState<OrderGrouping>(persisted?.load.orderGrouping ?? 'strict');
 
   useEffect(() => {
     try {
@@ -74,26 +83,50 @@ export function App() {
     if (findGeometryViolations(next, layout).length > 0) return;
     // Strategy-only recomputes (selectors) don't pass orderColors → keep the current plan's map.
     setResult({ load: next, layout, transient: opts?.persist === false, orderColors: opts?.orderColors ?? result?.orderColors });
+    // Стратегия того, что реально посчиталось, становится текущей — иначе Demo (он пришпиливает
+    // rear) оставил бы шапку «Настройки» показывать combined, хотя план перед глазами построен
+    // иначе. Одна настройка — одно значение на обоих экранах.
+    setLoadingMode(next.loadingMode ?? 'combined');
+    setOrderGrouping(next.orderGrouping ?? 'strict');
   };
 
   // Recompute the current plan under a new loading strategy (ADR 012). Manual edits are intentionally
   // discarded — the fresh layout resets LadeplanScreen's editable copy. Preserve transience: toggling
   // a strategy on a Demo preview must NOT turn it into a persisted plan (QA).
+  // Плана может ещё не быть (выбор в шапке «Настройки» до первого расчёта) — тогда значение просто
+  // запоминается и ждёт «Рассчитать».
   const onLoadingModeChange = (mode: LoadingMode) => {
+    setLoadingMode(mode);
     if (!result) return;
     onCalculate({ ...result.load, loadingMode: mode }, { persist: !result.transient });
   };
 
   const onOrderGroupingChange = (grouping: OrderGrouping) => {
+    setOrderGrouping(grouping);
     if (!result) return;
     onCalculate({ ...result.load, orderGrouping: grouping }, { persist: !result.transient });
+  };
+
+  /** «Сброс» убирает и план, и стратегию: она часть заявки, а не отдельная настройка приложения —
+   *  после сброса экран обязан выглядеть как при первом открытии. */
+  const onReset = () => {
+    setResult(null);
+    setLoadingMode('combined');
+    setOrderGrouping('strict');
   };
 
   return (
     <LocaleProvider initial="de">
       {/* Setup is screen-only; printing yields just the Ladeplan document. */}
       <div className="print:hidden">
-        <SetupScreen onCalculate={onCalculate} onReset={() => setResult(null)} />
+        <SetupScreen
+          onCalculate={onCalculate}
+          onReset={onReset}
+          loadingMode={loadingMode}
+          orderGrouping={orderGrouping}
+          onLoadingModeChange={onLoadingModeChange}
+          onOrderGroupingChange={onOrderGroupingChange}
+        />
       </div>
       {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until the
           first Berechnen it stands in as an empty state. There is no "back": the plan is removed by

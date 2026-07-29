@@ -5,10 +5,10 @@
 // колонки от xl. Собственно строка (PositionRow), карточка заказа (OrderCard) и разбор правил
 // (RulesPanel) живут в ./setup/ — здесь их только соединяют.
 import { useEffect, useRef, useState } from 'react';
-import type { Load, Vehicle } from '@shadrin-v/engine';
-import { fillTemplate, stepInvalid } from './components/stackFormula';
+import type { Load, LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
+import { fillTemplate } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
-import { Measure, Select, Button } from '../ui/primitives';
+import { Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
@@ -16,14 +16,17 @@ import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
 import { RulesPanel } from './setup/RulesPanel';
+import { SetupHeader } from './setup/SetupHeader';
 import { RULES_PANEL_ID } from './setup/PositionRow';
 import { useIsWide } from './setup/useIsWide';
+import { useStickyCompact } from './setup/useStickyCompact';
+import { firstError, setupMessages, setupSummary, type SetupMessageWhere } from './setup/setupValidation';
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
   emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, saveSetup,
   SETUP_STORAGE_KEY, toCargo,
-  type LockedFields, type Num, type OrderState, type PositionState,
+  type LockedFields, type OrderState, type PositionState,
 } from './setup/setupState';
 
 export {
@@ -39,6 +42,13 @@ export interface SetupScreenProps {
   onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => void;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
+  /** Стратегия расчёта (5nb этап 2, решение владельца 3): одно состояние на два экрана, владеет им
+   *  `App`. Здесь её только ВЫБИРАЮТ — пересчёта отсюда нет, потому что плана может ещё не быть;
+   *  выбранное значение уходит в `Load` при нажатии «Рассчитать». */
+  loadingMode: LoadingMode;
+  orderGrouping: OrderGrouping;
+  onLoadingModeChange: (m: LoadingMode) => void;
+  onOrderGroupingChange: (g: OrderGrouping) => void;
 }
 
 /** How long an armed delete waits before disarming itself (ADR 022). */
@@ -75,7 +85,10 @@ interface Selection {
 }
 
 // ---- component ------------------------------------------------------------
-export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onReset }: SetupScreenProps) {
+export function SetupScreen({
+  initialVehicle, initialOrders, onCalculate, onReset,
+  loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange,
+}: SetupScreenProps) {
   const tt = useT();
   const preset0 = VEHICLE_PRESETS[0];
   const defaultVehicle = (): Vehicle => ({ id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height });
@@ -337,53 +350,68 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     });
   };
 
-  // A nestable position with an invalid Δh/h_д blocks calculation (ERR_INVALID_NESTING otherwise).
-  const anyInvalid = orders.some((o) =>
-    o.positions.some((p) => stepInvalid(p.state, activeStep(p), p.height)),
-  );
+  // §6: сводка и сообщения — чистые функции от того же состояния, что уходит в Load, поэтому
+  // показанное в шапке и в панели не может разойтись с тем, что реально посчитается.
+  const summary = setupSummary(orders, vehicle);
+  const messages = setupMessages(orders, vehicle);
+  const errorCount = messages.filter((m) => m.level === 'error').length;
+  const [compact, sentinelRef] = useStickyCompact();
+
+  /** Открыть строку по адресу из сообщения — общий путь для клика по сообщению и для «Рассчитать»
+   *  с ошибками: выбрать строку, открыть её панель, увести туда фокус. */
+  const goTo = (where: SetupMessageWhere) => {
+    setSelection({ orderKey: where.orderKey, positionId: where.positionId });
+    // Фокус — в поле артикула строки: это её первое поле, и с него естественно продолжить правку.
+    // requestAnimationFrame, потому что в режиме drawer панель монтируется только после этого
+    // setState, а в режиме колонки строка может быть за пределами вьюпорта — к моменту кадра
+    // React уже применил выбор.
+    requestAnimationFrame(() => nameRefs.current.get(where.positionId)?.focus());
+  };
 
   const handleCalculate = () => {
-    if (anyInvalid) return;
+    // Кнопка больше не гаснет (§6): погашенная не фокусируется и не объявляется скринридером, то
+    // есть молча прячет и причину, и адрес ошибки. Нажатие при ошибках не считает, а ведёт к первой
+    // ошибочной строке; предупреждения (количество 0, объём, высота) расчёт не блокируют.
+    const first = firstError(messages);
+    if (first?.where) {
+      goTo(first.where);
+      return;
+    }
     const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
-    onCalculate({ vehicle, cargo }, { orderColors: buildOrderColors(orders) });
+    // Стратегия кладётся в Load ЯВНО: без неё App подставит стратегию прежнего плана, и выбор,
+    // сделанный в шапке до расчёта, молча пропал бы (решение владельца 3).
+    onCalculate(
+      { vehicle, cargo, loadingMode, orderGrouping },
+      { orderColors: buildOrderColors(orders) },
+    );
   };
 
   return (
     <>
       <HeroHeader />
       <main className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6">
-      {/* Vehicle bar */}
-      <section className="mb-6 rounded-card bg-card shadow-card">
-        <div className="flex flex-wrap items-end gap-4 p-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-label uppercase font-semibold text-faint">{tt('vehicle.label')}</span>
-            <Select
-              ariaLabel={tt('vehicle.label')}
-              value={vehicle.name}
-              onChange={(name) => {
-                const p = VEHICLE_PRESETS.find((v) => v.name === name);
-                if (p) setVehicle({ id: p.key, name: p.name, length: p.length, width: p.width, height: p.height });
-                else setVehicle((v) => ({ ...v, name: tt('setup.vehiclePreset.custom') }));
-              }}
-              options={[
-                { value: tt('setup.vehiclePreset.custom'), label: tt('setup.vehiclePreset.custom') },
-                ...VEHICLE_PRESETS.map((p) => ({ value: p.name, label: p.name })),
-              ]}
-            />
-          </div>
-          <MeasureField label={tt('field.length')} value={vehicle.length} onChange={(length) => setVehicle((v) => ({ ...v, length: numOr0(length) }))} />
-          <MeasureField label={tt('field.width')} value={vehicle.width} onChange={(width) => setVehicle((v) => ({ ...v, width: numOr0(width) }))} />
-          <MeasureField label={tt('field.height')} value={vehicle.height} onChange={(height) => setVehicle((v) => ({ ...v, height: numOr0(height) }))} />
-        </div>
-      </section>
-
-      {/* Orders. Demo lives here, with the input it fills — not next to the destructive Reset (rgv.4). */}
+      {/* Маячок ПЕРЕД шапкой: пока он виден, шапка полная; уехал за верх — ужимается (§6).
+          Наблюдаем за элементом, а не за скроллом — см. useStickyCompact. Отрицательные поля шапки
+          гасят паддинг <main>, поэтому она обязана жить внутри него, а не рядом. */}
+      <div ref={sentinelRef} aria-hidden className="h-px" />
+      <SetupHeader
+        vehicle={vehicle}
+        summary={summary}
+        errorCount={errorCount}
+        compact={compact}
+        loadingMode={loadingMode}
+        orderGrouping={orderGrouping}
+        onLoadingModeChange={onLoadingModeChange}
+        onOrderGroupingChange={onOrderGroupingChange}
+        onVehicleChange={setVehicle}
+        onDemo={handleDemo}
+        onReset={handleReset}
+        onCalculate={handleCalculate}
+      />
+      {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать». */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
-          <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
-        </div>
+        <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
       {loadedDemo !== null && (
         // What this demo IS comes first; how to get the next one is an aside at the end (QA).
@@ -459,6 +487,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
               vehicle={vehicle}
               onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
               onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+              summary={summary}
+              messages={messages}
+              onGoTo={goTo}
             />
           </aside>
         )}
@@ -491,32 +522,19 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
             onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
             onClose={closePanel}
+            summary={summary}
+            messages={messages}
+            onGoTo={goTo}
           />
         </div>
       )}
 
-      {/* Duplicate add-order action below the last order (E10). */}
+      {/* Duplicate add-order action below the last order (E10). «Сброс» и «Рассчитать» отсюда
+          уехали в липкую шапку (§6): под шестью заказами до них надо было домотать. */}
       <div className="mt-3 flex justify-center">
         <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
-
-      <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={handleReset}>{tt('action.reset')}</Button>
-        <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
-      </div>
       </main>
     </>
-  );
-}
-
-// ---- vehicle measure field (label + Measure) ------------------------------
-function MeasureField({ label, value, onChange }: { label: string; value: Num; onChange: (v: Num) => void }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-label uppercase font-semibold text-faint">{label}</span>
-      <span className="w-24">
-        <Measure ariaLabel={label} value={value} onChange={onChange} />
-      </span>
-    </label>
   );
 }

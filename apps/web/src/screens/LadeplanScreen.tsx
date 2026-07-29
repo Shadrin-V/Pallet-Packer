@@ -574,7 +574,10 @@ export function LadeplanScreen({
     >
       {/* On-screen action bar (not printed). Two named groups — strategy on the left, output on the
           right — instead of one undifferentiated row of controls (rgv.3). */}
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 print:hidden">
+      <div
+        data-testid="ladeplan-actions"
+        className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 print:hidden"
+      >
         {(onLoadingModeChange || onOrderGroupingChange) && (
           <ActionGroup label={tt('ladeplan.loadingMode')} ariaGroup={false}>
             {onLoadingModeChange && (
