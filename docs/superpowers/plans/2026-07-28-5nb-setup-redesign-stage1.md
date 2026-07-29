@@ -1,5 +1,17 @@
 # Экран «Настройка», этап 1 «Каркас» — Implementation Plan
 
+> ✅ **ВЫПОЛНЕН И ВЫЛОЖЕН (2026-07-29), PR #42 → `335c229`.** План сохранён как исторический
+> документ. **Три места в нём разошлись с тем, что реально сделано** — не бери код отсюда дословно:
+> 1. Пропов `tt` / `locale` у компонентов НЕТ: перевод берётся через `useT()` / `useLocale()`.
+>    Приведённые ниже тесты передавали тождественный `tt` и одновременно ждали настоящих переводов —
+>    это было внутреннее противоречие плана.
+> 2. Тесты `positionRules` из шага 5 не покрывали ветки `orientTwoSidedLength` и
+>    `cappedBy: 'maxNested'`; они добавлены сверх плана.
+> 3. `OrderCard` потребовал пробросов `onChipRef` / `onNameRef`, которых план не предусмотрел:
+>    экран не рендерит `PositionRow` напрямую.
+>
+> Истина — спека `docs/superpowers/specs/2026-07-28-5nb-setup-redesign-design.md` и код.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Пересобрать экран «Настройка» в мастер-деталь: худая строка позиции с чипом правил слева,
