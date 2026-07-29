@@ -1,84 +1,35 @@
-// Setup screen (LKWkalk-gxp) — эталон docs/lovable/setup-reference.html, палитра/компоненты по
-// docs/design/design-system.md (Direction D). Token-only, i18n de/ru, движок для предпросмотра штабеля.
+// Setup screen (LKWkalk-gxp, пересобран в мастер-деталь LKWkalk-5nb) — эталон
+// docs/lovable/setup-reference.html, палитра/компоненты по docs/design/design-system.md
+// (Direction D). Token-only, i18n de/ru, движок для предпросмотра штабеля.
+// Тонкий координатор: состояние, выбор строки, персистентность, сборка Load, раскладка в две
+// колонки от xl. Собственно строка (PositionRow), карточка заказа (OrderCard) и разбор правил
+// (RulesPanel) живут в ./setup/ — здесь их только соединяют.
 import { useEffect, useRef, useState } from 'react';
-import type {
-  Load,
-  Vehicle,
-  CargoType,
-  RotationRule,
-  ForkAccess,
-  ForkAxis,
-  NestingState,
-  NestingMode,
-  StackPreview,
-} from '@shadrin-v/engine';
-import { computeStack, FORK_AXES } from '@shadrin-v/engine';
-import { formulaKey, fillTemplate, formulaVars, stepInvalid } from './components/stackFormula';
-import {
-  ORIENTATION_CHOICES,
-  orientationChoiceOf,
-  orientationFieldsFor,
-  type OrientationChoice,
-} from './components/orientationChoice';
-import { StackDiagram } from './components/StackDiagram';
-import { ArmedDelete } from './components/ArmedDelete';
+import type { Load, Vehicle } from '@shadrin-v/engine';
+import { fillTemplate, stepInvalid } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
-import { OrderSwatch } from '../lib/swatch';
-import { orderColorToken } from '../lib/orderColor';
-import { Measure, TextField, Segmented, Select, Button, Chip, InfoHint } from '../ui/primitives';
+import { Measure, Select, Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
-import { ArticleCombobox, type ArticleSuggestion } from './components/ArticleCombobox';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
-import type { Article, ArticleErpField } from '@shadrin-v/contracts';
+import type { Article } from '@shadrin-v/contracts';
+import { OrderCard } from './setup/OrderCard';
+import { RulesPanel } from './setup/RulesPanel';
+import { RULES_PANEL_ID } from './setup/PositionRow';
+import { useIsWide } from './setup/useIsWide';
 
-// ---- state model ----------------------------------------------------------
-type Num = number | '';
+import {
+  activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
+  emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, saveSetup,
+  SETUP_STORAGE_KEY, toCargo,
+  type LockedFields, type Num, type OrderState, type PositionState,
+} from './setup/setupState';
 
-/** Which fields ERPNext supplied for the bound article, per ADR 022 provenance — never inferred
- *  from "value present", only from `ArticleSuggestion.erpFields`. Dimensions read-only when locked
- *  here; `name` is not wired to `readOnly` (Task 4) — the field doubles as the combobox's search
- *  input, so typing must stay possible even when the name is ERP-owned. */
-export type LockedFields = Partial<Record<ArticleErpField, true>>;
-
-export interface PositionState {
-  id: string;
-  name: string;
-  length: Num;
-  width: Num;
-  height: Num;
-  quantity: Num;
-  state: NestingState;
-  rotation: RotationRule;
-  forkAccess?: ForkAccess; // forklift access (ADR 018); undefined = all4
-  forkAxis?: ForkAxis; // fork-entry axis for a two-sided pallet; default 'length'
-  /** Constructive nesting increments (spec Q6): pairwise = top deck board thickness, sequential =
-   *  the one-into-one increment. Both are physical properties, both come from the article. */
-  nestStepPairwise: Num;
-  nestStepSequential: Num;
-  nestingMode: NestingMode;
-  maxNested: Num; // nesting cap
-  allowUnpairedTop: boolean; // pairwise only
-  maxTiers: Num; // stacking cap
-  /** Catalogue article this row is bound to; undefined = free text, not saved anywhere. */
-  articleCode?: string;
-  /** Constructive fields ERPNext already filled — read-only in the form (spec Q5). */
-  locked?: LockedFields;
-  /** Where this row was bound when the user started editing the name, and only when that article's
-   *  name came from ERPNext. Drives the "the name is changed in ERPNext" notice — without it the
-   *  row would simply look like free text and a save would fork a second article silently. */
-  unboundFromErp?: { itemCode: string; name: string };
-}
-
-export interface OrderState {
-  key: string;
-  orderId: string;
-  /** Stable palette slot (0-based), assigned at creation and never renumbered — so an order keeps
-   *  its colour + hatch when the list is reordered, on both Setup and the Ladeplan (QA). */
-  colorIndex: number;
-  positions: PositionState[];
-}
+export {
+  activeStep, applySuggestion, lockedFieldsFrom, toCargo,
+  type LockedFields, type OrderState, type PositionState,
+};
 
 export interface SetupScreenProps {
   initialVehicle?: Vehicle;
@@ -89,50 +40,6 @@ export interface SetupScreenProps {
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
 }
-
-// ---- persistence (survives page refresh; cleared by the reset button) ---------------------------
-// The persisted form is a client-side working draft. ERPNext import (future) sets the same state and
-// then persists here; the source of truth for imported data stays the Sales Order. Reset clears it.
-const SETUP_STORAGE_KEY = 'ladungsplaner.setup';
-interface PersistedSetup {
-  vehicle: Vehicle;
-  orders: OrderState[];
-}
-function loadSetup(): PersistedSetup | null {
-  try {
-    const raw = globalThis.localStorage?.getItem(SETUP_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedSetup;
-    if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) {
-      // Backfill colorIndex for drafts saved before stable colours existed (by array position).
-      // Drafts saved before the two constructive steps existed carry a single `stepHeight`.
-      const orders = parsed.orders.map((o, i) => ({
-        ...o,
-        colorIndex: o.colorIndex ?? i,
-        positions: o.positions.map((p) => {
-          const legacy = (p as PositionState & { stepHeight?: Num }).stepHeight;
-          if (legacy === undefined) return p;
-          const { stepHeight: _drop, ...rest } = p as PositionState & { stepHeight?: Num };
-          return p.nestingMode === 'sequential'
-            ? { ...rest, nestStepSequential: legacy, nestStepPairwise: '' as Num }
-            : { ...rest, nestStepPairwise: legacy, nestStepSequential: '' as Num };
-        }),
-      }));
-      return { ...parsed, orders };
-    }
-  } catch {
-    /* corrupt / unavailable — ignore */
-  }
-  return null;
-}
-function saveSetup(s: PersistedSetup): void {
-  try {
-    globalThis.localStorage?.setItem(SETUP_STORAGE_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore */
-  }
-}
-
 
 /** How long an armed delete waits before disarming itself (ADR 022). */
 const ARM_TIMEOUT_MS = 4000;
@@ -158,148 +65,13 @@ export function keepsArmed(target: EventTarget | null): boolean {
   return el.closest('[data-armed-delete]') !== null;
 }
 
-const uid = () => crypto.randomUUID();
-
-const emptyPosition = (): PositionState => ({
-  id: uid(),
-  name: '',
-  length: '',
-  width: '',
-  height: '',
-  quantity: 1,
-  state: 'entschachtelt',
-  rotation: 'yawOnly',
-  forkAxis: 'length',
-  nestStepPairwise: '',
-  nestStepSequential: '',
-  nestingMode: 'pairwise',
-  maxNested: '',
-  allowUnpairedTop: false,
-  maxTiers: '',
-});
-
-/** `colorIndex` defaults to `n - 1` (1-based n → 0-based palette slot) for the single-order
- *  call sites (initial state, reset, "collapsed to empty") where a fresh list of exactly one
- *  order always wants slot 0. `addOrder` passes an explicit slot from `nextColorIndex` instead —
- *  see that function for why the id number cannot supply it. */
-const emptyOrder = (n: number, colorIndex: number = n - 1): OrderState => ({
-  key: uid(),
-  orderId: `SO-${n}`,
-  colorIndex,
-  positions: [emptyPosition()],
-});
-
-/** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
- *  Deleting an order frees no number for reuse while others survive it — otherwise a later
- *  addOrder can mint an id that collides with a surviving order (Finding 1: create SO-1/SO-2,
- *  delete SO-1, add → both `os.length + 1` formulas would land on 2 again). Orders renamed to
- *  non-`SO-n` ids are simply not counted. Colour slots are a separate concern — see
- *  `nextColorIndex` — because an id is user-editable text and a slot is not. */
-function nextOrderNumber(os: OrderState[]): number {
-  const nums = os
-    .map((o) => /^SO-(\d+)$/.exec(o.orderId)?.[1])
-    .filter((s): s is string => s !== undefined)
-    .map(Number);
-  return (nums.length ? Math.max(...nums) : 0) + 1;
-}
-
-/** Next unused palette slot: the lowest non-negative integer not already held by any surviving
- *  order's `colorIndex`. Review fix (Finding 1, wave 2): deriving colorIndex from the order's id
- *  number (as `nextOrderNumber(os) - 1` once did, via emptyOrder's `n - 1` default) reused a slot
- *  the moment an order was renamed away from `SO-n` — `nextOrderNumber` cannot see it any more, so
- *  the freed-looking number it hands out can already be taken by the renamed order's OWN slot.
- *  `Auftrags-ID` is freely editable (its whole purpose is to carry the real order number), so
- *  "rename the default order, then add a second" is the ordinary first-use flow, not an edge case.
- *  Slots must therefore be tracked independently of what the id currently says. */
-function nextColorIndex(os: OrderState[]): number {
-  const used = new Set(os.map((o) => o.colorIndex));
-  let slot = 0;
-  while (used.has(slot)) slot++;
-  return slot;
-}
-
-const numOr0 = (v: Num): number => (v === '' ? 0 : v);
-
-const dimsComplete = (p: PositionState): boolean =>
-  numOr0(p.length) > 0 && numOr0(p.width) > 0 && numOr0(p.height) > 0;
-
-/** The increment that belongs to the position's current nesting mode. */
-export function activeStep(p: PositionState): Num {
-  return p.nestingMode === 'pairwise' ? p.nestStepPairwise : p.nestStepSequential;
-}
-
-/** Which PositionState field the single on-screen step input writes to. */
-function activeStepField(p: PositionState): 'nestStepPairwise' | 'nestStepSequential' {
-  return p.nestingMode === 'pairwise' ? 'nestStepPairwise' : 'nestStepSequential';
-}
-
-/** orderId → stable palette slot, sent with every computed plan so the Ladeplan colours an order the
- *  same as Setup regardless of list order (QA #2). */
-const buildOrderColors = (os: OrderState[]): Record<string, number> =>
-  Object.fromEntries(os.map((o) => [o.orderId, o.colorIndex]));
-
-/** Build the engine CargoType for a position (used for both preview and the final Load). */
-export function toCargo(p: PositionState, orderId: string): CargoType {
-  const step = numOr0(activeStep(p));
-  const nestable = p.state === 'verschachtelt' && step > 0;
-  return {
-    id: p.id,
-    name: p.name || p.id,
-    length: numOr0(p.length),
-    width: numOr0(p.width),
-    height: numOr0(p.height),
-    quantity: numOr0(p.quantity),
-    rotation: p.rotation,
-    ...(p.forkAccess === 'twoSides'
-      ? { forkAccess: 'twoSides' as const, forkAxis: p.forkAxis ?? 'length' }
-      : {}),
-    stacking: { stackable: true, ...(numOr0(p.maxTiers) > 0 ? { maxTiers: numOr0(p.maxTiers) } : {}) },
-    nesting: nestable
-      ? {
-          nestable: true,
-          stepHeight: step,
-          nestingMode: p.nestingMode,
-          ...(numOr0(p.maxNested) > 0 ? { maxNested: numOr0(p.maxNested) } : {}),
-          ...(p.nestingMode === 'pairwise' ? { allowUnpairedTop: p.allowUnpairedTop } : {}),
-        }
-      : { nestable: false },
-    state: p.state,
-    orderId,
-  };
-}
-
-/** Locked = exactly the fields ERPNext supplied (Task 2 provenance; ADR 022 adds `name` to the
- *  set). Never inferred from "value present": a value the user typed into a field ERPNext left
- *  blank must stay editable. Shared by picking a suggestion and by binding a row to the article a
- *  save returned. */
-export function lockedFieldsFrom(fields: readonly ArticleErpField[]): LockedFields {
-  const locked: LockedFields = {};
-  for (const f of fields) locked[f] = true;
-  return locked;
-}
-
-/** Apply a picked suggestion to a position: name, constructive fields, rules; quantity untouched. */
-export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
-  const r = s.rules ?? {};
-  return {
-    articleCode: s.itemCode,
-    name: s.name,
-    length: s.length ?? '',
-    width: s.width ?? '',
-    height: s.height ?? '',
-    nestStepPairwise: s.nestStepPairwise ?? '',
-    nestStepSequential: s.nestStepSequential ?? '',
-    ...(r.state ? { state: r.state } : {}),
-    ...(r.nestingMode ? { nestingMode: r.nestingMode } : {}),
-    ...(r.rotation ? { rotation: r.rotation } : {}),
-    ...(r.forkAccess ? { forkAccess: r.forkAccess } : {}),
-    ...(r.forkAxis ? { forkAxis: r.forkAxis } : {}),
-    ...(r.maxNested !== undefined ? { maxNested: r.maxNested } : {}),
-    ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
-    ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
-    locked: lockedFieldsFrom(s.erpFields),
-    unboundFromErp: undefined,
-  };
+/** Which position is being examined in the rules panel: a slot in the plan, not part of it — the
+ *  same view/content boundary already drawn for `bayOrder` (LKWkalk-36f). Never persisted; if the
+ *  row it names disappears (deleted, or an order it belonged to was replaced), the panel simply
+ *  shows its empty state instead of crashing (spec §7). */
+interface Selection {
+  orderKey: string;
+  positionId: string;
 }
 
 // ---- component ------------------------------------------------------------
@@ -312,6 +84,30 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Article catalogue (Task 8): saving a row's article goes through the DataProvider seam, so it
   // must tolerate rendering outside a provider (existing tests do this).
   const dp = useOptionalDataProvider();
+
+  // Which position's rules are open in the panel. View state only — not persisted, not part of the
+  // saved draft (see the Selection doc comment above).
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const selectedOrder = orders.find((o) => o.key === selection?.orderKey) ?? null;
+  const selectedPosition = selectedOrder?.positions.find((p) => p.id === selection?.positionId) ?? null;
+
+  // Below the two-column threshold (spec §7) the panel becomes a drawer over the list instead of a
+  // sticky sidebar. `wide` picks the layout; `chipRefs` remembers each row's chip button so closing
+  // the drawer can return focus to it — otherwise a keyboard user is dropped onto <body> (the same
+  // class of bug fixed for ArmedDelete in LKWkalk-yxn). The Esc handler itself is wired up further
+  // down (after `armed` exists — see the comment there for why the two must coordinate).
+  const wide = useIsWide();
+  const chipRefs = useRef(new Map<string, HTMLButtonElement>());
+  // Same idea, keyed the same way, for each row's article-name input — Task 7 (LKWkalk-78x) uses
+  // this to return focus to a sibling row after a position delete instead of evicting it onto
+  // "+ Auftrag hinzufügen" (see removePosition below).
+  const nameRefs = useRef(new Map<string, HTMLInputElement>());
+  const closePanel = () => {
+    const id = selection?.positionId;
+    setSelection(null);
+    if (id) chipRefs.current.get(id)?.focus();
+  };
+  const drawerOpen = !wide && !!selectedPosition;
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -326,6 +122,33 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Exactly one delete may be armed at a time — one value for the whole screen, so that invariant
   // holds by construction instead of by keeping a flag per row in step (ADR 022).
   const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
+
+  // Esc closes the drawer. A document-level listener (not onKeyDown on the dialog element) because
+  // opening the drawer does not move focus into it — the chip that opened it keeps focus, so a
+  // handler scoped to the dialog's own subtree would never see the keydown bubble through it.
+  // Depends on `selection` (not just the open/closed flag) so switching to a different row while
+  // the drawer stays open still returns focus to THAT row's chip, not a stale one.
+  //
+  // Review finding (Task 6): below xl the drawer has no backdrop, so the list (and its per-row
+  // ArmedDelete controls, see the `armed` effect right below) stays fully interactive while the
+  // drawer is open. Without a guard, arming a delete on one row and pressing Esc to cancel it would
+  // ALSO close the drawer for an unrelated row — one keypress undoing two different things the user
+  // did not both ask to undo. `armed` is the more recent, more dangerous state (a slip here deletes
+  // data), so it must win: while something is armed, Esc only disarms (via the effect below) and this
+  // handler no-ops; the drawer only closes on a later Esc once nothing is armed.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || armed) return;
+      closePanel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // `closePanel` closes over `selection`, so it must be treated as reactive: the effect is
+    // re-established (with a fresh closePanel closure) whenever selection changes, so switching to a
+    // different row while the drawer stays open still returns focus to THAT row's chip.
+  }, [drawerOpen, selection, armed]);
+
   useEffect(() => {
     if (!armed) return;
     const disarm = () => setArmed(null);
@@ -436,18 +259,32 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // Finding 5 (final review wave): ArmedDelete focuses its confirm button while armed, but that
   // button unmounts the instant a delete is confirmed — nothing claimed focus afterwards, so it
   // fell to <body> and a keyboard user lost their place. The "+ Auftrag hinzufügen" button above
-  // the order list (`addOrderRef`) is the target: it is the one control guaranteed to survive
-  // every delete outcome (a single position, a whole order, or the cascade that replaces the last
-  // order/position with a fresh empty one). A row-local target would have to differ per outcome —
-  // after a position delete the order's own "+ Position" survives, but after an order delete or a
-  // cascade it does not — and one stable landing point beats three conditional ones.
+  // the order list (`addOrderRef`) is the target for whichever outcome leaves no row of the same
+  // card behind: a whole-order delete, or the cascade that replaces the last order/position with a
+  // fresh empty one. When a sibling row survives (removePosition below, ordinary case), focus stays
+  // inside the card instead — riding out to this button would make a keyboard user tab back through
+  // the Auftrags-ID, the reorder buttons and every surviving row just to resume editing (LKWkalk-78x).
   const addOrderRef = useRef<HTMLButtonElement>(null);
 
   /** Remove one position from the calculation. The catalogue article is untouched — this says
    *  "not on this truck", not "no such article". An order that loses its last position goes too:
-   *  an order with no positions is a state nothing can compute (ADR 022). */
+   *  an order with no positions is a state nothing can compute (ADR 022).
+   *
+   *  Focus (LKWkalk-78x): a sibling row of the SAME card is the natural landing spot — the next
+   *  one, or the previous one if the last row was deleted. Only when the deleted position was the
+   *  order's last (so the whole card disappears with it) does focus fall back to "+ Auftrag
+   *  hinzufügen", same as removeOrder. `order`/`neighbour` are computed from the pre-delete state,
+   *  since the position being removed is still in it at this point. */
   const removePosition = (okey: string, pid: string) => {
     setArmed(null);
+    // The panel must never name a row that no longer exists, even though the derived
+    // selectedPosition already resolves to null once the row is gone (belt-and-suspenders: the
+    // `selection` value itself should not go on carrying a stale positionId either).
+    if (selection?.positionId === pid) setSelection(null);
+    const order = orders.find((o) => o.key === okey);
+    const i = order?.positions.findIndex((p) => p.id === pid) ?? -1;
+    const neighbour =
+      order && order.positions.length > 1 ? (order.positions[i + 1] ?? order.positions[i - 1]) : undefined;
     setOrders((os) => {
       // Drop-if-now-empty applies only to the order being edited (`okey`) — filtering ALL orders
       // would also delete an unrelated order that happened to already be empty (Finding 4; not
@@ -457,7 +294,8 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         .filter((o) => o.key !== okey || o.positions.length > 0);
       return next.length > 0 ? next : [emptyOrder(1)];
     });
-    addOrderRef.current?.focus();
+    if (neighbour) nameRefs.current.get(neighbour.id)?.focus();
+    else addOrderRef.current?.focus();
   };
 
   /** Remove a whole order. The last one is replaced by a fresh empty order, never left empty. */
@@ -471,7 +309,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   };
 
   // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
-  // provider. Returns the saved Article so the caller (PositionRow) can bind the row to it —
+  // provider. Returns the saved Article so the caller (RulesPanel) can bind the row to it —
   // otherwise the row stays unbound after a successful save and the button never flips to
   // "update" (Finding 1).
   const saveArticle = async (p: PositionState): Promise<Article | undefined> => {
@@ -560,29 +398,97 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         </p>
       )}
 
-      <div className="flex flex-col gap-4">
-        {orders.map((o, oi) => (
-          <OrderCard
-            key={o.key}
-            order={o}
-            index={o.colorIndex}
-            vehicle={vehicle}
-            tt={tt}
-            reorderable={orders.length > 1}
-            canMoveUp={oi > 0}
-            canMoveDown={oi < orders.length - 1}
-            onMove={(dir) => moveOrder(o.key, dir)}
-            onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
-            onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
-            onAddPosition={() => addPosition(o.key)}
-            onSaveArticle={saveArticle}
-            armed={armed}
-            onArm={(a) => setArmed(a)}
-            onRemoveOrder={() => removeOrder(o.key)}
-            onRemovePosition={(pid) => removePosition(o.key, pid)}
-          />
-        ))}
+      {/* Master-detail (spec §7): order cards + the selected position's rules panel. From xl
+          (1280px) side by side, panel ≈320px and sticky. Below that threshold (`!wide`) the list
+          keeps the full width and the panel becomes a drawer over it instead — there simply isn't
+          room for two columns (useIsWide). */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {orders.map((o, oi) => (
+            <OrderCard
+              key={o.key}
+              order={o}
+              index={o.colorIndex}
+              vehicle={vehicle}
+              reorderable={orders.length > 1}
+              canMoveUp={oi > 0}
+              canMoveDown={oi < orders.length - 1}
+              onMove={(dir) => moveOrder(o.key, dir)}
+              onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
+              onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
+              onAddPosition={() => addPosition(o.key)}
+              armed={armed}
+              onArm={(a) => setArmed(a)}
+              onRemoveOrder={() => removeOrder(o.key)}
+              onRemovePosition={(pid) => removePosition(o.key, pid)}
+              selectedPositionId={selection?.orderKey === o.key ? selection.positionId : null}
+              onSelectPosition={(pid) => setSelection({ orderKey: o.key, positionId: pid })}
+              onChipRef={(pid, el) => {
+                if (el) chipRefs.current.set(pid, el);
+                else chipRefs.current.delete(pid);
+              }}
+              onNameRef={(pid, el) => {
+                if (el) nameRefs.current.set(pid, el);
+                else nameRefs.current.delete(pid);
+              }}
+            />
+          ))}
+        </div>
+        {wide && (
+          // `id` (review finding 3, final wave): stable target for the chip's `aria-controls`
+          // (PositionRow.tsx) so assistive tech can relate the two, even though the panel sits after
+          // the whole order list in DOM order. `<aside>` names the landmark; `w-80` replaces the
+          // arbitrary `xl:w-[20rem]` with the equivalent step already on the scale (design-system.md).
+          <aside id={RULES_PANEL_ID} className="w-full shrink-0 xl:sticky xl:top-4 xl:w-80">
+            <RulesPanel
+              // Review finding (Task 5, round 2): RulesPanel keeps its own `saveError` state, and this
+              // is now a SINGLE persistent instance (unlike the old per-row accordion, which unmounted
+              // with the row). Without a `key` tied to the selected row, a failed save on row A would
+              // still show "Speichern fehlgeschlagen…" once the user selected row B, though B was never
+              // saved. Keying on the selection forces React to remount (and so reset saveError) on
+              // every row change, and on entering/leaving the empty state.
+              key={selection ? `${selection.orderKey}/${selection.positionId}` : 'empty'}
+              position={selectedPosition}
+              orderId={selectedOrder?.orderId ?? null}
+              index={selectedOrder?.colorIndex ?? 0}
+              vehicle={vehicle}
+              onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
+              onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+            />
+          </aside>
+        )}
       </div>
+
+      {/* Drawer mode (Task 6, spec §7): below the two-column threshold the panel opens over the list
+          on selection instead of sitting beside it. Esc closes it (via the document-level effect
+          above, which fires regardless of where focus is — see that effect's comment for why) and
+          focus returns to the chip that opened it (closePanel / the effect's own handler). */}
+      {!wide && selectedPosition && (
+        // `id` (review finding 3, final wave): lets the chip's `aria-controls` (PositionRow.tsx)
+        // point at this panel too, same as the wide `<aside>` above.
+        // `aria-modal` removed (review finding 4, final wave): it asserts everything else on the
+        // page is inert, but focus is deliberately left wherever it was (the Esc listener on
+        // `document` depends on that — see the effect above) and there is no focus trap or `inert`
+        // on the list behind it. Keeping the claim without the behavior actively misleads assistive
+        // tech; full modality is tracked separately (LKWkalk-tn9).
+        <div
+          id={RULES_PANEL_ID}
+          role="dialog"
+          aria-label={tt('setup.panel.rules')}
+          className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto bg-card shadow-pop"
+        >
+          <RulesPanel
+            key={selection ? `${selection.orderKey}/${selection.positionId}` : 'empty'}
+            position={selectedPosition}
+            orderId={selectedOrder?.orderId ?? null}
+            index={selectedOrder?.colorIndex ?? 0}
+            vehicle={vehicle}
+            onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
+            onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+            onClose={closePanel}
+          />
+        </div>
+      )}
 
       {/* Duplicate add-order action below the last order (E10). */}
       <div className="mt-3 flex justify-center">
@@ -607,440 +513,5 @@ function MeasureField({ label, value, onChange }: { label: string; value: Num; o
         <Measure ariaLabel={label} value={value} onChange={onChange} />
       </span>
     </label>
-  );
-}
-
-// ---- order card -----------------------------------------------------------
-function OrderCard({
-  order,
-  index,
-  vehicle,
-  tt,
-  reorderable,
-  canMoveUp,
-  canMoveDown,
-  onMove,
-  onOrderIdChange,
-  onPositionChange,
-  onAddPosition,
-  onSaveArticle,
-  armed,
-  onArm,
-  onRemoveOrder,
-  onRemovePosition,
-}: {
-  order: OrderState;
-  index: number;
-  vehicle: Vehicle;
-  tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
-  reorderable: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMove: (dir: -1 | 1) => void;
-  onOrderIdChange: (v: string) => void;
-  onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
-  onAddPosition: () => void;
-  onSaveArticle: (p: PositionState) => Promise<Article | undefined>;
-  armed: { kind: 'position' | 'order'; key: string } | null;
-  onArm: (a: { kind: 'position' | 'order'; key: string }) => void;
-  onRemoveOrder: () => void;
-  onRemovePosition: (pid: string) => void;
-}) {
-  // Accordion: at most one position's nesting panel is open per order (keeps the form tidy).
-  const [openId, setOpenId] = useState<string | null>(null);
-  const colorVar = `var(--s${((index % 8) + 1)})`;
-  return (
-    <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
-      {/* flex-wrap (Finding 6, final review wave): this header only survived unwrapped because the
-          order-ID field carries min-w-0 — an accident, not a guarantee. Wrap explicitly so the wide
-          armed confirm button (ArmedDelete) has somewhere to go instead of overflowing the
-          overflow-hidden section, same fix already applied to the position row below. */}
-      <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
-        <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
-        <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
-        <span className="ml-auto text-caption text-muted">
-          {order.positions.length} × {tt('cargoType.label')}
-        </span>
-        {/* Reorder the order queue — list order = priority (4bj.11). Hidden when there is nothing
-            to reorder; ends are disabled. Only UI: moving a card reorders the semantic cargo list. */}
-        {reorderable && (
-          <div className="flex items-center">
-            <button
-              type="button"
-              aria-label={tt('setup.moveOrderUp')}
-              disabled={!canMoveUp}
-              onClick={() => onMove(-1)}
-              className="px-1 text-muted hover:text-brand disabled:opacity-30 disabled:hover:text-muted"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              aria-label={tt('setup.moveOrderDown')}
-              disabled={!canMoveDown}
-              onClick={() => onMove(1)}
-              className="px-1 text-muted hover:text-brand disabled:opacity-30 disabled:hover:text-muted"
-            >
-              ↓
-            </button>
-          </div>
-        )}
-        {/* Remove the whole order from THIS calculation — the catalogue is untouched (ADR 022). */}
-        <ArmedDelete
-          armed={armed?.kind === 'order' && armed.key === order.key}
-          onArm={() => onArm({ kind: 'order', key: order.key })}
-          onConfirm={onRemoveOrder}
-          label={tt('setup.deleteOrder')}
-          confirmLabel={tt('action.confirmDelete')}
-        />
-      </div>
-
-      {/* Column headings for the position fields (rgv.6). The vehicle bar has always had them; the
-          position row did not, so its numbers read as a bare "1200 · 800 · 144 · 186". Widths mirror
-          PositionRow exactly. Only from xl: below that the row wraps and a header would not line up
-          with anything — the per-field aria-labels carry the meaning there. */}
-      <div className="hidden xl:flex items-center gap-1.5 border-b border-line bg-sub px-4 pb-1 pt-2 text-label uppercase tracking-wide text-faint">
-        <span className="w-3 shrink-0" />
-        <span className="w-64 shrink-0">{tt('article.label')}</span>
-        <span className="w-24">{tt('field.length')}</span>
-        <span className="w-24">{tt('field.width')}</span>
-        <span className="w-24">{tt('field.height')}</span>
-        <span className="w-20">{tt('field.quantity')}</span>
-      </div>
-
-      <div className="divide-y divide-line">
-        {order.positions.map((p) => (
-          <PositionRow
-            key={p.id}
-            position={p}
-            index={index}
-            vehicle={vehicle}
-            tt={tt}
-            open={openId === p.id}
-            onSetOpen={(o) => setOpenId(o ? p.id : null)}
-            onChange={(patch) => onPositionChange(p.id, patch)}
-            onSaveArticle={() => onSaveArticle(p)}
-            armed={armed?.kind === 'position' && armed.key === p.id}
-            onArm={() => onArm({ kind: 'position', key: p.id })}
-            onRemove={() => onRemovePosition(p.id)}
-          />
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => {
-          setOpenId(null); // adding an article collapses the open nesting panel (E16/#1)
-          onAddPosition();
-        }}
-        className="w-full border-t border-dashed border-line-strong bg-sub py-2 text-caption font-semibold text-muted hover:text-brand"
-      >
-        + {tt('setup.addPosition')}
-      </button>
-    </section>
-  );
-}
-
-// ---- position row ---------------------------------------------------------
-function PositionRow({
-  position: p,
-  index,
-  vehicle,
-  tt,
-  open,
-  onSetOpen,
-  onChange,
-  onSaveArticle,
-  armed,
-  onArm,
-  onRemove,
-}: {
-  position: PositionState;
-  index: number;
-  vehicle: Vehicle;
-  tt: (k: import('@shadrin-v/i18n').TranslationKey) => string;
-  open: boolean;
-  onSetOpen: (open: boolean) => void;
-  onChange: (patch: Partial<PositionState>) => void;
-  onSaveArticle: () => Promise<Article | undefined>;
-  armed: boolean;
-  onArm: () => void;
-  onRemove: () => void;
-}) {
-  // Task 8 review fix: a failed save must be visible and must never escape as an unhandled
-  // rejection. This is the panel that owns the save button, so it owns the message too — cleared
-  // on the next successful save, never shown after one.
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const handleSaveArticle = async () => {
-    try {
-      const saved = await onSaveArticle();
-      setSaveError(null);
-      // Finding 1: bind the row to what the server actually stored — otherwise articleCode stays
-      // unset and the button keeps reading "save" instead of flipping to "update".
-      if (saved)
-        onChange({
-          articleCode: saved.itemCode,
-          locked: lockedFieldsFrom(saved.erpFields),
-          unboundFromErp: undefined,
-        });
-    } catch {
-      setSaveError(tt('article.saveError'));
-    }
-  };
-  const dimsPresent = dimsComplete(p);
-  const invalid = stepInvalid(p.state, activeStep(p), p.height);
-  // Finding 3: the hint names the article the field is locked by, not just "somewhere in ERPNext".
-  const lockedHint = fillTemplate(tt('article.lockedHint'), { code: p.articleCode ?? '' });
-  // Finding 3: "активна при введённом артикуле и заполненных габаритах" — the save button is always
-  // present in the details panel, disabled (not hidden) until both conditions hold.
-  const saveDisabled = (p.articleCode ?? p.name).trim() === '' || !dimsPresent;
-  let preview: StackPreview | null = null;
-  if (dimsPresent && !invalid) {
-    try {
-      preview = computeStack(toCargo(p, 'preview'), vehicle);
-    } catch {
-      preview = null;
-    }
-  }
-
-  // Any click outside this row (add order/position, another row, elsewhere) collapses the panel.
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    // Listen on 'click', NOT 'mousedown': collapsing on mousedown reflows the page before mouseup,
-    // so the browser dispatches the click on an ancestor instead of the button the user pressed
-    // (e.g. "+ Position") and its handler never runs. On 'click' the button's React handler (root
-    // delegation) fires first, then this closes the panel.
-    const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onSetOpen(false);
-    };
-    document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
-  }, [open, onSetOpen]);
-
-  return (
-    <div ref={rootRef} className="px-4 py-2.5">
-      {/* flex-wrap (no forced nowrap): a normal row still fits one line, but the wider two-sided
-          variant (fork-axis select + info hint) wraps its tail to a second line instead of
-          overflowing and overlapping the length fields (QA). */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <OrderSwatch index={index} width={12} height={26} />
-        {/* Article combobox replaces the old preset select + separate name field (Task 8, closes
-            rgv.8): one control both names the row and, when a suggestion is picked, fills its
-            dimensions/rules and locks the fields ERPNext actually supplied. */}
-        <span className="inline-flex w-64 shrink-0 items-center gap-1">
-          <ArticleCombobox
-            ariaLabel={tt('article.label')}
-            value={p.name}
-            onChange={(name) =>
-              onChange({
-                name,
-                articleCode: undefined,
-                locked: {},
-                // Keep the first binding we left, not the latest keystroke's.
-                unboundFromErp:
-                  p.unboundFromErp ??
-                  (p.articleCode && p.locked?.name ? { itemCode: p.articleCode, name: p.name } : undefined),
-              })
-            }
-            onPick={(s) => {
-              const patch = applySuggestion(s);
-              // Picking another article collapses the nesting panel (E16) — unless the article's
-              // own rules are verschachtelt, in which case it auto-expands, same as toggling the
-              // Segmented control by hand (E9).
-              onSetOpen(patch.state === 'verschachtelt');
-              onChange(patch);
-            }}
-            className="w-full"
-          />
-          {/* Finding 3 (final review wave): the name lock (ADR 022 §3) was only explained AFTER the
-              user started retyping (the unboundFromErp notice), and only inside the collapsed
-              details panel. length/width/height each get an InfoHint right next to the field the
-              moment they are locked — the name combobox got none. It must stay editable (no
-              readOnly — that is the search input), so the affordance is the same InfoHint pattern,
-              not a lock. */}
-          {p.locked?.name && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
-          {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} />
-          {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
-          {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
-        </span>
-        <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
-        <Segmented
-          ariaLabel={tt('cargoType.nesting.label')}
-          value={p.state}
-          onChange={(state) => {
-            onChange({ state });
-            // Verschachtelt exposes nesting rules → auto-open the details panel (E9).
-            if (state === 'verschachtelt') onSetOpen(true);
-          }}
-          options={[
-            { value: 'entschachtelt', label: tt('setup.state.ent') },
-            { value: 'verschachtelt', label: tt('setup.state.ver') },
-          ]}
-        />
-        {/* Orientation = rotation + forklift access as one choice (ADR 018). Fixed width + truncate so
-            a long RU label can't blow out the row; the fork-axis picker appears only for two-sided. */}
-        <span className="w-36 shrink-0">
-          <Select
-            ariaLabel={tt('cargoType.orientation.label')}
-            value={orientationChoiceOf(p.rotation, p.forkAccess)}
-            onChange={(choice) => onChange(orientationFieldsFor(choice as OrientationChoice))}
-            options={ORIENTATION_CHOICES.map((c) => ({ value: c, label: tt(`cargoType.orientation.${c}`) }))}
-            className="w-full"
-          />
-        </span>
-        {orientationChoiceOf(p.rotation, p.forkAccess) === 'twoSided' && (
-          <>
-            <span className="w-[8.5rem] shrink-0">
-              <Select
-                ariaLabel={tt('cargoType.forkAxis.label')}
-                value={p.forkAxis ?? 'length'}
-                onChange={(forkAxis) => onChange({ forkAxis: forkAxis as ForkAxis })}
-                options={FORK_AXES.map((a) => ({ value: a, label: tt(`cargoType.forkAxis.${a}`) }))}
-                className="w-full"
-              />
-            </span>
-            {/* Two-sided access only constrains packing under rear/side loading; under the default
-                combined mode both doors are open, so it is a no-op. Explain that (4bj.13). */}
-            <InfoHint
-              ariaLabel={tt('cargoType.orientation.twoSided')}
-              text={tt('cargoType.orientation.twoSidedHint')}
-              align="right"
-            />
-          </>
-        )}
-        {preview && preview.count > 0 && (
-          <Chip tone={p.state === 'verschachtelt' ? 'mint' : 'default'}>
-            {tt('setup.stack')} {preview.count}
-          </Chip>
-        )}
-        <button type="button" aria-label="details" aria-expanded={open} onClick={() => onSetOpen(!open)} className="ml-auto text-muted hover:text-brand">
-          {open ? '⌃' : '⌄'}
-        </button>
-        {/* Drop this position from THIS calculation; the catalogue article stays (ADR 022). */}
-        <ArmedDelete
-          armed={armed}
-          onArm={onArm}
-          onConfirm={onRemove}
-          label={tt('setup.deletePosition')}
-          confirmLabel={tt('action.confirmDelete')}
-        />
-      </div>
-
-      {open && (
-        <div className="mt-2 flex flex-col gap-3 border-t border-dashed border-line bg-sub px-2 py-2">
-          <div className="flex flex-wrap items-end gap-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-label uppercase font-semibold text-faint inline-flex items-center gap-1.5">
-                {tt('cargoType.stacking.label')}
-                <InfoHint ariaLabel={tt('cargoType.stacking.label')} text={tt('cargoType.stacking.hint')} />
-              </span>
-              <span className="w-24"><Measure ariaLabel={tt('cargoType.stacking.label')} unit="×" value={p.maxTiers} onChange={(maxTiers) => onChange({ maxTiers })} /></span>
-            </label>
-
-            {p.state === 'verschachtelt' && (
-              <>
-                <label className="flex flex-col gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.mode')}</span>
-                  <Select
-                    ariaLabel={tt('cargoType.nesting.mode')}
-                    value={p.nestingMode}
-                    onChange={(nestingMode) => onChange({ nestingMode })}
-                    options={[
-                      { value: 'sequential' as NestingMode, label: tt('cargoType.nesting.modeSequential') },
-                      { value: 'pairwise' as NestingMode, label: tt('cargoType.nesting.modePairwise') },
-                    ]}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">
-                    {tt(p.nestingMode === 'pairwise' ? 'cargoType.nesting.stepHeightPair' : 'cargoType.nesting.stepHeightSeq')}
-                  </span>
-                  <span className="w-24">
-                    <Measure
-                      ariaLabel={tt('cargoType.nesting.stepHeightSeq')}
-                      value={activeStep(p)}
-                      onChange={(v) => onChange({ [activeStepField(p)]: v })}
-                      invalid={invalid}
-                    />
-                  </span>
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">{tt('cargoType.nesting.maxNested')}</span>
-                  <span className="w-24"><Measure ariaLabel={tt('cargoType.nesting.maxNested')} unit="×" value={p.maxNested} onChange={(maxNested) => onChange({ maxNested })} /></span>
-                </label>
-
-                {p.nestingMode === 'pairwise' && (
-                  <label className="flex items-center gap-2 pb-1.5 text-body">
-                    <input type="checkbox" checked={p.allowUnpairedTop} onChange={(e) => onChange({ allowUnpairedTop: e.target.checked })} />
-                    {tt('cargoType.nesting.allowUnpairedTop')}
-                  </label>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Save the row's dimensions/rules to the article catalogue — in the details panel, the
-              row itself is already at its width limit (long RU labels). Label switches to "update"
-              once the row is bound to an existing article (Task 8). Finding 3: always present,
-              disabled (not hidden) until an article and full dimensions are entered — the panel's
-              layout doesn't jump as the user fills the row in. */}
-          <div>
-            <Button variant="ghost" onClick={handleSaveArticle} disabled={saveDisabled}>
-              {tt(p.articleCode ? 'article.update' : 'article.save')}
-            </Button>
-            {saveError && <p className="mt-1 text-caption text-danger">{saveError}</p>}
-            {/* Finding 2 (review): show whenever the row is unbound from an ERP-named article, not
-                only while the typed text still differs from the remembered name. Typing the exact
-                ERP name back does not re-bind the row — Save still creates a brand-new article — so
-                hiding the notice the moment the text matches again would silently re-open the very
-                duplicate-fork bug this notice exists to prevent. */}
-            {p.unboundFromErp && (
-              <p className="text-caption text-muted">{tt('article.renameInErp')}</p>
-            )}
-          </div>
-
-          {/* validation hint + live formula */}
-          {p.state === 'verschachtelt' && (
-            <p className={`text-caption ${invalid ? 'text-danger' : 'text-muted'}`}>
-              {fillTemplate(tt('cargoType.nesting.stepHeightHint'), { H: numOr0(p.height) })}
-            </p>
-          )}
-          {preview && (
-            <div className="flex flex-wrap items-stretch gap-3 rounded-ctl bg-card px-3 py-2">
-              <div className="min-w-[12rem] flex-1">
-                <div className="text-caption text-muted">
-                  {fillTemplate(tt('stack.result'), { count: preview.count, height: `${preview.height} mm` })}
-                </div>
-                <div className="mt-1 font-mono text-formula text-ink">
-                  <span className="text-faint">{tt('stack.formula.label')}: </span>
-                  {fillTemplate(tt(formulaKey(preview)), formulaVars(preview))}
-                  {preview.cappedBy && preview.cappedBy !== 'notStackable' && (
-                    <> {fillTemplate(tt('stack.formula.cap'), formulaVars(preview))}</>
-                  )}
-                </div>
-              </div>
-              {preview.count > 0 && (
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-label uppercase font-semibold text-faint">{tt('stack.diagram')}</span>
-                  <StackDiagram preview={preview} length={numOr0(p.length)} width={numOr0(p.width)} label={tt('stack.diagram')} series={orderColorToken(index).series} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }

@@ -69,8 +69,9 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].state).toBe('entschachtelt');
   });
 
-  it('defaults orientation to free (no fork constraint) and hides the fork-axis control', () => {
+  it('defaults orientation to free (no fork constraint) and hides the fork-axis control', async () => {
     renderSetup(() => {});
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // orientation now lives in the rules panel
     expect((screen.getByLabelText('Ausrichtung') as HTMLSelectElement).value).toBe('free');
     expect(screen.queryByLabelText('Gabelzufahrt')).not.toBeInTheDocument();
   });
@@ -78,9 +79,12 @@ describe('SetupScreen', () => {
   it('a two-sided orientation sets forkAccess/forkAxis on the built Load (ADR 018)', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // orientation lives in the rules panel
     await userEvent.selectOptions(screen.getByLabelText('Ausrichtung'), 'twoSided');
-    // the fork-entry axis control now appears
-    expect(screen.getByLabelText('Gabelzufahrt')).toBeInTheDocument();
+    // the fork-entry axis control now appears. getByRole, not getByLabelText: the panel wraps the
+    // select and its InfoHint under one <label>, which makes dom-testing-library's label-text
+    // heuristic match both — getByRole resolves the select's own accessible name unambiguously.
+    expect(screen.getByRole('combobox', { name: 'Gabelzufahrt' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
@@ -91,6 +95,7 @@ describe('SetupScreen', () => {
 
   it('shows a hint on the two-sided orientation about rear/side loading (4bj.13)', async () => {
     renderSetup(() => {});
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // orientation lives in the rules panel
     // no hint while the orientation is the default "free"
     expect(screen.queryByRole('button', { name: 'Nur 2 Seiten' })).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Ausrichtung'), 'twoSided');
@@ -101,6 +106,7 @@ describe('SetupScreen', () => {
 
   it('Verschachtelt without a valid Δh disables Berechnen', async () => {
     renderSetup(() => {});
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // nesting rules live in the panel
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     expect(screen.getByRole('button', { name: 'Berechnen' })).toBeDisabled();
   });
@@ -108,7 +114,9 @@ describe('SetupScreen', () => {
   it('Verschachtelt with a valid Δh emits nesting and enables Berechnen', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
-    // switching to Ver auto-expands the details panel (E9) — no separate details click needed
+    // nesting rules live in the panel now — select the row first (there is no more auto-expanding
+    // accordion to do it for us).
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     await userEvent.type(screen.getByLabelText('Höhenzuwachs je Palette (Δh)'), '22');
     const berechnen = screen.getByRole('button', { name: 'Berechnen' });
@@ -123,8 +131,9 @@ describe('SetupScreen', () => {
   it('keeps a separate constructive step per nesting mode (pairwise ≠ sequential)', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
-    // switch the row to verschachtelt → the nesting panel with the step field appears
+    // select the row → the rules panel opens; switch it to verschachtelt → the step field appears
     const STEP = 'Höhenzuwachs je Palette (Δh)';
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     await userEvent.type(screen.getByLabelText(STEP), '22'); // pairwise is the default mode
     await userEvent.selectOptions(screen.getByLabelText('Verschachtelungsmodus'), 'sequential');
@@ -141,9 +150,9 @@ describe('SetupScreen', () => {
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
 
-  it('auto-expands details on Ver and defaults the nesting mode to pairwise (E5/E9)', async () => {
+  it('defaults the nesting mode to pairwise once Ver is selected in the panel (E5)', async () => {
     renderSetup(() => {});
-    // no details click: switching to Ver opens the panel by itself (E9)
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // select the row to open the panel
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     expect((screen.getByLabelText('Verschachtelungsmodus') as HTMLSelectElement).value).toBe('pairwise');
     // pairwise step-height label is shown (Höhe der oberen Bretter), and the allow-unpaired toggle appears
@@ -151,24 +160,25 @@ describe('SetupScreen', () => {
     expect(screen.getByText('Einzelne Palette oben zulassen')).toBeInTheDocument();
   });
 
-  it('adding a position collapses the panel AND still triggers the button (T1)', async () => {
+  it('adding a position keeps the panel on the selected row and still triggers the button (T1)', async () => {
     renderSetup(() => {});
-    await userEvent.click(screen.getByRole('button', { name: 'Ver' })); // auto-opens details
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // select the row, open the panel
+    await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     expect(screen.getByLabelText('Verschachtelungsmodus')).toBeInTheDocument();
     // Ladungsart (preset select) is gone (rgv.8) — the article combobox is the row's identity control.
     expect(screen.getAllByRole('combobox', { name: 'Artikel' })).toHaveLength(1);
 
     await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
 
-    // panel collapsed…
-    expect(screen.queryByLabelText('Verschachtelungsmodus')).not.toBeInTheDocument();
-    // …and the click-outside handler did not swallow the button: a position was actually added
+    // there is no accordion any more to collapse — the panel stays on the selected position…
+    expect(screen.getByLabelText('Verschachtelungsmodus')).toBeInTheDocument();
+    // …and the add button's click was not swallowed: a position was actually added
     expect(screen.getAllByRole('combobox', { name: 'Artikel' })).toHaveLength(2);
   });
 
   it('reveals the Stapelbar hint tooltip on demand (E1)', async () => {
     renderSetup(() => {});
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     // the info button carries the Stapelbar label; there are two such elements (field + info) → pick the button
     await userEvent.click(screen.getByRole('button', { name: 'Stapelbar' }));
@@ -229,7 +239,7 @@ describe('SetupScreen', () => {
     renderSetup(onCalculate);
     // the legacy number reappears in the field the current mode (pairwise) reads from — not lost
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
 
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
@@ -268,7 +278,7 @@ describe('SetupScreen', () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-1');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('30');
 
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
@@ -423,6 +433,44 @@ describe('SetupScreen', () => {
   });
 });
 
+// Master-detail (LKWkalk-5nb, Task 5): the rules panel is a persistent selection, not a per-row
+// accordion. Selecting a row's chip shows its rules in the panel; the selection is view state only
+// (not part of the persisted draft) and tolerates pointing at a row that no longer exists.
+describe('SetupScreen — rules panel selection (5nb)', () => {
+  it('opens the rules panel for the position whose chip was pressed', async () => {
+    renderSetup(() => {});
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+  });
+
+  // Review finding (Task 5, round 2): the original version of this test only had ONE position row
+  // in scope (the fixture's default), so `getAllByLabelText('Länge')[1]` — meant to be "some OTHER
+  // row" — was actually the very row the chip had just selected. The assertion still caught "typing
+  // closes the panel", but never exercised the scenario the name promises: the selection surviving
+  // an edit made to a DIFFERENT row. Naming the first row makes its identity in the panel checkable,
+  // so editing the second row can be proven not to have moved the selection.
+  it('keeps the panel on the selected position while another row is edited', async () => {
+    renderSetup(() => {});
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'Erste');
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ })); // a second row to edit instead
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // select the FIRST row
+    // getAllByLabelText('Länge')[2]: [0] vehicle bar, [1] first position, [2] second position — the
+    // one NOT selected.
+    await userEvent.type(screen.getAllByLabelText('Länge')[2], '1200');
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+    // the panel still names the FIRST row, not the second one that was just edited
+    expect(screen.getByText('Erste')).toBeInTheDocument();
+  });
+
+  it('does not persist the selection across a remount', async () => {
+    const { unmount } = renderSetup(() => {});
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    unmount();
+    renderSetup(() => {});
+    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
+  });
+});
+
 describe('SetupScreen article combobox', () => {
   it('has no preset dropdown and no separate name field any more (rgv.8)', () => {
     renderSetup(() => {});
@@ -481,7 +529,7 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
     await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
     expect(upsertArticle).toHaveBeenCalledWith(
       expect.objectContaining({ itemCode: 'NEU-1', length: 1200, width: 800, height: 144 }),
@@ -509,7 +557,7 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
     await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
@@ -527,7 +575,7 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
     await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
 
@@ -550,7 +598,7 @@ describe('SetupScreen article combobox', () => {
   // conditionally hidden.
   it('the save button is always present in the details panel, disabled until article + dimensions are complete (Finding 3)', async () => {
     renderSetupWithCatalogue({ searchArticles: async () => [] } as Partial<DataProvider>);
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
 
     const saveButton = () => screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' });
     expect(saveButton()).toBeInTheDocument();
@@ -593,7 +641,7 @@ describe('SetupScreen article combobox', () => {
       await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
       await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
       await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
-      await userEvent.click(screen.getByRole('button', { name: 'details' }));
+      await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
       await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
 
       expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
@@ -626,13 +674,40 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
     await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
 
     const saveButton = () => screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' });
     await userEvent.click(saveButton());
     expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
 
     await userEvent.click(saveButton());
+    expect(screen.queryByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).not.toBeInTheDocument();
+  });
+
+  // Review finding (Task 5, round 2): RulesPanel owns `saveError` in its own component state, but
+  // the screen now renders a SINGLE panel instance that never unmounts across a selection change —
+  // unlike the old per-row accordion, which died with the row it belonged to. Without a reset, a
+  // failed save on row A leaves its error message hanging under row B's save button once the user
+  // selects B, even though B was never saved. Only a later SUCCESSFUL save cleared it, which
+  // instead misdescribes it as the correct row's own submission.
+  it('does not leak a stale save error from one row into the panel of another (Task 5 review)', async () => {
+    const upsertArticle = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    renderSetupWithCatalogue({ searchArticles: async () => [], upsertArticle } as Partial<DataProvider>);
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ })); // a second row to select
+
+    // fail a save on the FIRST row
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    await userEvent.type(screen.getAllByRole('combobox', { name: 'Artikel' })[0], 'NEU-1');
+    await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
+    await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
+    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
+    expect(await screen.findByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).toBeInTheDocument();
+
+    // select the SECOND row — its own save was never attempted, so its panel must be clean
+    await userEvent.click(screen.getAllByTestId('rule-chip')[1]);
     expect(screen.queryByText('Speichern fehlgeschlagen. Bitte erneut versuchen.')).not.toBeInTheDocument();
   });
 
@@ -668,7 +743,7 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1200');
     await userEvent.type(screen.getAllByLabelText('Breite')[1], '800');
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
 
     // add a second position row and look the saved article up there
@@ -799,15 +874,62 @@ describe('SetupScreen — removing from the calculation', () => {
 
   // Finding 5 (final review wave): the confirm button ArmedDelete focused while armed unmounts the
   // instant it is clicked; without an explicit refocus, focus falls to <body> and a keyboard user
-  // loses their place. Both delete paths (position, order) must land focus on a surviving control.
-  it('moves focus to "+ Auftrag hinzufügen" after confirming a position delete', async () => {
+  // loses their place. An order delete always lands on "+ Auftrag hinzufügen" — it is the one
+  // control guaranteed to survive that outcome. A position delete is more specific (LKWkalk-78x,
+  // see the two tests below): it only falls back to "+ Auftrag hinzufügen" when the deleted
+  // position was the order's last, taking the whole order with it; otherwise focus stays inside
+  // the card, on a sibling row.
+  it('after deleting a position focus lands on the next row of the same order', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition()); // a second position in SO-1
+
+    const before = rows();
+    await userEvent.click(trashes()[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(before[1]).toHaveFocus();
+  });
+
+  it('after deleting the LAST row of a multi-row order focus lands on the PREVIOUS row', async () => {
     renderSetup(() => {});
     await userEvent.click(addPosition());
+    await userEvent.click(addPosition()); // three positions in SO-1
+
+    const before = rows();
+    await userEvent.click(trashes()[2]); // arm the third (last) row
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(before[1]).toHaveFocus(); // the second row — there is no "next" one to fall to
+  });
+
+  it('after deleting the last position of an order focus lands on "+ Auftrag hinzufügen"', async () => {
+    renderSetup(() => {});
+    // The default order has exactly one position — deleting it takes the whole order with it
+    // (the untouchable cascade rule above), so no sibling row survives to receive focus.
 
     await userEvent.click(trashes()[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
 
     expect(addOrder()).toHaveFocus();
+  });
+
+  // The rules panel names a position by id (SetupScreen's `selection`), which is never persisted
+  // and must never survive the row it names — a dangling selection would either crash the panel
+  // or, worse, silently show stale rules for a row that no longer exists. The order itself must
+  // stay put here (a second position survives), so this pins the case a cascade delete would mask:
+  // the order KEEPS its key, only the selected row within it vanishes.
+  it('clears the panel selection when the selected position is deleted, even though its order survives', async () => {
+    renderSetup(() => {});
+    await userEvent.click(addPosition()); // a second position in SO-1
+    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByTestId('rule-chip')[1]); // select the SECOND row
+    expect(screen.queryByText('Position auswählen, um ihre Regeln zu sehen.')).toBeNull();
+
+    await userEvent.click(trashes()[1]); // delete that same (selected) row
+    await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+
+    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
   });
 
   it('moves focus to "+ Auftrag hinzufügen" after confirming an order delete', async () => {
@@ -873,31 +995,6 @@ describe('SetupScreen — removing from the calculation', () => {
     const values = Object.values(orderColors);
     expect(values).toHaveLength(2);
     expect(new Set(values).size).toBe(2); // distinct — no shared palette slot
-  });
-
-  // Finding 3: ArmedDelete used to stopPropagation() on its own clicks, so arming a trash button
-  // never reached the document-level listener that collapses another row's OPEN details panel on
-  // any outside click. The narrower data-armed-delete fix must restore that collapse.
-  // Review fix (wave 2, Finding 2): this test does NOT also exercise "the arming click can't
-  // disarm itself" — the disarm listener is attached by an effect keyed on `armed`, and `armed`
-  // is null going into this click (row 1's trash has never been armed before), so the listener is
-  // not registered yet when this click dispatches; it cannot fire either way. The genuine
-  // self-disarm-resistance case is the RE-arm path (arm row A, then arm row B while the listener
-  // from row A's arming is already attached) — see "arms exactly one button at a time" above.
-  it('arming a trash on one row still collapses another row\'s open details panel', async () => {
-    renderSetup(() => {});
-    await userEvent.click(addPosition()); // two position rows in the same order
-
-    const detailsButtons = () => screen.getAllByRole('button', { name: 'details' });
-    await userEvent.click(detailsButtons()[0]); // open row 0's panel
-    expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'true');
-
-    await userEvent.click(trashes()[1]); // arm row 1's trash — a click "elsewhere" for row 0
-
-    expect(detailsButtons()[0]).toHaveAttribute('aria-expanded', 'false');
-    // …and the click's own onArm ran: row 1 shows the confirm button (not a test of the
-    // disarm-listener guard — see comment above).
-    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
   });
 
   // Finding 3 (wave 2): the shipped focus-fix test (ArmedDelete.test.tsx) only flips the `armed`
@@ -1058,10 +1155,9 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     const box = screen.getByLabelText('Artikel');
     await userEvent.type(box, 'ABB');
     await userEvent.click(await screen.findByText('Gitterbox'));
-    // The notice lives in the details/nesting panel next to the save button it explains the
-    // consequence of — picking ERP_NAMED (rules.state 'entschachtelt') auto-collapses that panel,
-    // so open it explicitly (same idiom as "saves a typed-in article to the catalogue" above).
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    // The notice lives in the rules panel, next to the save button it explains the consequence of.
+    // Picking a suggestion selects the row and opens the panel unconditionally (Task 5) — no extra
+    // click needed, unlike the old per-row accordion that only auto-expanded for verschachtelt.
     await userEvent.type(box, ' NEU');
 
     expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
@@ -1074,11 +1170,8 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     const box = screen.getByLabelText('Artikel');
     await userEvent.type(box, 'Eig');
     await userEvent.click(await screen.findByText('Eigenbau'));
-    // The notice lives inside the details/nesting panel, which picking a suggestion auto-collapses
-    // (rules.state 'entschachtelt' here too) — reopen it, same idiom as the sibling tests above,
-    // otherwise this assertion is vacuous: queryByText finds nothing whether or not the notice's
-    // condition holds, because the panel containing it is simply not rendered.
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    // The notice lives in the rules panel, which picking a suggestion opens unconditionally
+    // (Task 5) — the panel is already showing this row, so the assertion below is meaningful.
     await userEvent.type(box, ' 2');
 
     expect(screen.queryByText(/ERPNext/)).toBeNull();
@@ -1094,7 +1187,7 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     await userEvent.type(screen.getAllByLabelText('Länge')[1], '1340');
     await userEvent.type(screen.getAllByLabelText('Breite')[1], '890');
     await userEvent.type(screen.getAllByLabelText('Höhe')[1], '178');
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // free text, not a pick — open the panel to reach Save
     await userEvent.click(screen.getByRole('button', { name: 'Artikel in die Datenbank speichern' }));
 
     expect(upsertArticle).toHaveBeenCalledOnce();
@@ -1108,17 +1201,14 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     const box = screen.getByLabelText('Artikel');
     await userEvent.type(box, 'ABB');
     await userEvent.click(await screen.findByText('Gitterbox'));
-    // Picking auto-collapses the panel (rules.state 'entschachtelt' for both fixtures here) —
-    // reopen it each time so the notice (and its absence) is actually observable, not merely
-    // hidden by the accordion being closed.
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
+    // Picking a suggestion selects the row and opens the panel unconditionally (Task 5) — the
+    // notice (and its absence) is observable right away, no extra click needed.
     await userEvent.type(box, ' NEU');
     expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
 
     await userEvent.clear(box);
     await userEvent.type(box, 'Eig');
     await userEvent.click(await screen.findByText('Eigenbau'));
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
 
     expect(screen.queryByText(/ERPNext/)).toBeNull();
   });
@@ -1129,7 +1219,6 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     const box = screen.getByLabelText('Artikel');
     await userEvent.type(box, 'ABB');
     await userEvent.click(await screen.findByText('Gitterbox'));
-    await userEvent.click(screen.getByRole('button', { name: 'details' }));
     await userEvent.type(box, ' NEU');
     expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
 
@@ -1140,5 +1229,52 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     await userEvent.type(box, 'Gitterbox');
 
     expect(screen.getByText(/ERPNext/)).toBeInTheDocument();
+  });
+});
+
+describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
+  it('closes the narrow-screen drawer on Escape and returns focus to the chip', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+    renderSetup(() => {});
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip);
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(chip).toHaveFocus();
+    vi.unstubAllGlobals();
+  });
+
+  it('an armed delete on another row wins the first Escape; the drawer only closes on the next one (Important review fix)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+    renderSetup(() => {});
+    await userEvent.click(screen.getByRole('button', { name: /Position hinzufügen/ }));
+
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip); // open the drawer for row 0
+
+    // Arm row 1's delete while row 0's drawer is open — the drawer has no backdrop below xl, so
+    // the list stays fully interactive underneath it.
+    const trashes = screen.getAllByRole('button', { name: 'Position aus der Berechnung entfernen' });
+    await userEvent.click(trashes[1]);
+    expect(screen.getByRole('button', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+
+    // First Escape: cancels the armed delete (the more dangerous, more recent state) — the drawer
+    // for row 0 must NOT also close from the same keypress.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+
+    // Second Escape: nothing left armed, so now it closes the drawer and returns focus to the chip.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(chip).toHaveFocus();
+
+    vi.unstubAllGlobals();
   });
 });

@@ -60,12 +60,15 @@ export function ArticleCombobox({
   onPick,
   ariaLabel,
   className = '',
+  inputRef,
 }: {
   value: string;
   onChange: (v: string) => void;
   onPick: (s: ArticleSuggestion) => void;
   ariaLabel: string;
   className?: string;
+  /** Наружу — сам <input>, чтобы родитель мог вернуть в него фокус (LKWkalk-78x). */
+  inputRef?: (el: HTMLInputElement | null) => void;
 }) {
   const tt = useT();
   const dp = useOptionalDataProvider();
@@ -132,6 +135,7 @@ export function ArticleCombobox({
   return (
     <div ref={rootRef} className={`relative ${className}`}>
       <input
+        ref={inputRef}
         type="text"
         role="combobox"
         aria-label={ariaLabel}
