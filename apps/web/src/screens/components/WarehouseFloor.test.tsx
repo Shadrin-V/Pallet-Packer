@@ -660,3 +660,14 @@ describe('WarehouseFloor — перенос загонов (LKWkalk-36f)', () =>
     expect(bayOrders()).toEqual(['SO-2', 'SO-1', 'SO-3']);
   });
 });
+
+// Подпись артикула на стопке склада (LKWkalk-ayg) — та же пара «имя + ×N», что и в виде сверху.
+describe('article name on warehouse stacks', () => {
+  it('names the article above the unit count', () => {
+    renderFloor();
+    const tile = screen.getByTestId('warehouse-tile');
+    const texts = [...tile.querySelectorAll('text')].map((t) => t.textContent);
+    expect(texts).toContain('EPAL 3');
+    expect(texts).toContain('×18');
+  });
+});

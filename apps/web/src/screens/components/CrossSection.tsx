@@ -23,6 +23,7 @@ import { RotateHandle } from './RotateHandle';
 import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
+import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
 import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
@@ -135,6 +136,7 @@ export function CrossSection({
       : rects;
   // Uniform ×N label size across all stacks (independent of footprint), in top-view mm units.
   const countFont = width * 0.05;
+  const nameOf = (cargoTypeId: string) => load.cargo.find((c) => c.id === cargoTypeId)?.name ?? null;
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
 
@@ -459,11 +461,31 @@ export function CrossSection({
               style={draggable ? { cursor: 'grab' } : undefined}
             >
               <StackShape x={r.x} y={r.y} w={r.w} h={r.h} series={r.series} muted={behind} hatchSpacing={180} />
-              {view === 'top' && (r.count ?? 1) > 1 && (
-                <text x={r.x + r.w / 2} y={r.y + r.h / 2} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
-                  ×{r.count}
-                </text>
-              )}
+              {view === 'top' && (() => {
+                // Имя артикула над количеством (ayg): по одному ×N груз не опознать, а легенда
+                // внизу листа заставляет сверять цвета. Имя тише числа — оно подпись, не итог.
+                const name = stackLabel(nameOf(r.cargoTypeId), r.w, r.h, countFont);
+                const count = (r.count ?? 1) > 1 ? `×${r.count}` : null;
+                if (!name && !count) return null;
+                // Обе строки вместе центрируются по стопке: одна строка стоит по центру, две
+                // расходятся от него на пол-строки в каждую сторону.
+                const cy = r.y + r.h / 2;
+                const dy = name && count ? countFont * 0.45 : 0;
+                return (
+                  <>
+                    {name && (
+                      <text x={r.x + r.w / 2} y={cy - dy} fill="var(--muted)" fontSize={countFont * NAME_FONT_RATIO} fontWeight={600} textAnchor="middle" dominantBaseline="central">
+                        {name}
+                      </text>
+                    )}
+                    {count && (
+                      <text x={r.x + r.w / 2} y={cy + dy} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+                        {count}
+                      </text>
+                    )}
+                  </>
+                );
+              })()}
               {isSelected && (
                 <>
                   <rect
