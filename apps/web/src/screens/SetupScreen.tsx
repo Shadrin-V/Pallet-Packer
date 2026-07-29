@@ -403,7 +403,12 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
           keeps the full width and the panel becomes a drawer over it instead — there simply isn't
           room for two columns (useIsWide). */}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
+        {/* gap-8 between order cards, not gap-4 (LKWkalk-9u7): a card ends with the dashed
+            "+ position" strip, which reads as one more row, so at 16px two orders ran together into
+            a single list. The gap between the ORDERS must beat the densest rhythm INSIDE an order
+            (row divider ≈ 0, header 10px) by enough to be seen without counting — 32px does, 16px
+            did not. Scale value, not a hand-picked number. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-8">
           {orders.map((o, oi) => (
             <OrderCard
               key={o.key}
