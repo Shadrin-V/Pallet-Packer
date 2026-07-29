@@ -49,6 +49,10 @@ export interface SetupScreenProps {
   orderGrouping: OrderGrouping;
   onLoadingModeChange: (m: LoadingMode) => void;
   onOrderGroupingChange: (g: OrderGrouping) => void;
+  /** Есть ли на показанном ладеплане ручные правки раскладки. «Рассчитать» строит план заново и
+   *  потому их выбрасывает — единственное действие, которое их теряет, с тех пор как переключатели
+   *  стратегии перестали пересчитывать (5nb этап 2). Отсюда предупреждение перед расчётом. */
+  hasManualEdits?: boolean;
 }
 
 /** How long an armed delete waits before disarming itself (ADR 022). */
@@ -87,7 +91,7 @@ interface Selection {
 // ---- component ------------------------------------------------------------
 export function SetupScreen({
   initialVehicle, initialOrders, onCalculate, onReset,
-  loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange,
+  loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange, hasManualEdits = false,
 }: SetupScreenProps) {
   const tt = useT();
   const preset0 = VEHICLE_PRESETS[0];
@@ -377,9 +381,15 @@ export function SetupScreen({
       goTo(first.where);
       return;
     }
+    // Пересчёт строит раскладку с нуля и выбрасывает ручные правки стопок. Раньше об этом
+    // предупреждали переключатели стратегии на ладеплане (withDiscardGuard); с 5nb этапа 2 они
+    // ничего не пересчитывают, и единственный, кто теряет правки, — эта кнопка. Спрашиваем только
+    // когда терять действительно есть что.
+    if (hasManualEdits && typeof window !== 'undefined' && !window.confirm(tt('ladeplan.discardEditsConfirm')))
+      return;
     const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
-    // Стратегия кладётся в Load ЯВНО: без неё App подставит стратегию прежнего плана, и выбор,
-    // сделанный в шапке до расчёта, молча пропал бы (решение владельца 3).
+    // Стратегия кладётся в Load ЯВНО: сама по себе она ничего не пересчитывает (решение владельца
+    // 1), выбор из шапки применяется именно здесь.
     onCalculate(
       { vehicle, cargo, loadingMode, orderGrouping },
       { orderColors: buildOrderColors(orders) },

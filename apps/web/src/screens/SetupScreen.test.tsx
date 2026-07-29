@@ -5,6 +5,7 @@ import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { SetupScreen, keepsArmed, type OrderState, type PositionState, type SetupScreenProps } from './SetupScreen';
 import { emptyPosition } from './setup/setupState';
+import { VEHICLE_PRESETS } from '../data/presets';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
 import type { Article, ArticleInput } from '@shadrin-v/contracts';
@@ -634,6 +635,66 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.loadingMode).toBe('rear');
     expect(load.orderGrouping).toBe('densityFirst');
+  });
+
+  // Ревью Задачи 5: `onVehicleChange` шапки можно было заменить на пустышку, и все 99 тестов
+  // проходили — правка кузова не была покрыта ничем. Кузов задаёт весь расчёт, так что путь
+  // «поле в шапке → состояние экрана → Load и сохранённый черновик» обязан быть прибит.
+  it('правка габаритов кузова в шапке доезжает до Load и до черновика', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    // [0] — поле кузова в шапке; [1] и дальше принадлежат строкам позиций
+    fireEvent.change(screen.getAllByLabelText('Länge')[0], { target: { value: '7200' } });
+    fireEvent.change(screen.getAllByLabelText('Höhe')[0], { target: { value: '2600' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.vehicle.length).toBe(7200);
+    expect(load.vehicle.height).toBe(2600);
+    const saved = JSON.parse(globalThis.localStorage.getItem('ladungsplaner.setup') ?? '{}');
+    expect(saved.vehicle).toMatchObject({ length: 7200, height: 2600 });
+  });
+
+  it('смена пресета кузова в шапке заменяет габариты целиком', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.selectOptions(screen.getByLabelText('Fahrzeug'), 'Wechselbrücke');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const preset = VEHICLE_PRESETS.find((p) => p.name === 'Wechselbrücke')!;
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.vehicle).toMatchObject({ name: preset.name, length: preset.length, width: preset.width, height: preset.height });
+  });
+
+  // Защита от потери ручных правок раскладки переехала сюда с переключателей ладеплана: они больше
+  // ничего не пересчитывают, а «Рассчитать» строит план с нуля (5nb этап 2, решение владельца 2).
+  it('«Рассчитать» предупреждает о потере ручных правок раскладки и при отказе не считает', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+      hasManualEdits: true,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onCalculate).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('без ручных правок «Рассчитать» ни о чём не спрашивает', async () => {
+    const confirm = vi.spyOn(window, 'confirm');
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onCalculate).toHaveBeenCalledOnce();
+    confirm.mockRestore();
   });
 
   it('переключатели стратегии в шапке зовут колбэк, а не считают', async () => {

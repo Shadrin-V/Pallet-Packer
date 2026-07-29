@@ -51,10 +51,7 @@ export function SetupHeader({
   const volumes = `${formatVolume(summary.cargoVolume, locale)} / ${formatVolume(summary.vehicleVolume, locale)}`;
 
   return (
-    <div
-      data-testid="setup-header"
-      className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6"
-    >
+    <div className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6">
       <div className="mx-auto flex max-w-[1120px] flex-wrap items-end gap-4">
         {compact ? (
           <span className="text-body font-semibold">{vehicle.name}</span>
