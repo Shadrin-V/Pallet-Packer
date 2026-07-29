@@ -937,7 +937,11 @@ export function SetupHeader({
   const volumes = `${formatVolume(summary.cargoVolume, locale)} / ${formatVolume(summary.vehicleVolume, locale)}`;
 
   return (
-    <div className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+    {/* NB: в плане тут стояло `bg-paper/95 … backdrop-blur`. Так делать НЕЛЬЗЯ: токены темы
+        объявлены голым `var(--paper)`, и Tailwind 3.4 молча не выпускает правило с модификатором
+        прозрачности — шапка оказывается полностью прозрачной. В коде — сплошной `bg-paper`
+        (находка C1 финального ревью, сторож — apps/web/src/theme-alpha.test.ts). */}
+    <div className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper px-5 py-3 sm:-mx-6 sm:px-6">
       <div className="mx-auto flex max-w-[1120px] flex-wrap items-end gap-4">
         {compact ? (
           <span className="text-body font-semibold">{vehicle.name}</span>

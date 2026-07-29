@@ -51,7 +51,14 @@ export function SetupHeader({
   const volumes = `${formatVolume(summary.cargoVolume, locale)} / ${formatVolume(summary.vehicleVolume, locale)}`;
 
   return (
-    <div className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+    // Фон СПЛОШНОЙ (`bg-paper`, без `/95`) — под липкой шапкой едет содержимое, и просвечивать оно
+    // не должно. Модификатор прозрачности здесь не просто лишний, а нерабочий: токены темы объявлены
+    // в tailwind.config.js голым `var(--paper)`, а Tailwind 3.4 умеет подмешивать альфу только в
+    // цвет, записанный с плейсхолдером `<alpha-value>`; на голую переменную он молча не выпускает
+    // правило — в собранном CSS не было НИ ОДНОГО `bg-paper`, и шапка на проде была полностью
+    // прозрачной. `backdrop-blur` ушёл вместе с прозрачностью: за непрозрачным фоном размывать
+    // нечего, а слой композитинга он всё равно создаёт. Регресс стережёт theme-alpha.test.ts.
+    <div className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper px-5 py-3 sm:-mx-6 sm:px-6">
       <div className="mx-auto flex max-w-[1120px] flex-wrap items-end gap-4">
         {compact ? (
           <span className="text-body font-semibold">{vehicle.name}</span>
