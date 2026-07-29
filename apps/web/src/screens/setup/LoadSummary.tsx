@@ -9,7 +9,7 @@ import type { SetupMessage, SetupMessageWhere, SetupSummary } from './setupValid
 function Figure({ value, label }: { value: string; label: string }) {
   return (
     <div>
-      <div className="text-title font-bold leading-none tabular-nums text-brand">{value}</div>
+      <div className="text-title font-[700] leading-none tabular-nums text-brand">{value}</div>
       <div className="mt-1 text-label uppercase tracking-wide text-muted">{label}</div>
     </div>
   );
@@ -36,17 +36,23 @@ function MessageList({
       <ul className="flex flex-col gap-1">
         {messages.map((m, i) => {
           const text = tt(m.code);
+          // Позиция без названия (например, свежая emptyPosition()) даёт пустую строку в m.name —
+          // адрес тогда не складывается, и подставлять его в aria-label нельзя: шаблонная строка
+          // превратит null в буквальное "null", которое озвучит скринридер (ревью, дефект 1).
           const address = m.orderId && m.name ? `${m.orderId} · ${m.name}` : null;
+          const goTo = tt('setup.msg.goToPosition');
           return (
             <li key={`${m.code}-${m.where?.positionId ?? 'plan'}-${i}`} className="text-caption">
               {m.where ? (
                 <button
                   type="button"
                   className="text-left underline decoration-line underline-offset-2 hover:text-brand"
-                  aria-label={`${address}: ${text} — ${tt('setup.msg.goToPosition')}`}
+                  aria-label={address ? `${address}: ${text} — ${goTo}` : `${text} — ${goTo}`}
                   onClick={() => onGoTo(m.where!)}
                 >
-                  <span className="font-semibold">{address}</span> — {text}
+                  {address && <span className="font-semibold">{address}</span>}
+                  {address ? ' — ' : ''}
+                  {text}
                 </button>
               ) : (
                 <span>{text}</span>

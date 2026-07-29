@@ -56,4 +56,15 @@ describe('LoadSummary', () => {
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.getByText(/übersteigt den Laderaum/)).toBeInTheDocument();
   });
+
+  // Ревью, дефект 1: позиция без названия (emptyPosition() даёт name: '') не должна протекать в
+  // доступное имя кнопки как буквальный "null" — это озвучит скринридер.
+  it('позиция без названия не даёт "null" в имени кнопки', () => {
+    renderIt([
+      { code: 'setup.msg.dimsMissing', level: 'error', where: { orderKey: 'o1', positionId: 'p1' }, orderId: 'SO-1001', name: '' },
+    ]);
+    const button = screen.getByRole('button');
+    expect(button.getAttribute('aria-label')).not.toMatch(/null/i);
+    expect(button.getAttribute('aria-label')).toBe('Maße unvollständig — Zur Position springen');
+  });
 });

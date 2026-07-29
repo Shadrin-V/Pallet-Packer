@@ -4,8 +4,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Vehicle } from '@shadrin-v/engine';
 import { LocaleProvider } from '../../i18n/LocaleContext';
-import { RulesPanel } from './RulesPanel';
+import { RulesPanel, type RulesPanelProps } from './RulesPanel';
 import { emptyPosition, type PositionState } from './setupState';
+import type { SetupMessage } from './setupValidation';
 
 const vehicle: Vehicle = { id: 'v', name: 'v', length: 13620, width: 2480, height: 2700 };
 
@@ -14,7 +15,11 @@ const vehicle: Vehicle = { id: 'v', name: 'v', length: 13620, width: 2480, heigh
 // typing "80" would then read back as "1208"/"1200" instead of 80. This wrapper keeps a local
 // `position` copy in sync (like the real SetupScreen state does) while still recording every patch
 // on the same spy the tests assert against.
-function renderPanel(initial: PositionState | null, onChange = vi.fn()) {
+function renderPanel(
+  initial: PositionState | null,
+  onChange = vi.fn(),
+  extra: Partial<RulesPanelProps> = {},
+) {
   function Wrapper() {
     const [position, setPosition] = useState(initial);
     return (
@@ -28,6 +33,7 @@ function renderPanel(initial: PositionState | null, onChange = vi.fn()) {
           setPosition((prev) => (prev ? { ...prev, ...patch } : prev));
         }}
         onSaveArticle={async () => undefined}
+        {...extra}
       />
     );
   }
@@ -78,5 +84,27 @@ describe('RulesPanel', () => {
     renderPanel(nested());
     expect(screen.getByTestId('stack-result')).toHaveTextContent('мм');
     expect(screen.getByTestId('stack-result')).not.toHaveTextContent('mm');
+  });
+});
+
+// Ревью, дефект 2: замена условия делегации на `if (false && ...)` оставляла оба файла тестов
+// зелёными 11/11 — сама делегация оказалась ничем не покрыта. Эти тесты обязаны краснеть, если
+// делегация отключена.
+describe('RulesPanel — empty-state delegation to LoadSummary (5nb, задача 3)', () => {
+  const summary = { orders: 1, positions: 2, units: 10, cargoVolume: 1_000_000, vehicleVolume: 2_000_000 };
+  const messages: SetupMessage[] = [];
+
+  it('shows the load summary instead of the old placeholder when summary/messages/onGoTo are given', () => {
+    renderPanel(null, vi.fn(), { summary, messages, onGoTo: vi.fn() });
+    expect(screen.queryByText('Выберите позицию, чтобы увидеть её правила.')).toBeNull();
+    // 'Груз' — заголовок сводки LoadSummary (setup.summary.title, ru); он появляется только через
+    // делегацию, старая заглушка его не знает.
+    expect(screen.getByText('Груз')).toBeInTheDocument();
+  });
+
+  it('keeps the old placeholder when the empty-state props are not given', () => {
+    renderPanel(null);
+    expect(screen.getByText('Выберите позицию, чтобы увидеть её правила.')).toBeInTheDocument();
+    expect(screen.queryByText('Груз')).toBeNull();
   });
 });
