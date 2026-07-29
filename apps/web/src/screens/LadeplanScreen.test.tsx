@@ -1174,6 +1174,22 @@ describe('LadeplanScreen — export', () => {
     expect(print).toHaveBeenCalledOnce();
   });
 
+  // Вписывание в одну страницу A4 живёт в @media print (theme.css) и держится на двух крючках в
+  // разметке: лист и блок разрезов. В jsdom раскладки нет, поэтому проверить можно только СЦЕПКУ —
+  // что крючки на месте и на тех самых элементах; сама одна страница проверяется счётчиком страниц
+  // в Page.printToPDF на настоящем Chrome (LKWkalk-7hx).
+  it('печать: лист и блок разрезов несут крючки, от которых зависит вписывание в A4', () => {
+    renderLadeplan();
+    const sheet = document.querySelector('.plan-sheet');
+    expect(sheet).not.toBeNull();
+    // Блок разрезов — ПОТОМОК листа: печатная колонка отдаёт ему остаток страницы, и вне листа
+    // правило не сработало бы.
+    const figures = sheet!.querySelector('.plan-figures');
+    expect(figures).not.toBeNull();
+    // Оба разреза лежат в нём — их и сжимает остаток страницы.
+    expect(figures!.querySelectorAll('.cut svg[data-cutaway]').length).toBe(2);
+  });
+
   it('JSON downloads load + layout under a dated filename', async () => {
     vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:fake', revokeObjectURL: () => {} });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});

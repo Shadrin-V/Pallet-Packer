@@ -634,7 +634,9 @@ export function LadeplanScreen({
 
       <div
         ref={sheetRef}
-        className="overflow-hidden rounded-card bg-card shadow-card print:rounded-none print:shadow-none"
+        /* `plan-sheet` — крючок для печати: в @media print лист становится колонкой ровно в одну
+           страницу A4, а разрезы делят её остаток (7hx, theme.css). */
+        className="plan-sheet overflow-hidden rounded-card bg-card shadow-card print:overflow-visible print:rounded-none print:shadow-none"
       >
         {/* brand head */}
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-5 print:py-2">
@@ -646,12 +648,15 @@ export function LadeplanScreen({
         </div>
 
         {/* meta band + figures */}
-        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-b border-line bg-sub px-6 py-3">
+        {/* Печать: те же поля теснее (print:gap-*) — на A4 сводка так укладывается в ОДНУ строку
+            вместо двух, и высвободившиеся ~13 мм достаются разрезам (7hx). Не влезло — перенос
+            по-прежнему работает, лист просто отдаёт разрезам меньше. */}
+        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-b border-line bg-sub px-6 py-3 print:gap-x-6 print:py-2">
           <MetaField label={tt('ladeplan.vehicleInner')} value={dims} />
           {orderIds.length > 0 && (
             <MetaField label={tt('ladeplan.orders')} value={orderIds.join(' · ')} />
           )}
-          <div className="ml-auto flex items-end gap-6">
+          <div className="ml-auto flex items-end gap-6 print:gap-4">
             {figures.map((f) => (
               <Figure key={f.label} value={f.value} label={f.label} danger={f.danger} />
             ))}
@@ -661,7 +666,7 @@ export function LadeplanScreen({
         {/* diagrams — near-full-bleed on print for maximum width.
             Order (owner's batch): side view, then top view, then the warehouse. The hold and the
             warehouse end up adjacent, which is where the work happens — stacks travel between them. */}
-        <div className="flex flex-col gap-5 px-2 py-5 print:gap-2 print:px-1 print:py-2">
+        <div className="plan-figures flex flex-col gap-5 px-2 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
             <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
           </div>
