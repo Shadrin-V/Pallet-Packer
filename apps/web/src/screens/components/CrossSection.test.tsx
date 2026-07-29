@@ -1014,3 +1014,23 @@ describe('truck chrome composition', () => {
     expect(outer.querySelector('svg[viewBox="53 520 372 400"]')).toBeNull();
   });
 });
+
+// Подпись артикула на стопке (LKWkalk-ayg): по одному «×N» груз не опознать, имя жило только в
+// <title> и в легенде листа.
+describe('article name on stacks', () => {
+  it('names the article on every top-view stack, above its count', () => {
+    const { container } = renderCut('top', 'Draufsicht');
+    const outer = container.querySelector('svg[data-cutaway="top"]')!;
+    const texts = [...outer.querySelectorAll('text')].map((t) => t.textContent);
+    // 2000×2000 пола, поддон 1000×1000 → четыре напольных места, в каждом стопка из двух.
+    expect(texts.filter((t) => t === 'Box')).toHaveLength(4);
+    expect(texts.filter((t) => t === '×2')).toHaveLength(4);
+  });
+
+  it('leaves the side view unlabelled', () => {
+    const { container } = renderCut('side', 'Seitenansicht');
+    const outer = container.querySelector('svg[data-cutaway="side"]')!;
+    const texts = [...outer.querySelectorAll('text')].map((t) => t.textContent);
+    expect(texts).not.toContain('Box');
+  });
+});

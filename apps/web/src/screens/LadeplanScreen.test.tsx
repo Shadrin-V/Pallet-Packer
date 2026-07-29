@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { calculateLayout, findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
@@ -61,9 +61,12 @@ describe('LadeplanScreen', () => {
     renderLadeplan();
     // order id appears (legend + meta band)
     expect(screen.getAllByText('SO-1').length).toBeGreaterThan(0);
-    // the single position "Box" placed ×8 (8 cubes fill the 2×2×2 hold exactly)
-    expect(screen.getByText(/Box/)).toBeInTheDocument();
-    expect(screen.getByText('×8')).toBeInTheDocument();
+    // the single position "Box" placed ×8 (8 cubes fill the 2×2×2 hold exactly).
+    // Запрос сужен до самой легенды: с ayg имя артикула стоит ещё и на каждой стопке разреза,
+    // и общестраничный getByText(/Box/) стал неоднозначным — это про охват запроса, не про легенду.
+    const legend = within(screen.getByRole('region', { name: 'Legende' }));
+    expect(legend.getByText(/Box/)).toBeInTheDocument();
+    expect(legend.getByText('×8')).toBeInTheDocument();
   });
 
   it('makes top-view stacks draggable (onMoveStack wired)', () => {

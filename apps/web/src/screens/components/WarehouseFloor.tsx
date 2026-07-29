@@ -29,6 +29,7 @@ import { useT } from '../../i18n/LocaleContext';
 import { fillTemplate } from './stackFormula';
 import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
+import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
 import { WarehouseBackdrop, FLOOR } from './WarehouseBackdrop';
 import { WarehouseBay } from './WarehouseBay';
@@ -364,18 +365,42 @@ export function WarehouseFloor({
                 >
                   <title>{`${cargo.name} ×${pt.tile.units}`}</title>
                   <StackShape x={pt.x} y={pt.y} w={pt.dx} h={pt.dy} series={series} hatchSpacing={180} backing />
-                  <text
-                    x={pt.x + pt.dx / 2}
-                    y={pt.y + pt.dy / 2}
-                    fill="var(--ink)"
-                    fontSize={countFont}
-                    fontWeight={700}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    pointerEvents="none"
-                  >
-                    ×{pt.tile.units}
-                  </text>
+                  {/* Имя артикула над количеством (ayg) — та же пара, что в виде сверху. Имя тише
+                      числа и пропадает первым, когда плитка мала: stackLabel решает, что влезло. */}
+                  {(() => {
+                    const name = stackLabel(cargo.name, pt.dx, pt.dy, countFont);
+                    const dy = name ? countFont * 0.45 : 0;
+                    return (
+                      <>
+                        {name && (
+                          <text
+                            x={pt.x + pt.dx / 2}
+                            y={pt.y + pt.dy / 2 - dy}
+                            fill="var(--muted)"
+                            fontSize={countFont * NAME_FONT_RATIO}
+                            fontWeight={600}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            pointerEvents="none"
+                          >
+                            {name}
+                          </text>
+                        )}
+                        <text
+                          x={pt.x + pt.dx / 2}
+                          y={pt.y + pt.dy / 2 + dy}
+                          fill="var(--ink)"
+                          fontSize={countFont}
+                          fontWeight={700}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          pointerEvents="none"
+                        >
+                          ×{pt.tile.units}
+                        </text>
+                      </>
+                    );
+                  })()}
                   {sel === realIndex && (
                     <>
                       <rect
