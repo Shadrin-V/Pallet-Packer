@@ -44,7 +44,7 @@ describe('SetupHeader', () => {
     expect(screen.queryByRole('button', { name: 'Demo' })).toBeNull(); // «Демо» и «Сброс» тоже
     expect(screen.getByRole('group', { name: 'Belademodus' })).toBeInTheDocument();
     // getByRole, не getByLabelText: OrderGroupingToggle даёт одинаковый aria-label и галочке, и
-    // кнопке InfoHint (дословно с ладеплана, LadeplanScreen.tsx) — getByLabelText матчит ЛЮБОЙ
+    // своей кнопке InfoHint — getByLabelText матчит ЛЮБОЙ
     // элемент с этим атрибутом (testing-library queryAllByAttribute), а не только форм-контролы,
     // поэтому находит оба и падает на неоднозначности. getByRole('checkbox', …) фильтрует по роли.
     expect(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toBeInTheDocument();
