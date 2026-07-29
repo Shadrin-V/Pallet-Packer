@@ -1528,3 +1528,133 @@ describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+// Находки финального ревью этапа 2 (5nb): у сводки не было поверхности на узком экране (I1), из
+// панели правил не было выхода в широком (I2), а «Рассчитать» на телефоне ставил фокус ЗА
+// полноэкранным drawer (I3). matchMedia в jsdom нет вовсе, поэтому по умолчанию useIsWide отвечает
+// «широко» — узкий экран тесты подставляют сами.
+describe('SetupScreen — сводка и выход из панели в обоих режимах (финальное ревью)', () => {
+  const narrow = () =>
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+
+  it('на узком экране сводка и предупреждения видны и без выбранной строки (I1)', () => {
+    narrow();
+    // Количество 0 — предупреждение: расчёт возможен, но позиция в него не войдёт (§6). Ниже 1280px
+    // такому сообщению негде было показаться: колонка рендерилась только в широком режиме, drawer —
+    // только при выбранной строке.
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(screen.getByText(/Menge 0/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('на узком экране сводка остаётся под списком и при открытом drawer — список не прыгает', async () => {
+    narrow();
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
+    });
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('в широком режиме повторный клик по чипу закрывает разбор и возвращает сводку (I2)', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' })])],
+    });
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip);
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+    expect(screen.queryByText('Ladung')).toBeNull();
+
+    await userEvent.click(chip);
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(screen.queryByText('So wird gerechnet')).toBeNull();
+    expect(chip).toHaveFocus();
+  });
+
+  it('в широком режиме Esc тоже возвращает к сводке', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' })])],
+    });
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(chip).toHaveFocus();
+  });
+
+  it('взведённое удаление и в широком режиме забирает первый Esc себе', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [
+        order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' }), position({ id: 'p2', name: 'EPAL 2' })]),
+      ],
+    });
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    const trashes = screen.getAllByRole('button', { name: 'Position aus der Berechnung entfernen' });
+    await userEvent.click(trashes[1]);
+
+    // Первый Esc — разоружение (договорённость Task 6), панель разбора при этом не закрывается…
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+    // …и только следующий возвращает сводку.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+  });
+
+  it('в широком режиме у панели разбора есть крестик, и он тоже ведёт к сводке (I2)', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' })])],
+    });
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Regeln schließen' }));
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+  });
+
+  it('на узком экране «Рассчитать» с ошибкой уводит фокус В панель, а не в поле за ней (I3)', async () => {
+    narrow();
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', width: '' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const drawer = await screen.findByRole('dialog', { name: 'Regeln' });
+    // waitFor: фокус ставится в requestAnimationFrame.
+    await waitFor(() => expect(drawer).toHaveFocus());
+    // Поле артикула строки на 375px лежит ЗА панелью — каретка там равносильна вводу в никуда.
+    expect(screen.getByLabelText('Artikel')).not.toHaveFocus();
+    vi.unstubAllGlobals();
+  });
+
+  it('на узком экране клик по сообщению сводки тоже уводит фокус в панель', async () => {
+    narrow();
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', width: '' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: /EPAL 1.*Maße unvollständig/ }));
+    const drawer = await screen.findByRole('dialog', { name: 'Regeln' });
+    await waitFor(() => expect(drawer).toHaveFocus());
+    vi.unstubAllGlobals();
+  });
+  // Esc отменяет самое внутреннее. Раз Esc теперь закрывает панель и в широком режиме, открытый
+  // список подсказок обязан забирать нажатие себе (ArticleCombobox.stopPropagation) — иначе одно
+  // нажатие делало бы два дела: гасило список И закрывало разбор, которого пользователь не трогал.
+  it('Esc при открытом списке подсказок гасит только список, панель разбора остаётся', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    const box = screen.getByRole('combobox', { name: 'Artikel' });
+    await userEvent.type(box, 'Git');
+    expect(await screen.findByRole('listbox')).toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+  });
+});

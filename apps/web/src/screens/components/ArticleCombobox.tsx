@@ -163,6 +163,11 @@ export function ArticleCombobox({
             e.preventDefault();
             pick(items[active >= 0 ? active : 0]);
           } else if (e.key === 'Escape') {
+            // stopPropagation: Esc отменяет самое внутреннее — открытый список подсказок. Дальше по
+            // документу тот же Esc закрывает панель разбора (SetupScreen), и без остановки одно
+            // нажатие делало бы два дела сразу. Ветка достижима только когда список реально открыт
+            // (ранний возврат выше), так что Esc «вообще» ничего не перехватывает.
+            e.stopPropagation();
             setOpen(false);
           }
         }}

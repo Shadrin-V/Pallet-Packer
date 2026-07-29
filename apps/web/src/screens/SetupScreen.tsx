@@ -15,6 +15,7 @@ import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
+import { LoadSummary } from './setup/LoadSummary';
 import { RulesPanel } from './setup/RulesPanel';
 import { SetupHeader } from './setup/SetupHeader';
 import { RULES_PANEL_ID } from './setup/PositionRow';
@@ -119,12 +120,17 @@ export function SetupScreen({
   // this to return focus to a sibling row after a position delete instead of evicting it onto
   // "+ Auftrag hinzufügen" (see removePosition below).
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
+  // Сам drawer: фокус после «Рассчитать» с ошибкой должен уезжать ВНУТРЬ него (спека §7). На 375px
+  // панель занимает весь экран, и прежний фокус в поле артикула строки оставлял каретку и системную
+  // клавиатуру за непрозрачной панелью — набранное уходило в невидимое поле (финальное ревью, I3).
+  const drawerRef = useRef<HTMLDivElement>(null);
   const closePanel = () => {
     const id = selection?.positionId;
     setSelection(null);
     if (id) chipRefs.current.get(id)?.focus();
   };
-  const drawerOpen = !wide && !!selectedPosition;
+  /** Панель разбора открыта в любом из двух режимов — колонкой (wide) или drawer (иначе). */
+  const panelOpen = !!selectedPosition;
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -140,7 +146,9 @@ export function SetupScreen({
   // holds by construction instead of by keeping a flag per row in step (ADR 022).
   const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
 
-  // Esc closes the drawer. A document-level listener (not onKeyDown on the dialog element) because
+  // Esc закрывает панель разбора — в ОБОИХ режимах (финальное ревью, I2: в широком режиме выхода из
+  // панели не было вовсе, и сводка загрузки становилась одноразовой — видной только до первого
+  // выбора строки). A document-level listener (not onKeyDown on the dialog element) because
   // opening the drawer does not move focus into it — the chip that opened it keeps focus, so a
   // handler scoped to the dialog's own subtree would never see the keydown bubble through it.
   // Depends on `selection` (not just the open/closed flag) so switching to a different row while
@@ -154,7 +162,7 @@ export function SetupScreen({
   // data), so it must win: while something is armed, Esc only disarms (via the effect below) and this
   // handler no-ops; the drawer only closes on a later Esc once nothing is armed.
   useEffect(() => {
-    if (!drawerOpen) return;
+    if (!panelOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || armed) return;
       closePanel();
@@ -164,7 +172,7 @@ export function SetupScreen({
     // `closePanel` closes over `selection`, so it must be treated as reactive: the effect is
     // re-established (with a fresh closePanel closure) whenever selection changes, so switching to a
     // different row while the drawer stays open still returns focus to THAT row's chip.
-  }, [drawerOpen, selection, armed]);
+  }, [panelOpen, selection, armed]);
 
   useEffect(() => {
     if (!armed) return;
@@ -365,11 +373,22 @@ export function SetupScreen({
    *  с ошибками: выбрать строку, открыть её панель, увести туда фокус. */
   const goTo = (where: SetupMessageWhere) => {
     setSelection({ orderKey: where.orderKey, positionId: where.positionId });
-    // Фокус — в поле артикула строки: это её первое поле, и с него естественно продолжить правку.
     // requestAnimationFrame, потому что в режиме drawer панель монтируется только после этого
     // setState, а в режиме колонки строка может быть за пределами вьюпорта — к моменту кадра
     // React уже применил выбор.
-    requestAnimationFrame(() => nameRefs.current.get(where.positionId)?.focus());
+    requestAnimationFrame(() => {
+      // В широком режиме фокус — в поле артикула строки: это её первое поле, строка и панель видны
+      // одновременно, и с него естественно продолжить правку.
+      if (wide) {
+        nameRefs.current.get(where.positionId)?.focus();
+        return;
+      }
+      // В режиме drawer панель на телефоне закрывает экран целиком, и та же строка оказывается ЗА
+      // ней: каретка и системная клавиатура — в невидимом поле, набранное уходит в никуда
+      // (финальное ревью, I3). Спека §7 требует уводить фокус внутрь панели, поэтому фокус получает
+      // сам drawer (tabIndex −1); Esc и крестик по-прежнему вернут его на чип.
+      drawerRef.current?.focus();
+    });
   };
 
   const handleCalculate = () => {
@@ -466,6 +485,7 @@ export function SetupScreen({
               onRemovePosition={(pid) => removePosition(o.key, pid)}
               selectedPositionId={selection?.orderKey === o.key ? selection.positionId : null}
               onSelectPosition={(pid) => setSelection({ orderKey: o.key, positionId: pid })}
+              onDeselectPosition={closePanel}
               onChipRef={(pid, el) => {
                 if (el) chipRefs.current.set(pid, el);
                 else chipRefs.current.delete(pid);
@@ -497,11 +517,23 @@ export function SetupScreen({
               vehicle={vehicle}
               onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
               onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+              // Крестик есть и в широком режиме (финальное ревью, I2): без него из разбора правил
+              // нельзя было вернуться к сводке загрузки и списку предупреждений — а «Рассчитать» с
+              // ошибкой сам выбирает строку, так что попасть в панель можно было и не желая того.
+              onClose={selectedPosition ? closePanel : undefined}
               summary={summary}
               messages={messages}
               onGoTo={goTo}
             />
           </aside>
+        )}
+        {/* Ниже порога двух колонок сводка живёт В ПОТОКЕ под списком заказов (финальное ревью, I1).
+            Раньше на узком экране её не было вовсе: колонка рендерилась только при `wide`, а drawer —
+            только при выбранной строке, и у предупреждений (количество 0, позиция выше кузова, объём
+            больше кузова) не оставалось никакой поверхности. Рендерится всегда, а не только при
+            пустом выборе: drawer накрывает её сверху, и список не прыгает при открытии-закрытии. */}
+        {!wide && (
+          <LoadSummary summary={summary} messages={messages} onGoTo={goTo} />
         )}
       </div>
 
@@ -519,6 +551,10 @@ export function SetupScreen({
         // tech; full modality is tracked separately (LKWkalk-tn9).
         <div
           id={RULES_PANEL_ID}
+          ref={drawerRef}
+          // tabIndex −1: панель не попадает в Tab-порядок, но её можно сфокусировать программно —
+          // так «Рассчитать» с ошибкой уводит фокус ВНУТРЬ панели, а не в поле строки за ней (I3).
+          tabIndex={-1}
           role="dialog"
           aria-label={tt('setup.panel.rules')}
           className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto bg-card shadow-pop"
