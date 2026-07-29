@@ -288,4 +288,48 @@ describe('App shell (single page)', () => {
       expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-42');
     });
   });
+
+  // Финальное ревью этапа 2, находка I4: черновик заявки перезагрузку переживал, а выбранная в шапке
+  // стратегия — нет. До этой ветки дыры не было: стратегию выбирали только на готовом плане, и она
+  // жила внутри сохранённого Load; с переездом выбора в шапку «до расчёта» ей понадобился свой ключ.
+  describe('выбранная стратегия переживает перезагрузку', () => {
+    it('режим погрузки, выбранный без единого расчёта, восстанавливается', async () => {
+      const { unmount } = render(<App />);
+      await userEvent.click(screen.getByRole('button', { name: 'Von der Seite' }));
+      unmount();
+
+      render(<App />);
+      expect(screen.getByRole('button', { name: 'Von der Seite' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('галочка «Плотность важнее группировки» тоже', async () => {
+      const { unmount } = render(<App />);
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }));
+      unmount();
+
+      render(<App />);
+      expect(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toBeChecked();
+    });
+
+    it('стратегия Demo-превью не сохраняется — превью не переживает перезагрузку целиком', async () => {
+      const { unmount } = render(<App />);
+      await userEvent.click(screen.getByRole('button', { name: 'Demo' })); // пришпиливает rear
+      expect(screen.getByRole('button', { name: 'Von hinten' })).toHaveAttribute('aria-pressed', 'true');
+      unmount();
+
+      render(<App />);
+      expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('«Сброс» забывает и сохранённую стратегию', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { unmount } = render(<App />);
+      await userEvent.click(screen.getByRole('button', { name: 'Von der Seite' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Zurücksetzen' }));
+      unmount();
+
+      render(<App />);
+      expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
 });

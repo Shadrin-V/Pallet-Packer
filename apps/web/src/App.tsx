@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   calculateLayout,
   findGeometryViolations,
+  LOADING_MODES,
+  ORDER_GROUPINGS,
   type Layout,
   type Load,
   type LoadingMode,
@@ -15,6 +17,28 @@ import { EmptyPlan } from './screens/components/EmptyPlan';
 const LOAD_STORAGE_KEY = 'ladungsplaner.load';
 // Stable orderId→palette slot, persisted separately so the Load format stays unchanged (QA #2).
 const ORDER_COLORS_STORAGE_KEY = 'ladungsplaner.orderColors';
+/** Стратегия расчёта (5nb этап 2) — свой ключ, а не поле в `ladungsplaner.load`: её выбирают в шапке
+ *  «Настройки» ДО расчёта, когда плана может ещё не быть, поэтому сохранённый план ей не дом (тот же
+ *  довод, что у `ladungsplaner.yardGrouping` в LadeplanScreen; контракт `Load` не трогаем).
+ *  Без этого выбор не переживал перезагрузку: черновик заявки возвращался целиком, а «Von der Seite»
+ *  снова становился «Hinten und Seite» (финальное ревью, I4). */
+const STRATEGY_STORAGE_KEY = 'ladungsplaner.strategy';
+
+/** Прочитать сохранённую стратегию. Чужое/испорченное значение молча игнорируется — засев тогда
+ *  возьмёт стратегию последнего плана, а её нет — умолчания контракта. */
+function loadPersistedStrategy(): { loadingMode?: LoadingMode; orderGrouping?: OrderGrouping } {
+  try {
+    const raw = globalThis.localStorage?.getItem(STRATEGY_STORAGE_KEY);
+    if (!raw) return {};
+    const v = JSON.parse(raw) as { loadingMode?: string; orderGrouping?: string };
+    return {
+      ...(LOADING_MODES.includes(v.loadingMode as LoadingMode) ? { loadingMode: v.loadingMode as LoadingMode } : {}),
+      ...(ORDER_GROUPINGS.includes(v.orderGrouping as OrderGrouping) ? { orderGrouping: v.orderGrouping as OrderGrouping } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
 
 /** Rebuild the last computed plan from the persisted Load (layout is derived, not stored). */
 function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Record<string, number> } | null {
@@ -50,8 +74,33 @@ export function App() {
   // Стратегия расчёта живёт здесь, а не в результате: её выбирают в шапке «Настройки» — ДО
   // расчёта, когда плана ещё может не быть, и потому хранить её в плане нельзя. Место правки одно
   // (5nb этап 2: с ладеплана переключатели убраны), но пережить сброс плана значение обязано.
-  const [loadingMode, setLoadingMode] = useState<LoadingMode>(persisted?.load.loadingMode ?? 'combined');
-  const [orderGrouping, setOrderGrouping] = useState<OrderGrouping>(persisted?.load.orderGrouping ?? 'strict');
+  // Засев: свой ключ (последний ВЫБОР, даже если после него ничего не считали) → стратегия
+  // последнего плана → умолчания контракта.
+  const [persistedStrategy] = useState(loadPersistedStrategy);
+  const [loadingMode, setLoadingMode] = useState<LoadingMode>(
+    persistedStrategy.loadingMode ?? persisted?.load.loadingMode ?? 'combined',
+  );
+  const [orderGrouping, setOrderGrouping] = useState<OrderGrouping>(
+    persistedStrategy.orderGrouping ?? persisted?.load.orderGrouping ?? 'strict',
+  );
+
+  /** Сохраняется только ВЫБОР пользователя в шапке. Demo пришпиливает свою стратегию (4bj.13), но он
+   *  предпросмотр: его план не переживает перезагрузку — и его `rear` не должен тоже. */
+  const saveStrategy = (next: { loadingMode: LoadingMode; orderGrouping: OrderGrouping }) => {
+    try {
+      globalThis.localStorage?.setItem(STRATEGY_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+  const chooseLoadingMode = (m: LoadingMode) => {
+    setLoadingMode(m);
+    saveStrategy({ loadingMode: m, orderGrouping });
+  };
+  const chooseOrderGrouping = (g: OrderGrouping) => {
+    setOrderGrouping(g);
+    saveStrategy({ loadingMode, orderGrouping: g });
+  };
 
   // Есть ли на показанном плане ручные правки раскладки. Знает об этом LadeplanScreen (там живёт
   // редактируемая копия), а выбрасывает их «Рассчитать» — предупредить обязан он, поэтому признак
@@ -96,6 +145,12 @@ export function App() {
     setResult(null);
     setLoadingMode('combined');
     setOrderGrouping('strict');
+    // Забыть и сохранённый выбор: иначе перезагрузка после сброса вернула бы прежнюю стратегию.
+    try {
+      globalThis.localStorage?.removeItem(STRATEGY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -110,8 +165,8 @@ export function App() {
           onReset={onReset}
           loadingMode={loadingMode}
           orderGrouping={orderGrouping}
-          onLoadingModeChange={setLoadingMode}
-          onOrderGroupingChange={setOrderGrouping}
+          onLoadingModeChange={chooseLoadingMode}
+          onOrderGroupingChange={chooseOrderGrouping}
           hasManualEdits={hasManualEdits}
         />
       </div>
