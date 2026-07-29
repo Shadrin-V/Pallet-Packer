@@ -24,6 +24,7 @@ import { formatLength } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
 import { Button, InfoHint } from '../ui/primitives';
 import { LoadingModeSwitch } from '../ui/LoadingModeSwitch';
+import { OrderGroupingToggle } from '../ui/OrderGroupingToggle';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
@@ -588,20 +589,14 @@ export function LadeplanScreen({
               </>
             )}
             {onOrderGroupingChange && (
-              // InfoHint is a button and must stay OUTSIDE the <label>, else clicking it would activate
-              // the label and toggle the checkbox (flip the strategy just from reading the hint).
-              <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
-                <label className="inline-flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    aria-label={tt('ladeplan.orderGrouping')}
-                    checked={(load.orderGrouping ?? 'strict') === 'densityFirst'}
-                    onChange={(e) => handleOrderGroupingChange(e.target.checked)}
-                  />
-                  <span className="truncate">{tt('ladeplan.orderGrouping')}</span>
-                </label>
-                <InfoHint ariaLabel={tt('ladeplan.orderGrouping')} text={tt('ladeplan.orderGroupingHint')} />
-              </span>
+              // Общий компонент с шапкой «Настройки» (LKWkalk-5nb, Задача 4) — но withDiscardGuard
+              // остаётся здесь, на месте вызова: на ладеплане смена стратегии выбрасывает ручные
+              // правки, а в «Настройке» выбрасывать нечего, поэтому переезд guard'а в компонент
+              // навязал бы это поведение и второму экрану.
+              <OrderGroupingToggle
+                value={load.orderGrouping ?? 'strict'}
+                onChange={(g) => handleOrderGroupingChange(g === 'densityFirst')}
+              />
             )}
           </ActionGroup>
         )}
