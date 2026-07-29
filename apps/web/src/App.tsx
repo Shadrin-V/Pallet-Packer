@@ -47,9 +47,9 @@ export function App() {
   const [persisted] = useState(loadPersistedResult);
   const [result, setResult] = useState<{ load: Load; layout: Layout; transient?: boolean; orderColors?: Record<string, number> } | null>(persisted);
 
-  // Стратегия расчёта живёт здесь, а не в результате: её выбирают ДО первого расчёта, в шапке
-  // «Настройки» (5nb этап 2), и после — переключателями на ладеплане. Один источник, два места
-  // правки; иначе экраны показывали бы разное значение одной настройки.
+  // Стратегия расчёта живёт здесь, а не в результате: её выбирают в шапке «Настройки» — ДО
+  // расчёта, когда плана ещё может не быть, и потому хранить её в плане нельзя. Место правки одно
+  // (5nb этап 2: с ладеплана переключатели убраны), но пережить сброс плана значение обязано.
   const [loadingMode, setLoadingMode] = useState<LoadingMode>(persisted?.load.loadingMode ?? 'combined');
   const [orderGrouping, setOrderGrouping] = useState<OrderGrouping>(persisted?.load.orderGrouping ?? 'strict');
 

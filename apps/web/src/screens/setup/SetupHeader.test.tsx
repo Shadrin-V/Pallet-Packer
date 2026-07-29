@@ -61,6 +61,20 @@ describe('SetupHeader', () => {
     expect(h.onCalculate).not.toHaveBeenCalled();
   });
 
+  // Подсказка приехала сюда вместе с переключателем (5nb этап 2): на ладеплане её больше нет, и
+  // без этого теста она уже один раз молча пропала из продукта вместе с удалённой панелью.
+  // «Hinten und Seite» — это доступ с двух сторон, из имени кнопки не видно, что считаются оба
+  // варианта и показывается более плотный (находка QA).
+  it('рядом с режимом погрузки есть подсказка, и её имя не спорит с именем переключателя', async () => {
+    renderHeader();
+    // Имя кнопки-подсказки отличается от 'Belademodus' — иначе на странице два элемента с одним
+    // именем (та же коллизия, что у галочки группировки, LKWkalk-lu6).
+    const hint = screen.getByRole('button', { name: 'Erklärung zum Belademodus' });
+    expect(screen.getByRole('group', { name: 'Belademodus' })).toBeInTheDocument();
+    await userEvent.click(hint);
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/beide Varianten gerechnet und die dichtere gezeigt/);
+  });
+
   it('«Рассчитать» НЕ гаснет при ошибках, но объявляет их числом', () => {
     renderHeader({ errorCount: 2 });
     const calc = screen.getByRole('button', { name: /Berechnen/ });

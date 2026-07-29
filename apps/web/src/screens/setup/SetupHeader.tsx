@@ -6,7 +6,7 @@ import type { LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
 import { formatVolume } from '@shadrin-v/i18n';
 import { useT, useLocale } from '../../i18n/LocaleContext';
 import { fillTemplate } from '../components/stackFormula';
-import { Button, Measure, Select } from '../../ui/primitives';
+import { Button, InfoHint, Measure, Select } from '../../ui/primitives';
 import { LoadingModeSwitch } from '../../ui/LoadingModeSwitch';
 import { OrderGroupingToggle } from '../../ui/OrderGroupingToggle';
 import { VEHICLE_PRESETS } from '../../data/presets';
@@ -86,10 +86,20 @@ export function SetupHeader({
           {volumes}
         </span>
 
-        {/* Стратегия расчёта — здесь, а не только на готовом плане: выбирать «как грузим» логично
-            до расчёта, а не после него. Пересчёта отсюда нет — считает «Рассчитать». */}
+        {/* Стратегия расчёта — здесь, и только здесь (5nb этап 2): выбирать «как грузим» логично
+            до расчёта, а не после него; с ладеплана переключатели убраны. Пересчёта отсюда нет —
+            выбор применяет «Рассчитать». */}
         <div className="flex flex-wrap items-center gap-2">
           <LoadingModeSwitch value={loadingMode} onChange={onLoadingModeChange} />
+          {/* «Hinten und Seite» называет доступ (открыты обе двери), а не волшебный режим: из имени
+              кнопки не видно, что считаются оба варианта и показывается более плотный (находка QA).
+              Подсказка переехала сюда вместе с переключателем; её aria-label намеренно НЕ равен
+              имени переключателя, иначе на странице было бы два элемента «Belademodus»
+              (LKWkalk-lu6). */}
+          <InfoHint
+            ariaLabel={tt('ladeplan.loadingModeHintLabel')}
+            text={tt('ladeplan.loadingModeHint')}
+          />
           <OrderGroupingToggle value={orderGrouping} onChange={onOrderGroupingChange} />
         </div>
 

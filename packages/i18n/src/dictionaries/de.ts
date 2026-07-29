@@ -104,6 +104,10 @@ export const de: Dictionary = {
   'ladeplan.loadingMode': 'Belademodus',
   'ladeplan.loadingModeHint':
     'Von welcher Seite be- und entladen wird. «Von hinten»: nur die Hecktür — Reihen wachsen von vorne zur Tür. «Von der Seite»: nur die Plane. «Hinten und Seite»: beide offen — es werden beide Varianten gerechnet und die dichtere gezeigt.',
+  // Отдельное имя для кнопки-подсказки: совпади оно с именем самого переключателя, на странице
+  // оказались бы два элемента «Belademodus» — ровно та коллизия имён, что уже тянется у галочки
+  // группировки (LKWkalk-lu6).
+  'ladeplan.loadingModeHintLabel': 'Erklärung zum Belademodus',
   'ladeplan.orderGrouping': 'Dichte vor Auftragstrennung',
   'ladeplan.orderGroupingHint':
     'Dichter gepackt, aber Aufträge sind gemischt und müssen beim Entladen sortiert werden.',

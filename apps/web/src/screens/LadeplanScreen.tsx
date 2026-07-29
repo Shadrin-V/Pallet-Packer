@@ -72,24 +72,16 @@ function Figure({ value, label, danger = false }: { value: string; label: string
 function ActionGroup({
   label,
   className = '',
-  ariaGroup = true,
   children,
 }: {
   label: string;
   className?: string;
-  /** false when a child already exposes a group with this same name (e.g. the Segmented switch) —
-   *  two nested groups sharing one name are ambiguous to assistive tech. */
-  ariaGroup?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       <span className="text-label uppercase tracking-wide text-faint">{label}</span>
-      <div
-        role={ariaGroup ? 'group' : undefined}
-        aria-label={ariaGroup ? label : undefined}
-        className="flex flex-wrap items-center gap-1.5"
-      >
+      <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
         {children}
       </div>
     </div>
