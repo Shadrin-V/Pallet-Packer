@@ -32,14 +32,14 @@ export function ArmedDelete({
   }, [armed]);
 
   return (
-    // Review fix (Finding 3): this used to be `onClick={stopPropagation}`, which also swallowed the
-    // arming click before it could reach the document-level listener (SetupScreen) that collapses
-    // another row's open details panel on ANY outside click — so arming a trash stopped collapsing
-    // other rows. `data-armed-delete` is a narrower hook: SetupScreen's disarm-on-any-click listener
-    // ignores presses inside it (same `closest(...)` idiom as SetupScreen.tsx's own rootRef check
-    // and ArticleCombobox.tsx), so the arming click still bubbles for everything else it should
-    // affect. That listener watches pointerdown, not click — see `keepsArmed` in SetupScreen.tsx
-    // (LKWkalk-yxn): by the time the arming click reaches the document, this <svg> is detached.
+    // Review fix (Finding 3): this used to be `onClick={stopPropagation}`, which swallowed the
+    // arming click before any document-level listener could see it. `data-armed-delete` is a
+    // narrower hook: SetupScreen's disarm-on-outside-press listener ignores presses inside it (same
+    // `closest(...)` idiom as ArticleCombobox.tsx), so the arming click still bubbles for everything
+    // else it should affect. That listener watches pointerdown, not click — see `keepsArmed` in
+    // SetupScreen.tsx (LKWkalk-yxn): by the time the arming click reaches the document, this <svg>
+    // is detached. (The accordion this comment once also named — a listener that collapsed another
+    // row's open details panel — died with the 5nb rebuild; selecting a row replaced it.)
     <span data-armed-delete="" className="inline-flex shrink-0">
       {armed ? (
         <Button ref={confirmRef} variant="danger" onClick={onConfirm}>
