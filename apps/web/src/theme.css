@@ -106,10 +106,47 @@ body {
   body {
     background: #fff;
   }
-  /* Cutaways span the full printable width; height follows the aspect ratio (E7 + max-width). */
-  .cut svg {
+  /* Лист — ровно одна страница A4 landscape (7hx). Шапка, сводка и легенда занимают свою
+     естественную высоту, разрезы делят ОСТАТОК страницы: у каждого svg есть viewBox и
+     preserveAspectRatio="xMidYMid meet", поэтому в выданной коробке чертёж масштабируется целиком,
+     а не обрезается. Высота фиксирована в мм от @page (210mm − 2×8mm полей), не в vh: единицы
+     вьюпорта в печати Chrome считает не от страницы. */
+  .plan-sheet {
+    height: 194mm;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Постоянная часть листа (шапка, сводка, легенда) не сжимается — сжимаются только разрезы. */
+  .plan-sheet > * {
+    flex-shrink: 0;
+  }
+  /* Пол для разрезов: заказов на листе может оказаться столько, что легенда съест страницу целиком.
+     Тогда чертежи не превращаются в полоску в 4 мм — они остаются на 60 мм, а хвост легенды
+     переезжает на вторую страницу (лист печатается с overflow: visible, см. `print:overflow-visible`
+     в JSX). Лучше вторая страница, чем молча срезанная легенда или нечитаемый разрез. */
+  .plan-figures {
+    flex: 1 1 auto;
+    min-height: 60mm;
+  }
+  /* min-height:0 на каждом звене цепочки — иначе flex-элемент не сжимается меньше содержимого,
+     и остаток страницы разрезам не достанется. */
+  .plan-figures .cut {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+  }
+  .plan-figures .cut > figure {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Только ВНЕШНИЙ svg разреза: вложенный (data-hold) живёт в пользовательских единицах кузова,
+     и растягивать его по коробке нельзя — сломается масштаб 1:1 со складом. */
+  .cut svg[data-cutaway] {
     width: 100% !important;
-    height: auto !important;
+    flex: 1 1 auto;
+    min-height: 0;
     display: block;
   }
 }
