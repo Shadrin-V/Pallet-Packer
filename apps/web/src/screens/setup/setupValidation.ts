@@ -11,7 +11,8 @@ export type SetupMessageCode =
   | 'setup.msg.dimsMissing'
   | 'setup.msg.tooTall'
   | 'setup.msg.volumeOver'
-  | 'setup.msg.zeroQuantity';
+  | 'setup.msg.zeroQuantity'
+  | 'setup.msg.duplicateOrderId';
 
 /** Адрес строки: ключ заказа + id позиции — ровно то, чем экран выбирает строку (`Selection`). */
 export interface SetupMessageWhere {
@@ -74,6 +75,26 @@ export function setupMessages(orders: OrderState[], vehicle: Vehicle): SetupMess
       if (numOr0(p.quantity) === 0)
         warnings.push({ code: 'setup.msg.zeroQuantity', level: 'warning', ...at });
     }
+  }
+  // Дубль Auftrags-ID (LKWkalk-pkm): движок группирует груз в зоны по orderId, легенда и цвета —
+  // тоже, так что две карточки с одним ID лягут ОДНИМ заказом, что бы ни показывала «Настройка».
+  // Дубль почти всегда опечатка → предупреждение на каждой карточке после первой (решение
+  // владельца 2026-07-30: не ошибка — расчёт с дублем корректен, зоны законно объединяются).
+  // trim: «SO-1» и « SO-1 » — один заказ и для движка, которому ID достаётся как есть из формы.
+  const seenIds = new Set<string>();
+  for (const o of orders) {
+    const id = o.orderId.trim();
+    const first = o.positions[0];
+    if (seenIds.has(id) && first) {
+      warnings.push({
+        code: 'setup.msg.duplicateOrderId',
+        level: 'warning',
+        where: { orderKey: o.key, positionId: first.id },
+        orderId: o.orderId,
+        name: first.name,
+      });
+    }
+    seenIds.add(id);
   }
   const s = setupSummary(orders, vehicle);
   if (s.cargoVolume > s.vehicleVolume)

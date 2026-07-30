@@ -70,6 +70,46 @@ describe('setupMessages', () => {
     expect(m?.where).toBeUndefined();
   });
 
+  // LKWkalk-pkm: движок группирует груз в зоны по orderId, легенда и цвета — тоже. Два заказа с
+  // одинаковым Auftrags-ID ниже по конвейеру — ОДИН заказ: одна зона, один цвет, одна строка
+  // легенды, что бы ни показывала «Настройка». Дубль почти всегда опечатка, поэтому сводка
+  // предупреждает (решение владельца 2026-07-30: предупреждение, не ошибка — расчёт с дублем
+  // корректен, зоны законно объединяются).
+  describe('предупреждение: Auftrags-ID повторяется (pkm)', () => {
+    const twoOrders = (idA: string, idB: string): OrderState[] => [
+      { key: 'oA', orderId: idA, colorIndex: 0, positions: [pos()] },
+      { key: 'oB', orderId: idB, colorIndex: 1, positions: [pos({ id: 'pB', name: 'EPAL 2' })] },
+    ];
+
+    it('дубль даёт предупреждение на ВТОРОЙ карточке, с адресом её первой позиции', () => {
+      const msgs = setupMessages(twoOrders('SO-1', 'SO-1'), vehicle);
+      expect(msgs).toEqual([
+        {
+          code: 'setup.msg.duplicateOrderId',
+          level: 'warning',
+          where: { orderKey: 'oB', positionId: 'pB' },
+          orderId: 'SO-1',
+          name: 'EPAL 2',
+        },
+      ]);
+    });
+
+    it('разные ID предупреждения не дают; пробелы вокруг ID не делают его другим', () => {
+      expect(setupMessages(twoOrders('SO-1', 'SO-2'), vehicle)).toEqual([]);
+      expect(setupMessages(twoOrders('SO-1', ' SO-1 '), vehicle)).toHaveLength(1);
+    });
+
+    it('три карточки с одним ID — два предупреждения (по одному на каждый дубль)', () => {
+      const three = [
+        ...twoOrders('SO-1', 'SO-1'),
+        { key: 'oC', orderId: 'SO-1', colorIndex: 2, positions: [pos({ id: 'pC' })] },
+      ];
+      const dups = setupMessages(three, vehicle).filter((m) => m.code === 'setup.msg.duplicateOrderId');
+      expect(dups).toHaveLength(2);
+      expect(dups.map((m) => m.where?.orderKey)).toEqual(['oB', 'oC']);
+    });
+  });
+
   it('ошибки идут раньше предупреждений, порядок строк сохраняется', () => {
     const ms = setupMessages(
       [order([pos({ id: 'p1', quantity: 0 }), pos({ id: 'p2', state: 'verschachtelt' })])],

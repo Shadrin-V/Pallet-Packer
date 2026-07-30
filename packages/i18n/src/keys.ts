@@ -38,6 +38,7 @@ export const TRANSLATION_KEYS = [
   'setup.chip.perStack',
   'setup.col.rules',
   'setup.positionCount',
+  'setup.msg.duplicateOrderId',
   'setup.rule.entschachtelt',
   'setup.rule.sequential',
   'setup.rule.pairwise',
