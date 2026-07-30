@@ -60,12 +60,53 @@ ERPNEXT_API_SECRET=   # secret
 3. После выдачи сертификата оранжевое облако допустимо только с SSL mode **Full (strict)**; проще
    оставить DNS only.
 
-## 5. Аутентификация (MVP)
+## 5. Аутентификация (MVP) — открыто, `LKWkalk-i6b`
 
-Внутренний инструмент за приватным поддоменом. MVP: **HTTP Basic Auth через Traefik** (Coolify →
-Application → «Basic Auth» middleware, либо Traefik-лейблы `traefik.http.middlewares.*.basicauth.users`
-с bcrypt-хэшем). Логин/пароль — в секретах Coolify, не в git. Полноценный ERPNext-SSO — в варианте A.
-Допустимо стартовать без Basic Auth (по решению владельца), поддомен всё равно не публичен.
+Внутренний инструмент за приватным поддоменом. MVP: **HTTP Basic Auth через Traefik**. Полноценный
+ERPNext-SSO — вариант A. Допустимо стартовать без Basic Auth (по решению владельца), поддомен всё
+равно не публичен — сейчас приложение работает **без** аутентификации.
+
+**Почему нельзя сделать из репо/по SSH.** Лейблы контейнера под управлением Coolify
+(`coolify.managed=true`): правка через `docker` затирается ближайшим редеплоем, а мерж в `main` = редеплой
+(ADR 023). Менять только в **панели Coolify** или через **Coolify API** (scoped-токен, §9 общего инфра-файла).
+
+Фактическое состояние роутеров (снято с прода 2026-07-30) — важно, потому что middleware нужно
+**дописать, а не заменить**:
+
+| Роутер | Middleware сейчас | Что нужно |
+|---|---|---|
+| `http-0-z7rphypy5eytfwjr58iponfd` | `redirect-to-https` | не трогать (весь HTTP уходит в HTTPS) |
+| `https-0-z7rphypy5eytfwjr58iponfd` | `gzip` | `gzip,ladungsplaner-auth` — `gzip` сохранить |
+
+Шаги (панель Coolify → приложение `ladungsplaner` → Configuration → Labels):
+
+1. Сгенерировать bcrypt-хэш. **Пароль не вводить в чат агенту и не оставлять в истории shell** —
+   команда даёт сразу строку `user:$2y$…`:
+   ```bash
+   htpasswd -nbB ladungsplaner 'ПАРОЛЬ'                      # если htpasswd есть
+   docker run --rm httpd:alpine htpasswd -nbB ladungsplaner 'ПАРОЛЬ'   # если нет
+   ```
+2. Добавить лейблы (в значении `users` — строка из шага 1):
+   ```
+   traefik.http.middlewares.ladungsplaner-auth.basicauth.users=ladungsplaner:$2y$05$…
+   traefik.http.routers.https-0-z7rphypy5eytfwjr58iponfd.middlewares=gzip,ladungsplaner-auth
+   ```
+3. Redeploy приложения.
+
+**Грабля с `$`:** Coolify рендерит лейблы через docker compose, а compose интерполирует `$`. Если после
+включения Traefik отдаёт 401 на верный пароль — почти наверняка съеденные `$`: продублировать их
+(`$$2y$$05$$…`), проще всего `htpasswd … | sed 's/\$/\$\$/g'`.
+
+Проверка:
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://ladungsplaner.holz-schaefer.de/   # 401
+curl -s -u ladungsplaner:ПАРОЛЬ https://ladungsplaner.holz-schaefer.de/api/health  # {"status":"ok",…}
+```
+Docker `HEALTHCHECK` бьёт `127.0.0.1` внутри контейнера — Basic Auth его не ломает. Но smoke-проверки
+из §7 и любые CDP-прогоны по проду после включения потребуют `-u`.
+
+Альтернатива «сделать в коде» (Basic Auth хуком в Fastify) преимуществ не даёт: логин/пароль всё равно
+задаются в панели Coolify как env, зато auth переезжает из края в приложение — против решения `i6b`.
 
 ## 6. Бэкап — настроен (`LKWkalk-zbi`, 2026-07-30)
 
