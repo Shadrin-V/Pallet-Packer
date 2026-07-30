@@ -108,6 +108,31 @@ describe('ArticleCombobox', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
+  // LKWkalk-e2g. Оба оверлея висели на жёсткой `w-80` (320 px), не связанной со своим containing
+  // block — полем артикула. Замерено в Chrome: поле 259–290 px на любой ширине, то есть оверлей
+  // всегда шире поля; на 375 px обрезающий предок (`section.overflow-hidden` карточки заказа) сам
+  // 320 px, и правые 38 px оверлея пропадали — `elementFromPoint` по правому краю отдавал `null`.
+  // Внутрь карточки 320 px на 375 px не влезает ни при каком якоре, поэтому оверлей обязан
+  // сжиматься: `max-w-full` берёт min(320 px, ширина поля). jsdom раскладку не считает и CSS не
+  // грузит, поэтому стережём объявление, а не результат: фиксированная ширина у оверлея допустима
+  // только вместе с ограничителем.
+  const overlayWidthUnclamped = (el: Element) =>
+    /(^|\s)w-(?!full\b)[^\s]+/.test(el.className) && !/(^|\s)max-w-full(\s|$)/.test(el.className);
+
+  it('keeps the suggestion overlay inside the field it is anchored to (no unclamped fixed width)', async () => {
+    renderBox();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
+    const listbox = await screen.findByRole('listbox');
+    expect(overlayWidthUnclamped(listbox)).toBe(false);
+  });
+
+  it('keeps the no-matches overlay inside the field it is anchored to (no unclamped fixed width)', async () => {
+    renderBox({ search: async () => [] });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), '9');
+    const status = await screen.findByRole('status');
+    expect(overlayWidthUnclamped(status)).toBe(false);
+  });
+
   it('navigates with arrow keys and picks with Enter, closes with Escape', async () => {
     const { onPick } = renderBox();
     const input = screen.getByRole('combobox', { name: 'Artikel' });
