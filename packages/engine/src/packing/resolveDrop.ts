@@ -270,6 +270,32 @@ export function resolveGroupDrop(
     );
     const cargo = byId.get(ref.cargoTypeId);
     if (!column || !cargo) return refuse(err('ERR_EDIT_NO_STACK', { ...ref }));
+    // Позиц-независимые правила — по каждой участнице, как resolveDrop:96-117 для одиночной
+    // (LKWkalk-v1m). Ориентация берётся из раскладки, но судит её ТЕКУЩИЙ load: если после расчёта
+    // сменили rotation/loadingMode/forkAxis, moveStacks отвергнет перенос через
+    // findGeometryViolations — а превью не смеет обещать то, что бросок отвергнет (ADR 020).
+    if (!allowedOrientations(cargo.rotation).includes(column.orientation)) {
+      return refuse(
+        err('ERR_EDIT_ROTATION', {
+          cargoTypeId: cargo.id,
+          orientation: column.orientation,
+          rotation: cargo.rotation,
+        }),
+      );
+    }
+    if (cargo.forkAccess === 'twoSides') {
+      const pinned = forkPinnedOrientation(load.loadingMode ?? 'combined', cargo.forkAxis ?? 'length');
+      if (pinned !== null && column.orientation !== pinned) {
+        return refuse(
+          err('ERR_EDIT_FORK_ACCESS', {
+            cargoTypeId: cargo.id,
+            orientation: column.orientation,
+            loadingMode: load.loadingMode ?? 'combined',
+            forkAxis: cargo.forkAxis ?? 'length',
+          }),
+        );
+      }
+    }
     const [dx, dy] = orientedDims(cargo.length, cargo.width, cargo.height, column.orientation);
     members.push({ ...ref, dx, dy });
   }

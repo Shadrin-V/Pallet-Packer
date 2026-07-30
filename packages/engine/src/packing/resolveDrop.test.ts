@@ -257,4 +257,51 @@ describe('resolveGroupDrop', () => {
     expect(resolveGroupDrop(grid, layout, [], { dx: 0, dy: 0 }).error?.code).toBe('ERR_EDIT_NO_STACK');
     expect(resolveGroupDrop(grid, layout, refsAt([12345, 0]), { dx: 0, dy: 0 }).error?.code).toBe('ERR_EDIT_NO_STACK');
   });
+
+  // LKWkalk-v1m: групповой магнит проверял только габариты и пересечения, а moveStacks гоняет ещё и
+  // findGeometryViolations (orientation + fork access). Когда load изменён ПОСЛЕ расчёта layout
+  // (смена loadingMode/forkAxis/rotation), магнит обещал ok:true для дельты, которую moveStacks
+  // отвергнет. ADR 020 прямо требует: превью не обещает того, что бросок отвергнет. Одиночный
+  // resolveDrop этой дырой не страдает — проверяет обе позиции-независимые правила до поиска.
+  it('refuses when fork access pins members to another orientation (load changed after layout, v1m)', () => {
+    const base: Load = {
+      vehicle: { id: 'v', name: 'V', length: 13600, width: 2480, height: 2650 },
+      cargo: [{ ...pallet, quantity: 6, forkAccess: 'twoSides', forkAxis: 'length' }],
+      loadingMode: 'rear',
+    };
+    const layout = calculateLayout(base);
+    const first = [...layout.placements].sort((a, b) => a.x - b.x || a.y - b.y)[0];
+    expect(first.orientation).toBe('lwh'); // rear+length пришпиливает lwh — предпосылка репро
+    // После расчёта пользователь сменил ось вил — раскладка осталась прежней. rear+width
+    // пришпиливает wlh, а колонны стоят в lwh.
+    const after: Load = {
+      ...base,
+      cargo: [{ ...base.cargo[0], forkAxis: 'width' }],
+    };
+    const refs: StackRef[] = [{ cargoTypeId: 'p', x: first.x, y: first.y }];
+
+    const r = resolveGroupDrop(after, layout, refs, { dx: 2500, dy: 0 }, { tolerance: 400 });
+
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe('ERR_EDIT_FORK_ACCESS');
+  });
+
+  it('refuses when a member stands in an orientation the rotation rule now forbids (v1m)', () => {
+    // Кузов, в который поддон 1200×800 входит только повёрнутым (wlh: 800×1200) — yawOnly-упаковщик
+    // обязан выбрать wlh. Затем вращение запрещают: колонна раскладки стоит в ориентации, которой
+    // rotation:'none' больше не разрешает.
+    const base: Load = {
+      vehicle: { id: 'v', name: 'V', length: 800, width: 1200, height: 1000 },
+      cargo: [{ ...pallet, quantity: 1 }],
+    };
+    const layout = calculateLayout(base);
+    expect(layout.placements[0]?.orientation).toBe('wlh'); // предпосылка репро
+    const after: Load = { ...base, cargo: [{ ...base.cargo[0], rotation: 'none' as const }] };
+    const refs: StackRef[] = [{ cargoTypeId: 'p', x: layout.placements[0].x, y: layout.placements[0].y }];
+
+    const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
+  });
 });
