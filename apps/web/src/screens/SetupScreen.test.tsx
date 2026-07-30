@@ -971,7 +971,7 @@ describe('SetupScreen article combobox', () => {
           (a) => a.itemCode.toLowerCase().includes(needle) || a.name.toLowerCase().includes(needle),
         );
       },
-      upsertArticle: async (a) => {
+      upsertArticle: async (a: ArticleInput) => {
         const saved: Article = { ...a, source: 'local', erpFields: [], updatedAt: 'x' };
         catalogue.push(saved);
         return saved;

@@ -1251,7 +1251,7 @@ describe('LadeplanScreen — export', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     renderLadeplan();
     await userEvent.click(screen.getByRole('button', { name: 'JSON' }));
-    const anchor = click.mock.instances[0] as HTMLAnchorElement;
+    const anchor = click.mock.instances[0] as unknown as HTMLAnchorElement;
     expect(anchor.download).toMatch(/^ladungsplaner-lkw-\d{4}-\d{2}-\d{2}\.json$/);
   });
 });
