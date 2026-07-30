@@ -84,22 +84,28 @@ export function App() {
     persistedStrategy.orderGrouping ?? persisted?.load.orderGrouping ?? 'strict',
   );
 
-  /** Сохраняется только ВЫБОР пользователя в шапке. Demo пришпиливает свою стратегию (4bj.13), но он
-   *  предпросмотр: его план не переживает перезагрузку — и его `rear` не должен тоже. */
-  const saveStrategy = (next: { loadingMode: LoadingMode; orderGrouping: OrderGrouping }) => {
+  /** Сохраняется только ВЫБОР пользователя в шапке — и только тронутое поле (LKWkalk-wmd).
+   *  Снимок обоих полей из текущего состояния здесь нельзя: после Demo состояние показывает
+   *  пришпиленную демо-стратегию (rear/strict, 4bj.13), и щелчок по одному переключателю утащил бы
+   *  в хранилище и второе, демонстрационное поле. Demo — предпросмотр: его план не переживает
+   *  перезагрузку, и его стратегия не должна тоже. Слияние — с сохранённым выбором, не с state. */
+  const saveStrategyChoice = (patch: Partial<{ loadingMode: LoadingMode; orderGrouping: OrderGrouping }>) => {
     try {
-      globalThis.localStorage?.setItem(STRATEGY_STORAGE_KEY, JSON.stringify(next));
+      globalThis.localStorage?.setItem(
+        STRATEGY_STORAGE_KEY,
+        JSON.stringify({ ...loadPersistedStrategy(), ...patch }),
+      );
     } catch {
       /* ignore */
     }
   };
   const chooseLoadingMode = (m: LoadingMode) => {
     setLoadingMode(m);
-    saveStrategy({ loadingMode: m, orderGrouping });
+    saveStrategyChoice({ loadingMode: m });
   };
   const chooseOrderGrouping = (g: OrderGrouping) => {
     setOrderGrouping(g);
-    saveStrategy({ loadingMode, orderGrouping: g });
+    saveStrategyChoice({ orderGrouping: g });
   };
 
   // Есть ли на показанном плане ручные правки раскладки. Знает об этом LadeplanScreen (там живёт
