@@ -100,6 +100,79 @@ describe('LadeplanScreen — unplaced figure', () => {
     expect(fig).toHaveTextContent('3'); // 11 requested − 8 placed
     expect(fig).toHaveTextContent('Nicht platziert');
   });
+
+  // LKWkalk-x7e, решение владельца: печатный лист говорит только о том, что погружено. Это ОТМЕНА
+  // прежнего решения rgv.7 («худшая новость плана едет со сводкой»), поэтому проверяются оба места,
+  // где неразмещённое просачивалось в печать: показатель в сводной ленте и приписки в легенде. На
+  // экране оба остаются — прячет их только @media print, а в jsdom раскладки нет, так что честно
+  // проверить можно лишь СЦЕПКУ: крючок `print:hidden` стоит на тех самых элементах.
+  describe('печать не показывает неразмещённое (x7e)', () => {
+    const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
+    const renderOverloaded = () =>
+      render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={overloaded} layout={calculateLayout(overloaded)} />
+        </LocaleProvider>,
+      );
+
+    it('показатель «Не размещено» несёт крючок печати и остаётся виден на экране', () => {
+      renderOverloaded();
+      const fig = screen.getByTestId('fig-unplaced');
+      expect(fig).toBeInTheDocument(); // на экране — как было
+      expect(fig.className).toContain('print:hidden');
+    });
+
+    it('приписки «N не размещено» в легенде несут тот же крючок', () => {
+      renderOverloaded();
+      const notes = document.querySelectorAll('[data-testid="legend-unplaced"]');
+      expect(notes.length).toBeGreaterThan(0); // приписка есть — груз действительно не влез
+      for (const n of notes) expect(n.className).toContain('print:hidden');
+    });
+
+    it('остальная легенда крючок печати НЕ несёт — на листе остаётся то, что погружено', () => {
+      renderOverloaded();
+      const placed = document.querySelector('[data-testid="legend-placed"]')!;
+      expect(placed.className).not.toContain('print:hidden');
+    });
+  });
+});
+
+// LKWkalk-7i6, замечание владельца: в панели раскладки нужно уметь отключить отображение грузовика,
+// сверху и снизу. Решения владельца: ОДИН тумблер на оба вида; контрол живёт в панели раскладки (там
+// же, где экспорт), а не в липкой шапке; выбор действует и на экран, и на вывод — печать с PNG берут
+// то же состояние, потому что рисуют те же самые svg.
+describe('LadeplanScreen — показ грузовика (7i6)', () => {
+  const label = 'LKW anzeigen';
+  afterEach(() => globalThis.localStorage?.clear());
+
+  it('по умолчанию грузовик показан в обоих разрезах', () => {
+    const { container } = renderLadeplan();
+    expect(screen.getByRole('checkbox', { name: label })).toBeChecked();
+    expect(container.querySelectorAll('[data-truck-chrome]').length).toBe(2);
+  });
+
+  it('снятый флажок убирает обвес сразу в обоих разрезах', async () => {
+    const { container } = renderLadeplan();
+    await userEvent.click(screen.getByRole('checkbox', { name: label }));
+    expect(container.querySelectorAll('[data-truck-chrome]').length).toBe(0);
+  });
+
+  // Тумблер не должен уносить измерительную часть: рамки кузова остаются в обоих разрезах.
+  it('без грузовика рамки кузова на месте', async () => {
+    const { container } = renderLadeplan();
+    await userEvent.click(screen.getByRole('checkbox', { name: label }));
+    expect(container.querySelectorAll('rect[stroke="var(--truck)"]').length).toBe(2);
+  });
+
+  it('выбор переживает перезагрузку — как и режим двора', async () => {
+    const { unmount } = renderLadeplan();
+    await userEvent.click(screen.getByRole('checkbox', { name: label }));
+    unmount();
+
+    const { container } = renderLadeplan();
+    expect(screen.getByRole('checkbox', { name: label })).not.toBeChecked();
+    expect(container.querySelectorAll('[data-truck-chrome]').length).toBe(0);
+  });
 });
 
 // The buffer (dwc.3): what is NOT in the hold. This describe block only checks wiring and the
@@ -1220,6 +1293,23 @@ describe('LadeplanScreen — export', () => {
       ['side', 'Seitenansicht'],
       ['top', 'Draufsicht'],
     ]);
+  });
+
+  // 7i6, решение владельца: выключенный грузовик уезжает и из вывода тоже. Держится это не отдельной
+  // веткой в экспорте, а тем, что PNG отдаёт наружу ЖИВЫЕ svg листа — те же, что на экране. Тест
+  // пинует именно это свойство: сломай его подменой на перерисовку — и картинка снова разойдётся с
+  // экраном, молча.
+  it('PNG уносит выключенный грузовик вместе с экраном (7i6)', async () => {
+    const spy = vi.spyOn(exportPlan, 'exportPlanPng').mockResolvedValue(undefined);
+    renderLadeplan();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'LKW anzeigen' }));
+    await userEvent.click(screen.getByRole('button', { name: 'PNG' }));
+
+    const sections = spy.mock.calls[0][1].sections;
+    expect(sections).toHaveLength(2);
+    for (const s of sections as { svg: SVGSVGElement }[]) {
+      expect(s.svg.querySelector('[data-truck-chrome]')).toBeNull();
+    }
   });
 
   it('PDF opens the print dialog (browser "save as PDF")', async () => {

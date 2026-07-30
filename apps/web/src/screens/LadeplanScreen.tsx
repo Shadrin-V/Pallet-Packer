@@ -53,9 +53,33 @@ function writeYardGrouping(on: boolean): void {
   }
 }
 
+/** Показ обвеса грузовика (LKWkalk-7i6) — по той же причине своя настройка вида, а не поле плана.
+ *  Умолчание ПРОТИВОПОЛОЖНО режиму двора: грузовик показан, пока его явно не выключили, поэтому
+ *  здесь проверяется строка 'false', а не 'true' — отсутствующий ключ должен читаться как «показан». */
+const SHOW_TRUCK_STORAGE_KEY = 'ladungsplaner.showTruck';
+function readShowTruck(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(SHOW_TRUCK_STORAGE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+function writeShowTruck(on: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(SHOW_TRUCK_STORAGE_KEY, String(on));
+  } catch {
+    /* ignore */
+  }
+}
+
+// `danger` — это ровно показатель неразмещённого. Он экранный: на печатном листе неразмещённого нет
+// вовсе (x7e, решение владельца), поэтому крючок печати висит на том же флаге, что и красный цвет.
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
-    <div className="text-right" data-testid={danger ? 'fig-unplaced' : undefined}>
+    <div
+      className={`text-right${danger ? ' print:hidden' : ''}`}
+      data-testid={danger ? 'fig-unplaced' : undefined}
+    >
       <div
         className={`text-title font-[700] leading-none tabular-nums ${danger ? 'text-danger' : 'text-brand'}`}
       >
@@ -269,6 +293,13 @@ export function LadeplanScreen({
   const changeYardGrouping = (next: boolean) => {
     setYardGrouped(next);
     writeYardGrouping(next);
+  };
+  // Показ грузовика (7i6). Состояние живёт здесь, а не в разрезе: тумблер ОДИН на оба вида, и
+  // печать с PNG-экспортом получают его даром — оба рисуют ровно те же svg, что и экран.
+  const [showTruck, setShowTruck] = useState(readShowTruck);
+  const changeShowTruck = (next: boolean) => {
+    setShowTruck(next);
+    writeShowTruck(next);
   };
 
   const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number; pointerId: number } | null>(null);
@@ -518,7 +549,9 @@ export function LadeplanScreen({
   // Single source for the summary figures: the meta band renders these, and the PNG carries the
   // same objects — the exported sheet cannot disagree with the screen it depicts.
   // Unplaced is the plan's worst news, so it rides with the figures (in danger colour) rather than
-  // hiding in the legend — but only when there is bad news to tell (rgv.7).
+  // hiding in the legend — but only when there is bad news to tell (rgv.7). Это верно для ЭКРАНА:
+  // с печатного листа неразмещённое убрано целиком (x7e, решение владельца) — и показатель здесь, и
+  // приписки в легенде. PNG-экспорт ниже неразмещённое по-прежнему несёт.
   const unplacedTotal = edited.unplaced.reduce((sum, u) => sum + u.count, 0);
   const figures = [
     { label: tt('ladeplan.fig.pallets'), value: grp(m.totalPlaced) },
@@ -579,6 +612,17 @@ export function LadeplanScreen({
           экране, — два контрола с одним и тем же именем на одной странице были лишними и для
           скринридера, и для глаза. Здесь остался только вывод. */}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 print:hidden">
+        {/* Показ грузовика (7i6) — переключатель ПРЕДСТАВЛЕНИЯ, и живёт он над той поверхностью,
+            которую меняет, ровно как флажок загонов над двором. В липкую шапку «Настройки» не
+            уехал: там переключатели, гоняющие пересчёт, а этот не трогает ни план, ни контракт. */}
+        <label className="inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
+          <input
+            type="checkbox"
+            checked={showTruck}
+            onChange={(e) => changeShowTruck(e.target.checked)}
+          />
+          <span>{tt('ladeplan.showTruck')}</span>
+        </label>
         {/* Output group. PDF deliberately routes through the same print dialog as "Drucken" — the
             A4 sheet IS the report; the hint tells the user to pick "save as PDF" there. */}
         <ActionGroup label={tt('action.export')} className="ml-auto">
@@ -641,7 +685,7 @@ export function LadeplanScreen({
             warehouse end up adjacent, which is where the work happens — stacks travel between them. */}
         <div className="plan-figures flex flex-col gap-5 px-2 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} />
+            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} showTruck={showTruck} />
           </div>
 
           <div className="cut" style={{ breakInside: 'avoid' }}>
@@ -652,6 +696,7 @@ export function LadeplanScreen({
               view="top"
               label={tt('ladeplan.top')}
               orderColors={orderColorMap}
+              showTruck={showTruck}
               onMoveStack={onMoveStack}
               onMoveStacks={onMoveStacks}
               onRotateStack={onRotateStack}

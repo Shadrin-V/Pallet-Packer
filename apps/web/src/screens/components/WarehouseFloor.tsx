@@ -31,7 +31,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
-import { WarehouseBackdrop, FLOOR } from './WarehouseBackdrop';
+import { WarehouseBackdrop, FLOOR, DOCK_DEPTH_RATIO, dockWidths } from './WarehouseBackdrop';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
@@ -175,18 +175,28 @@ export function WarehouseFloor({
   const renderTiles: BufferTile[] = phantomAt
     ? [...tiles.slice(0, phantomAt.index), { ...phantomAt.tile, phantom: true }, ...tiles.slice(phantomAt.index)]
     : tiles;
-  const floor = warehouseFloor(load, renderTiles, { grouped, bayOrder: dragBay?.order ?? bayOrder });
+  // A minimum depth of one vehicle width, always: empty, the floor still needs a comfortable drop
+  // target (8fy — a stack pulled out of the hold must have somewhere to land); with content, a single
+  // shallow row must not shrink the surface (nor its scenery) to a sliver. A deeper buffer grows past
+  // it.
+  const yardUnit = Math.round(load.vehicle.width);
+  // Доки занимают долю этой глубины, и ровно их ширины двор отводит под боковые поля — иначе первый
+  // ряд стопок и кромка первого загона идут поверх ящиков и погрузчика (LKWkalk-103). Считается до
+  // раскладки, потому что раскладка этими полями и пользуется.
+  const dockH = yardUnit * DOCK_DEPTH_RATIO;
+  const caps = dockWidths(dockH);
+  const floor = warehouseFloor(load, renderTiles, {
+    grouped,
+    bayOrder: dragBay?.order ?? bayOrder,
+    padLeft: caps.left,
+    padRight: caps.right,
+  });
   // Сколько различимых заказов лежит во дворе — по тому же ключу, по которому группирует раскладка
   // (груз без номера — это тоже группа). Меньше двух — делить нечего, и переключатель был бы мёртвым.
   const distinctOrders = new Set(
     tiles.map((t) => byId.get(t.cargoTypeId)).filter(Boolean).map((c) => c!.orderId ?? ''),
   ).size;
   const empty = total === 0;
-  // A minimum depth of one vehicle width, always: empty, the floor still needs a comfortable drop
-  // target (8fy — a stack pulled out of the hold must have somewhere to land); with content, a single
-  // shallow row must not shrink the surface (nor its scenery) to a sliver. A deeper buffer grows past
-  // it.
-  const yardUnit = Math.round(load.vehicle.width);
   const floorHeight = Math.max(floor.height, yardUnit);
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
@@ -244,7 +254,7 @@ export function WarehouseFloor({
               decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
           {/* Доки меряются `yardUnit` — МИНИМАЛЬНОЙ глубиной двора, а не текущей: иначе сценерия
               растёт вместе с буфером и начинает доминировать над грузом (LKWkalk-jen). */}
-          <WarehouseBackdrop width={floor.width} height={floorHeight} dockHeight={yardUnit} />
+          <WarehouseBackdrop width={floor.width} height={floorHeight} dockHeight={dockH} />
           {/* Загоны заказов (41e.2): пустой массив, когда различимых заказов меньше двух — тогда
               двор выглядит как раньше. Рисуются между фоном и стопками, указателя не берут. */}
           {floor.bays.map((bay) => {

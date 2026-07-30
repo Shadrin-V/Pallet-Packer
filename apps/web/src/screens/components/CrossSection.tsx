@@ -24,6 +24,7 @@ import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
+import { selectionBadge } from './selectionBadge';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
 import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
@@ -81,6 +82,7 @@ export function CrossSection({
   preview,
   onCarry,
   onCarryEnd,
+  showTruck = true,
 }: {
   load: Load;
   layout: Layout;
@@ -122,6 +124,10 @@ export function CrossSection({
   /** Fires once the carry gesture ends, however it ends (a drop, an outside hand-off, or a cancel) —
    *  the parent's ghost must not outlive the drag that produced it. */
   onCarryEnd?: () => void;
+  /** Рисовать ли обвес грузовика — кабину, шасси, колёса, линию земли (7i6). По умолчанию да:
+   *  выключение — осознанный выбор пользователя, а не состояние по умолчанию. Линеек и рамки кузова
+   *  не касается. */
+  showTruck?: boolean;
 }) {
   const tt = useT();
   const { length, width, height } = load.vehicle;
@@ -532,16 +538,38 @@ export function CrossSection({
                 strokeDasharray="2 3"
                 vectorEffect="non-scaling-stroke"
               />
-              <text
-                data-testid="group-count"
-                x={box.x}
-                y={box.y - countFont * 0.3}
-                fill="var(--brand)"
-                fontSize={countFont * 0.7}
-                fontWeight={700}
-              >
-                {fillTemplate(tt('ladeplan.selection.count'), { n: sel.length })}
-              </text>
+              {(() => {
+                // Счётчик на залитой плашке и всегда внутри кузова (5tg): голый текст --brand тонул
+                // в штриховке соседнего ряда, а у выделения в первом ряду уезжал за стенку.
+                const text = fillTemplate(tt('ladeplan.selection.count'), { n: sel.length });
+                const font = countFont * 0.7;
+                // Групповая рамка живёт только в виде сверху, значит кузов здесь — длина × ширина.
+                const b = selectionBadge(box, text, font, { width: length, height: spanY });
+                return (
+                  <>
+                    <rect
+                      data-testid="group-count-bg"
+                      x={b.x}
+                      y={b.y}
+                      width={b.w}
+                      height={b.h}
+                      rx={b.h * 0.3}
+                      fill="var(--brand)"
+                    />
+                    <text
+                      data-testid="group-count"
+                      x={b.textX}
+                      y={b.textY}
+                      fill="var(--card)"
+                      fontSize={font}
+                      fontWeight={700}
+                      dominantBaseline="central"
+                    >
+                      {text}
+                    </text>
+                  </>
+                );
+              })()}
             </g>
           );
         })()}
@@ -618,16 +646,23 @@ export function CrossSection({
             cargo svg by data-hold since 8h4, not by DOM order — the ordering here is paint order.) */}
         {/* All box-relative chrome shifts down by the top ruler's lane so it stays glued to the box. */}
         <g pointerEvents="none" transform={`translate(0 ${topGutter})`}>
-          {view === 'side' && (
-            <>
-              <FrontCap height={spanY} />
-              <g transform={`translate(${frontGutter} 0)`}>
-                <TrailerUnder length={length} height={spanY} />
-              </g>
-              <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
-            </>
+          {/* Обвес грузовика — кабина, шасси с колёсами, линия земли, верхние фитинги — под одним
+              маркёром: его целиком снимает тумблер «показывать грузовик» (7i6). Линейки и рамка
+              кузова СНАРУЖИ этой группы: без них чертёж перестал бы быть чертежом. */}
+          {showTruck && (
+          <g data-truck-chrome>
+            {view === 'side' && (
+              <>
+                <FrontCap height={spanY} />
+                <g transform={`translate(${frontGutter} 0)`}>
+                  <TrailerUnder length={length} height={spanY} />
+                </g>
+                <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
+              </>
+            )}
+            {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
+          </g>
           )}
-          {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
           {/* Length ruler ALONG THE TOP edge (owner): numbers grow upward into the top lane (dir −1). */}
           <g transform={`translate(${frontGutter} 0)`}>
             <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} dir={-1} />

@@ -96,6 +96,35 @@ describe('CrossSection rendering polish', () => {
   });
 });
 
+// LKWkalk-7i6, замечание владельца: в панели раскладки нужно уметь отключить отображение грузовика
+// — сверху и снизу. Прячется ОБВЕС (кабина, шасси с колёсами, линия земли, верхние фитинги); рамка
+// кузова и линейки остаются: без них чертёж перестал бы быть чертежом.
+describe('CrossSection — показ грузовика (7i6)', () => {
+  const renderWith = (view: 'top' | 'side', showTruck?: boolean) =>
+    render(
+      <LocaleProvider initial="de">
+        <CrossSection load={load} layout={layout} view={view} label="L" showTruck={showTruck} />
+      </LocaleProvider>,
+    ).container;
+
+  it.each(['top', 'side'] as const)('по умолчанию обвес нарисован (%s)', (view) => {
+    expect(renderWith(view).querySelector('[data-truck-chrome]')).not.toBeNull();
+  });
+
+  it.each(['top', 'side'] as const)('showTruck=false убирает обвес (%s)', (view) => {
+    expect(renderWith(view, false).querySelector('[data-truck-chrome]')).toBeNull();
+  });
+
+  // Обратная сторона: тумблер не должен заодно уносить измерительную часть чертежа.
+  it.each(['top', 'side'] as const)('без грузовика рамка кузова и линейки остаются (%s)', (view) => {
+    const c = renderWith(view, false);
+    // Рамка кузова — единственный прямоугольник, обведённый цветом грузовика.
+    expect(c.querySelector('rect[stroke="var(--truck)"]')).not.toBeNull();
+    // Вертикальная линейка подписывает свой итог: кузов 2000 мм → «2 m».
+    expect(screen.getAllByText('2 m').length).toBeGreaterThan(0);
+  });
+});
+
 describe('manual stack rotation (T5)', () => {
   function renderEditable(view: 'top' | 'side', onRotateStack = vi.fn()) {
     render(
@@ -419,6 +448,30 @@ describe('group selection', () => {
     expect(getByTestId('group-count')).toHaveTextContent('2 Stapel ausgewählt');
     // the frame spans exactly the two it caught, not the third
     expect(getByTestId('group-frame')).toHaveAttribute('width', '2000');
+  });
+
+  // LKWkalk-5tg. Подпись счётчика — тёмный текст цвета --brand — рисовалась голой над рамкой, то
+  // есть поверх штриховки соседнего ряда. Подложка обязана быть, иначе подпись снова станет
+  // нечитаемой ровно там, где выделение и происходит: посреди груза.
+  it('кладёт счётчик выделения на залитую подложку, а не голым текстом на груз', () => {
+    const { svg, getByTestId } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    const bg = getByTestId('group-count-bg');
+    expect(bg.getAttribute('fill')).toBeTruthy();
+    expect(bg.getAttribute('fill')).not.toBe('none');
+    expect(Number(bg.getAttribute('width'))).toBeGreaterThan(0);
+  });
+
+  // Стопки в renderTop стоят у передней стенки (y = 0), поэтому старая формула y = box.y − кегль*0.3
+  // выносила подпись за пределы кузова. Здесь падает именно это.
+  it('держит счётчик внутри кузова, когда выделение стоит у передней стенки', () => {
+    const { svg, getByTestId } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    expect(getByTestId('group-frame')).toHaveAttribute('y', '0'); // выделение действительно у стенки
+    expect(Number(getByTestId('group-count-bg').getAttribute('y'))).toBeGreaterThanOrEqual(0);
+    expect(Number(getByTestId('group-count').getAttribute('y'))).toBeGreaterThanOrEqual(0);
   });
 
   it('a click on empty floor clears the selection', () => {

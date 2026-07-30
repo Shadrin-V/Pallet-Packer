@@ -124,6 +124,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.notPlaced',
   'ladeplan.rotateStack',
   'ladeplan.selection.count',
+  'ladeplan.showTruck',
   'ladeplan.groupGhost',
   'ladeplan.discardEditsConfirm',
   'ladeplan.emptyHint',
