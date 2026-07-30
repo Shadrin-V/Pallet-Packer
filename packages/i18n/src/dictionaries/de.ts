@@ -112,6 +112,7 @@ export const de: Dictionary = {
   'ladeplan.orderGrouping': 'Dichte vor Auftragstrennung',
   'ladeplan.orderGroupingHint':
     'Dichter gepackt, aber Aufträge sind gemischt und müssen beim Entladen sortiert werden.',
+  'ladeplan.orderGroupingHintLabel': 'Erklärung zur Auftragstrennung',
   'ladeplan.mode.rear': 'Von hinten',
   'ladeplan.mode.side': 'Von der Seite',
   'ladeplan.mode.combined': 'Hinten und Seite',

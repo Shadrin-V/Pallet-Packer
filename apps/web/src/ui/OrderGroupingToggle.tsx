@@ -25,7 +25,10 @@ export function OrderGroupingToggle({
         />
         <span className="truncate">{tt('ladeplan.orderGrouping')}</span>
       </label>
-      <InfoHint ariaLabel={tt('ladeplan.orderGrouping')} text={tt('ladeplan.orderGroupingHint')} />
+      {/* Своё имя, не имя галочки (LKWkalk-2tp): один aria-label на двух элементах — скринридер
+          объявляет их неразличимо, а getByLabelText в тестах падает на неоднозначности. Тот же
+          приём, что у подсказки режима погрузки (ladeplan.loadingModeHintLabel, LKWkalk-lu6). */}
+      <InfoHint ariaLabel={tt('ladeplan.orderGroupingHintLabel')} text={tt('ladeplan.orderGroupingHint')} />
     </span>
   );
 }

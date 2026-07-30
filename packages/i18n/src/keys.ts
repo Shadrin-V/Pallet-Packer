@@ -112,6 +112,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.loadingModeHintLabel',
   'ladeplan.orderGrouping',
   'ladeplan.orderGroupingHint',
+  'ladeplan.orderGroupingHintLabel',
   'ladeplan.mode.rear',
   'ladeplan.mode.side',
   'ladeplan.mode.combined',

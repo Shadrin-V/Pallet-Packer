@@ -109,6 +109,7 @@ export const ru: Dictionary = {
   'ladeplan.orderGrouping': 'Плотность важнее группировки',
   'ladeplan.orderGroupingHint':
     'Плотнее, но заказы перемешаны — при разгрузке их придётся разбирать.',
+  'ladeplan.orderGroupingHintLabel': 'Пояснение к группировке заказов',
   'ladeplan.mode.rear': 'Сзади',
   'ladeplan.mode.side': 'Сбоку',
   'ladeplan.mode.combined': 'Сзади и сбоку',

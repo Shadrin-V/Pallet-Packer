@@ -43,12 +43,22 @@ describe('SetupHeader', () => {
     expect(screen.queryByLabelText('Länge')).toBeNull();       // габариты уходят
     expect(screen.queryByRole('button', { name: 'Demo' })).toBeNull(); // «Демо» и «Сброс» тоже
     expect(screen.getByRole('group', { name: 'Belademodus' })).toBeInTheDocument();
-    // getByRole, не getByLabelText: OrderGroupingToggle даёт одинаковый aria-label и галочке, и
-    // своей кнопке InfoHint — getByLabelText матчит ЛЮБОЙ
-    // элемент с этим атрибутом (testing-library queryAllByAttribute), а не только форм-контролы,
-    // поэтому находит оба и падает на неоднозначности. getByRole('checkbox', …) фильтрует по роли.
+    // getByRole('checkbox', …): роль сужает запрос до форм-контрола — имена галочки и её
+    // подсказки с 2tp разные, но привязка к роли по-прежнему точнее голого getByLabelText.
     expect(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Berechnen' })).toBeInTheDocument();
+  });
+
+  // LKWkalk-2tp: у галочки и её кнопки-подсказки был один aria-label — скринридер объявлял два
+  // разных элемента одним именем, а getByLabelText падал на неоднозначности (см. комментарий в
+  // тесте про ужатый вид). У подсказки теперь своё имя — тот же приём, что у режима погрузки
+  // (ladeplan.loadingModeHintLabel, LKWkalk-lu6).
+  it('галочка группировки и её подсказка носят разные имена (2tp)', () => {
+    renderHeader();
+    expect(screen.getByLabelText('Dichte vor Auftragstrennung')).toBe(
+      screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }),
+    );
+    expect(screen.getByRole('button', { name: 'Erklärung zur Auftragstrennung' })).toBeInTheDocument();
   });
 
   it('режим погрузки и галочка группировки зовут свои колбэки, а не считают сами', async () => {
