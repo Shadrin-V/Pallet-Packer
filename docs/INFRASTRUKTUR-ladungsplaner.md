@@ -60,53 +60,50 @@ ERPNEXT_API_SECRET=   # secret
 3. После выдачи сертификата оранжевое облако допустимо только с SSL mode **Full (strict)**; проще
    оставить DNS only.
 
-## 5. Аутентификация (MVP) — открыто, `LKWkalk-i6b`
+## 5. Аутентификация — настроена (`LKWkalk-i6b`, 2026-07-30)
 
-Внутренний инструмент за приватным поддоменом. MVP: **HTTP Basic Auth через Traefik**. Полноценный
-ERPNext-SSO — вариант A. Допустимо стартовать без Basic Auth (по решению владельца), поддомен всё
-равно не публичен — сейчас приложение работает **без** аутентификации.
+Внутренний инструмент за приватным поддоменом. Включён **HTTP Basic Auth через Traefik**; полноценный
+ERPNext-SSO — вариант A.
 
-**Почему нельзя сделать из репо/по SSH.** Лейблы контейнера под управлением Coolify
-(`coolify.managed=true`): правка через `docker` затирается ближайшим редеплоем, а мерж в `main` = редеплой
-(ADR 023). Менять только в **панели Coolify** или через **Coolify API** (scoped-токен, §9 общего инфра-файла).
+| Что | Значение |
+|---|---|
+| Как включено | **`custom_labels` приложения** через Coolify API (scoped-токен, отозван после) |
+| Middleware | `ladungsplaner-auth` (basicauth), на https-роутере: `gzip,ladungsplaner-auth` — `gzip` сохранён |
+| Логин | `Vladimir`; bcrypt-хэш — в `custom_labels`, пароль — только у владельца |
+| HTTP-роутер | не тронут (`redirect-to-https` — весь HTTP уходит в HTTPS, auth на https-стороне) |
 
-Фактическое состояние роутеров (снято с прода 2026-07-30) — важно, потому что middleware нужно
-**дописать, а не заменить**:
+**Почему нельзя менять по SSH.** Лейблы контейнера под управлением Coolify (`coolify.managed=true`):
+правка через `docker` затирается ближайшим редеплоем, а мерж в `main` = редеплой (ADR 023). Менять
+только в **панели Coolify** (Configuration → Labels) или через **Coolify API** (`PATCH
+/api/v1/applications/<uuid>`, поле `custom_labels`, base64 от переносов-строк). После правки нужен
+Redeploy — лейблы применяются пересозданием контейнера.
 
-| Роутер | Middleware сейчас | Что нужно |
-|---|---|---|
-| `http-0-z7rphypy5eytfwjr58iponfd` | `redirect-to-https` | не трогать (весь HTTP уходит в HTTPS) |
-| `https-0-z7rphypy5eytfwjr58iponfd` | `gzip` | `gzip,ladungsplaner-auth` — `gzip` сохранить |
+Грабли, снятые с реального включения (2026-07-30, Coolify 4.1.2):
 
-Шаги (панель Coolify → приложение `ladungsplaner` → Configuration → Labels):
+1. **Нативный флаг Basic Auth в этой версии декоративный**: API принимает
+   `is_http_basic_auth_enabled`/`http_basic_auth_username`/`http_basic_auth_password`, поля
+   сохраняются в БД, но генератор лейблов их игнорирует — auth не включается. Выключен обратно,
+   чтобы не было второго «источника правды». Реальный механизм — только `custom_labels`.
+2. **`$` в bcrypt-хэше НЕ удваивать.** Coolify сам экранирует `$`→`$$` при рендере `custom_labels`
+   в compose. Если задать `$$` (классическая compose-грабля), в yaml окажется `$$$$`, в лейбле
+   контейнера — `$$…`, и Traefik отдаёт 401 на верный пароль. В `custom_labels` кладётся **сырой**
+   хэш; проверка: в лейбле работающего контейнера должно быть `$2y$…` с одинарными `$`.
+3. `custom_labels` **замещает весь** сгенерированный набор лейблов — задавать полный список
+   (снятый с рабочего compose: `/data/coolify/applications/<uuid>/docker-compose.yaml`), иначе
+   снесётся маршрутизация/TLS. У scoped-токена без права `deploy` редеплой запускается кнопкой в панели.
 
-1. Сгенерировать bcrypt-хэш. **Пароль не вводить в чат агенту и не оставлять в истории shell** —
-   команда даёт сразу строку `user:$2y$…`:
-   ```bash
-   htpasswd -nbB ladungsplaner 'ПАРОЛЬ'                      # если htpasswd есть
-   docker run --rm httpd:alpine htpasswd -nbB ladungsplaner 'ПАРОЛЬ'   # если нет
-   ```
-2. Добавить лейблы (в значении `users` — строка из шага 1):
-   ```
-   traefik.http.middlewares.ladungsplaner-auth.basicauth.users=ladungsplaner:$2y$05$…
-   traefik.http.routers.https-0-z7rphypy5eytfwjr58iponfd.middlewares=gzip,ladungsplaner-auth
-   ```
-3. Redeploy приложения.
-
-**Грабля с `$`:** Coolify рендерит лейблы через docker compose, а compose интерполирует `$`. Если после
-включения Traefik отдаёт 401 на верный пароль — почти наверняка съеденные `$`: продублировать их
-(`$$2y$$05$$…`), проще всего `htpasswd … | sed 's/\$/\$\$/g'`.
-
-Проверка:
+Проверка (выполнена, все три пункта):
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://ladungsplaner.holz-schaefer.de/   # 401
-curl -s -u ladungsplaner:ПАРОЛЬ https://ladungsplaner.holz-schaefer.de/api/health  # {"status":"ok",…}
+curl -s -o /dev/null -w '%{http_code}\n' https://ladungsplaner.holz-schaefer.de/api/health          # 401
+curl -s -o /dev/null -w '%{http_code}\n' -u Vladimir:wrong https://ladungsplaner.holz-schaefer.de/api/health  # 401
+curl -s -u Vladimir:ПАРОЛЬ https://ladungsplaner.holz-schaefer.de/api/health   # {"status":"ok",…} 200
 ```
 Docker `HEALTHCHECK` бьёт `127.0.0.1` внутри контейнера — Basic Auth его не ломает. Но smoke-проверки
-из §7 и любые CDP-прогоны по проду после включения потребуют `-u`.
+из §7 и любые CDP-прогоны по проду теперь требуют `-u`.
 
-Альтернатива «сделать в коде» (Basic Auth хуком в Fastify) преимуществ не даёт: логин/пароль всё равно
-задаются в панели Coolify как env, зато auth переезжает из края в приложение — против решения `i6b`.
+Пароль хранится у владельца (менеджер паролей). Смена пароля: сгенерировать новый хэш
+(`docker run --rm httpd:alpine htpasswd -nbB Vladimir 'НОВЫЙ'`), заменить значение
+`…basicauth.users=` в Labels в панели, Redeploy.
 
 ## 6. Бэкап — настроен (`LKWkalk-zbi`, 2026-07-30)
 
@@ -144,7 +141,7 @@ curl -s https://ladungsplaner.holz-schaefer.de/api/health          # {"status":"
 curl -s https://ladungsplaner.holz-schaefer.de/                     # отдаёт SPA (title Ladungsplaner)
 curl -s https://ladungsplaner.holz-schaefer.de/api/orders/SO-1      # 503 ERR_ERPNEXT_UNCONFIGURED (пока нет ключей)
 ```
-(Если включён Basic Auth — с `-u user:pass`.)
+Basic Auth включён (§5) — все запросы с `-u Vladimir:ПАРОЛЬ`, без кредов ожидаем `401`.
 
 ## 8. Что нужно от владельца (не автоматизируется из репо)
 
@@ -152,8 +149,7 @@ curl -s https://ladungsplaner.holz-schaefer.de/api/orders/SO-1      # 503 ERR_ER
 1. ✅ Создать Coolify Application (шаг §1) + добавить deploy key в GitHub-репо — сделано.
 2. ✅ Задать env (§2) и volume (§3) — сделано (`DB_PATH=/app/data/app.db`, том смонтирован).
 3. ✅ Создать A-запись в Cloudflare (§4) и домен в Coolify — сделано, сайт живой по HTTPS.
-4. ⬜ Включить Basic Auth (§5) — **открыто, `LKWkalk-i6b`**: нужна панель Coolify (правка лейблов
-   Docker вручную затирается редеплоем).
+4. ✅ Включить Basic Auth (§5) — сделано 2026-07-30 через Coolify API + Redeploy (`LKWkalk-i6b`).
 5. ✅ Добавить том в ночной бэкап (§6) — сделано 2026-07-30 по SSH (`LKWkalk-zbi`).
 
 Альтернатива автоматизации: выдать агенту **scoped Coolify API-токен** (создать под задачу, отозвать
