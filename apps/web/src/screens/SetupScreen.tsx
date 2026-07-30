@@ -4,7 +4,7 @@
 // Тонкий координатор: состояние, выбор строки, персистентность, сборка Load, раскладка в две
 // колонки от xl. Собственно строка (PositionRow), карточка заказа (OrderCard) и разбор правил
 // (RulesPanel) живут в ./setup/ — здесь их только соединяют.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Load, LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
 import { fillTemplate } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
@@ -54,6 +54,11 @@ export interface SetupScreenProps {
    *  потому их выбрасывает — единственное действие, которое их теряет, с тех пор как переключатели
    *  стратегии перестали пересчитывать (5nb этап 2). Отсюда предупреждение перед расчётом. */
   hasManualEdits?: boolean;
+  /** Секция плана (LadeplanScreen или EmptyPlan) — LKWkalk-9tq. Sticky прижимает элемент только в
+   *  пределах родителя: пока план был соседом этого экрана, прокрутка в ладеплан увозила шапку за
+   *  экран вопреки спеке §6 «всегда на виду». План рендерится ВНУТРИ корневой обёртки экрана —
+   *  общий родитель и делает sticky сквозным; setup-части несут print:hidden сами. */
+  children?: ReactNode;
 }
 
 /** How long an armed delete waits before disarming itself (ADR 022). */
@@ -93,6 +98,7 @@ interface Selection {
 export function SetupScreen({
   initialVehicle, initialOrders, onCalculate, onReset,
   loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange, hasManualEdits = false,
+  children,
 }: SetupScreenProps) {
   const tt = useT();
   const preset0 = VEHICLE_PRESETS[0];
@@ -416,13 +422,17 @@ export function SetupScreen({
   };
 
   return (
-    <>
+    // Общая обёртка шапки, setup-контента И плана ({children}) — LKWkalk-9tq: sticky прижимает
+    // элемент только в пределах родителя, и пока план был соседом, шапка уезжала за экран, как
+    // только прокрутка уходила в ладеплан (спека §6 требует «всегда на виду»). print:hidden несут
+    // setup-части сами (шапка, маячок, <main>): план печатается, а обёртка ничего не прячет.
+    <div>
       <HeroHeader />
-      <main className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6">
       {/* Маячок ПЕРЕД шапкой: пока он виден, шапка полная; уехал за верх — ужимается (§6).
-          Наблюдаем за элементом, а не за скроллом — см. useStickyCompact. Отрицательные поля шапки
-          гасят паддинг <main>, поэтому она обязана жить внутри него, а не рядом. */}
-      <div ref={sentinelRef} aria-hidden className="h-px" />
+          Наблюдаем за элементом, а не за скроллом — см. useStickyCompact. mt-6 воспроизводит
+          прежний верхний паддинг <main> над шапкой; на печати маячок скрыт, чтобы его отступ не
+          сдвигал одностраничный ладеплан (7hx). */}
+      <div ref={sentinelRef} aria-hidden className="mt-6 h-px print:hidden" />
       <SetupHeader
         vehicle={vehicle}
         summary={summary}
@@ -437,6 +447,7 @@ export function SetupScreen({
         onReset={handleReset}
         onCalculate={handleCalculate}
       />
+      <main className="mx-auto max-w-[1120px] px-5 pb-6 sm:px-6 print:hidden">
       {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать». */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
@@ -581,6 +592,8 @@ export function SetupScreen({
         <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
       </main>
-    </>
+      {/* План (LadeplanScreen/EmptyPlan) — внутри той же обёртки, что и липкая шапка (9tq). */}
+      {children}
+    </div>
   );
 }

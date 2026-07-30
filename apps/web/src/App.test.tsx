@@ -73,6 +73,43 @@ describe('App shell (single page)', () => {
     expect(JSON.parse(localStorage.getItem('ladungsplaner.orderColors') ?? '{}')).toEqual({ 'SO-1': 0 });
   });
 
+  // LKWkalk-9tq: sticky прижимает элемент только в пределах РОДИТЕЛЯ. Пока шапка жила внутри
+  // <main> экрана «Настройка», а план был соседом, прокрутка в ладеплан увозила её за экран
+  // (Chrome, 1440×900: на 100% прокрутки header.top = −572,8, «Рассчитать» недоступен с 75%) —
+  // вопреки спеке §6 «всегда на виду». Тест пришпиливает структурный инвариант, который и делает
+  // sticky сквозным: у шапки и плана общий родитель-контейнер.
+  describe('липкая шапка держится и над планом (9tq)', () => {
+    const stickyHeader = () =>
+      document.querySelector('.sticky.top-0') as HTMLElement | null;
+
+    it('родитель липкой шапки содержит план (пустое состояние)', () => {
+      render(<App />);
+      const header = stickyHeader();
+      expect(header).not.toBeNull();
+      expect(header!.parentElement!.contains(screen.getByTestId('empty-plan'))).toBe(true);
+    });
+
+    it('родитель липкой шапки содержит план (посчитанный)', async () => {
+      render(<App />);
+      await calculate();
+      const header = stickyHeader();
+      expect(header).not.toBeNull();
+      expect(header!.parentElement!.contains(document.querySelector('.plan-sheet')!)).toBe(true);
+    });
+
+    it('печать: setup скрыт, план — нет (print:hidden не накрывает план)', async () => {
+      render(<App />);
+      await calculate();
+      const plan = document.querySelector('.plan-sheet') as HTMLElement;
+      // Ни один предок плана не несёт print:hidden — иначе печать отдала бы пустую страницу.
+      for (let el = plan.parentElement; el; el = el.parentElement) {
+        expect(el.classList.contains('print:hidden')).toBe(false);
+      }
+      // А сама шапка настроек на печать не идёт.
+      expect(stickyHeader()!.className).toContain('print:hidden');
+    });
+  });
+
   it('clicking the order-grouping info hint does not toggle the strategy', () => {
     render(<App />);
     // The hint's "i" button carries its own name since 2tp — it must never reach the checkbox.

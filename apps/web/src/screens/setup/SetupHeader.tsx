@@ -58,7 +58,10 @@ export function SetupHeader({
     // правило — в собранном CSS не было НИ ОДНОГО `bg-paper`, и шапка на проде была полностью
     // прозрачной. `backdrop-blur` ушёл вместе с прозрачностью: за непрозрачным фоном размывать
     // нечего, а слой композитинга он всё равно создаёт. Регресс стережёт theme-alpha.test.ts.
-    <div className="sticky top-0 z-20 -mx-5 mb-6 border-b border-line bg-paper px-5 py-3 sm:-mx-6 sm:px-6">
+    // Без отрицательных полей (9tq): шапка живёт НАД <main>, в общей обёртке с планом — sticky
+    // держит её до низа страницы, а полоса на всю ширину, как HeroHeader. print:hidden свой:
+    // обёртка больше ничего не прячет, план из неё печатается.
+    <div className="sticky top-0 z-20 mb-6 border-b border-line bg-paper px-5 py-3 sm:px-6 print:hidden">
       <div className="mx-auto flex max-w-[1120px] flex-wrap items-end gap-4">
         {compact ? (
           <span className="text-body font-semibold">{vehicle.name}</span>
