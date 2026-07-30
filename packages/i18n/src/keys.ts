@@ -91,6 +91,7 @@ export const TRANSLATION_KEYS = [
   'article.save',
   'article.update',
   'article.lockedHint',
+  'article.lockedHintLabel',
   'article.saveError',
   'article.renameInErp',
 

@@ -54,6 +54,9 @@ export function PositionRow({
     }
   }
   const chip = ruleChip(p, preview);
+  // Имя хинтов — своё (article.lockedHintLabel, LKWkalk-0il), не имя комбобокса: один aria-label
+  // на поле ввода и кнопках делал их неразличимыми для скринридера и неоднозначными для getByRole.
+  // Четыре хинта строки делят одно имя намеренно — они объясняют одну и ту же привязку.
   const lockedHint = fillTemplate(tt('article.lockedHint'), { code: p.articleCode ?? '' });
 
   return (
@@ -86,22 +89,22 @@ export function PositionRow({
           }}
           className="w-full"
         />
-        {p.locked?.name && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+        {p.locked?.name && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
       </span>
       {/* Task 5 fix: the Task 3 draft of this row only carried the lock hint next to `name`, dropping
           the per-dimension hint SetupScreen.test.tsx already pinned ("the locked-field hint names the
           bound article", Finding 3) — restored here, same pattern as the name field above. */}
       <span className="inline-flex w-24 items-center gap-1">
         <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length })} readOnly={!!p.locked?.length} />
-        {p.locked?.length && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+        {p.locked?.length && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
       </span>
       <span className="inline-flex w-24 items-center gap-1">
         <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width })} readOnly={!!p.locked?.width} />
-        {p.locked?.width && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+        {p.locked?.width && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
       </span>
       <span className="inline-flex w-24 items-center gap-1">
         <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
-        {p.locked?.height && <InfoHint ariaLabel={tt('article.label')} text={lockedHint} />}
+        {p.locked?.height && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
       </span>
       <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>
 
