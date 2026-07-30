@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import { ENGINE_CONTRACT_VERSION } from '@shadrin-v/engine';
@@ -13,10 +13,15 @@ export interface BuildAppOptions {
   db?: Database.Database;
   /** ERPNext order source; when absent, /api/orders returns 503 ERR_ERPNEXT_UNCONFIGURED. */
   erpnext?: OrderSource;
+  /** Логгер Fastify (LKWkalk-fvh). По умолчанию выключен — тесты и локальные прогоны тихие;
+   *  index.ts включает настоящий pino (JSON в stdout, его собирает Coolify). Без него req.log.*
+   *  — no-op из abstract-logging, и сбой best-effort записи каталога (orders.ts) пропадал без
+   *  следа. */
+  logger?: FastifyServerOptions['logger'];
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: opts.logger ?? false });
   app.get('/api/health', async () => ({ status: 'ok', contract: ENGINE_CONTRACT_VERSION }));
 
   if (opts.db) {

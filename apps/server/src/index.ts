@@ -16,7 +16,13 @@ if (ERPNEXT_URL && ERPNEXT_API_KEY && ERPNEXT_API_SECRET) {
   });
 }
 
-const app = buildApp({ db, staticDir: process.env.STATIC_DIR, erpnext });
+// JSON в stdout (дефолт pino) — Coolify собирает логи контейнера как есть; уровень — из env.
+const app = buildApp({
+  db,
+  staticDir: process.env.STATIC_DIR,
+  erpnext,
+  logger: { level: process.env.LOG_LEVEL ?? 'info' },
+});
 
 app.listen({ port, host: '0.0.0.0' }).catch((err) => {
   app.log.error(err);
