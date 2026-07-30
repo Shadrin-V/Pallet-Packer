@@ -199,6 +199,59 @@ describe('LadeplanScreen — warehouse floor', () => {
     expect(screen.getByTestId('drag-ghost')).toHaveTextContent('Box ×2');
   });
 
+  // LKWkalk-zyc: жест переноса стопки со склада вёлся ЛЮБЫМ указателем — второй палец (мультитач)
+  // завершал чужой жест своим pointerup, а pointercancel (жест ОС, переключение приложения) вообще
+  // не слушался: слушатели оставались, призрак висел до следующего клика. Загон (36f) от этого же
+  // класса вылечен в WarehouseFloor — здесь тот же приём: pointerId фиксируется при подъёме и
+  // дальше только сверяется, cancel завершает жест без броска.
+  describe('перенос стопки фильтрует pointerId и слушает pointercancel (zyc)', () => {
+    /** Без installSvgGeometry jsdom не знает PointerEvent, Testing Library падает на голый Event —
+     *  и pointerId с координатами молча пропадают: фильтр сравнивал бы undefined с undefined и
+     *  тесты были бы вакуумно зелёными. Полифилл живёт в svgTestGeometry (тот же, под которым
+     *  работают одноимённые тесты загона в WarehouseFloor.test.tsx). */
+    const withPointerEvents = (run: () => void) => {
+      const restore = installSvgGeometry();
+      try {
+        run();
+      } finally {
+        restore();
+      }
+    };
+
+    it('чужие pointermove/pointerup (второй палец) не ведут и не завершают жест', () => {
+      withPointerEvents(() => {
+        renderOverloaded();
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10, pointerId: 1 });
+        expect(screen.getByTestId('drag-ghost')).toBeInTheDocument();
+
+        // Второй палец: ни его движение, ни его отпускание не завершают чужой жест.
+        fireEvent.pointerMove(window, { clientX: 300, clientY: 300, pointerId: 2 });
+        fireEvent.pointerUp(window, { clientX: 300, clientY: 300, pointerId: 2 });
+        expect(screen.getByTestId('drag-ghost')).toBeInTheDocument();
+
+        // Свой указатель завершает как обычно.
+        fireEvent.pointerUp(window, { clientX: 300, clientY: 300, pointerId: 1 });
+        expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
+      });
+    });
+
+    it('pointercancel завершает перенос без броска — призрак не залипает', () => {
+      withPointerEvents(() => {
+        renderOverloaded();
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Box ×2' }), { clientX: 10, clientY: 10, pointerId: 1 });
+        expect(screen.getByTestId('drag-ghost')).toBeInTheDocument();
+
+        // Отмена чужого указателя жест не трогает…
+        fireEvent.pointerCancel(window, { clientX: 10, clientY: 10, pointerId: 2 });
+        expect(screen.getByTestId('drag-ghost')).toBeInTheDocument();
+
+        // …а своя — завершает.
+        fireEvent.pointerCancel(window, { clientX: 10, clientY: 10, pointerId: 1 });
+        expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
+      });
+    });
+  });
+
   // LKWkalk-fyk. Measured in a real browser: the grabbed yard tile is ~109×73 px, the ghost that
   // followed the cursor was a 78×26 px text chip, and the source tile stayed in its slot at
   // opacity 0.3 — so "did I even pick it up?" was a fair question. The opposite direction never had

@@ -271,7 +271,7 @@ export function LadeplanScreen({
     writeYardGrouping(next);
   };
 
-  const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number } | null>(null);
+  const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number; pointerId: number } | null>(null);
   // The symmetric hold→warehouse carry (T3): the stack's own visual lives INSIDE the top-view svg and
   // is clipped the instant the pointer leaves it toward the warehouse strip below, so this page-level
   // ghost — outside that svg entirely — is what stays visible for the whole trip, same as `dragTile`
@@ -416,16 +416,31 @@ export function LadeplanScreen({
   // the cutaway (SVG), so no single element sees the whole gesture.
   useEffect(() => {
     if (!dragTile) return;
-    const move = (e: PointerEvent) => setDragTile((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
+    // Чужой указатель жеста не ведёт (LKWkalk-zyc): второй палец не должен ни двигать, ни завершать
+    // этот перенос. pointerId фиксируется при подъёме бирки и дальше только сверяется — тот же
+    // приём, что у переноса загона (WarehouseFloor, 36f).
+    const mine = (e: PointerEvent) => e.pointerId === dragTile.pointerId;
+    const move = (e: PointerEvent) => {
+      if (!mine(e)) return;
+      setDragTile((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
+    };
     const up = (e: PointerEvent) => {
+      if (!mine(e)) return;
       dropTileAt(dragTile.index, e.clientX, e.clientY);
       setDragTile(null);
     };
+    // Указатель забрала система (жест ОС, переключение приложения): бросать нечего, а без этой
+    // ветки слушатели оставались и призрак висел до следующего клика (zyc).
+    const cancel = (e: PointerEvent) => {
+      if (mine(e)) setDragTile(null);
+    };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
     return () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
     };
   });
 
@@ -664,7 +679,7 @@ export function LadeplanScreen({
               tiles={orderedTiles}
               orderColors={orderColorMap}
               onRotate={rotateTile}
-              onPickUp={(index, e) => setDragTile({ index, x: e.clientX, y: e.clientY })}
+              onPickUp={(index, e) => setDragTile({ index, x: e.clientX, y: e.clientY, pointerId: e.pointerId })}
               dragging={dragTile?.index ?? null}
               phantomAt={phantomAt}
               grouped={yardGrouped}
