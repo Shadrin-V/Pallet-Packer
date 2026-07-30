@@ -28,9 +28,8 @@ npm install                 # npm workspaces: @shadrin-v/engine, @shadrin-v/i18n
 
 ## 3. Smoke-check кода
 ```bash
-npm test                    # весь монорепо; на main зелено, кроме флейка LKWkalk-bmi
-                            # (таймаут userEvent в SetupScreen.test.tsx — перепроверяй
-                            #  одиночным прогоном файла, это не регрессия)
+npm test                    # весь монорепо; ОЖИДАНИЕ на main: 841/841 passed
+                            # (включая apps/server — если он красен, см. §0 про Node)
 npm run typecheck           # 0 ошибок
 npm run build               # ESM ×2 пакета
 ```
