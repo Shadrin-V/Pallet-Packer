@@ -172,11 +172,16 @@ export function ArticleCombobox({
           }
         }}
       />
+      {/* `max-w-full` на обоих оверлеях — LKWkalk-e2g. `w-80` — это пожелание, а не размер: поле
+          артикула (`flex-1 basis-64 min-w-0`) в реальном Chrome 259–290 px на любой ширине окна, и
+          на 375 px карточка заказа (`section.overflow-hidden`) сама 320 px — правые 38 px оверлея
+          там просто исчезали, без скролла и без подсказки. Ограничитель даёт min(320 px, поле);
+          шире карточки на 375 px не влезает ни при каком якоре, так что сжатие неизбежно. */}
       {open && items.length > 0 && (
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 max-h-64 w-80 overflow-auto rounded-ctl border border-line bg-card shadow-lg"
+          className="absolute z-20 mt-1 max-h-64 w-80 max-w-full overflow-auto rounded-ctl border border-line bg-card shadow-lg"
         >
           {items.map((s, i) => (
             <li
@@ -202,7 +207,7 @@ export function ArticleCombobox({
       {open && items.length === 0 && searched && (
         <div
           role="status"
-          className="absolute z-20 mt-1 w-80 rounded-ctl border border-line bg-card px-2 py-1.5 text-caption text-muted shadow-lg"
+          className="absolute z-20 mt-1 w-80 max-w-full rounded-ctl border border-line bg-card px-2 py-1.5 text-caption text-muted shadow-lg"
         >
           {tt('article.noMatches')}
         </div>
