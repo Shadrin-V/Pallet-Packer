@@ -161,34 +161,36 @@ export function App() {
 
   return (
     <LocaleProvider initial="de">
-      {/* Setup is screen-only; printing yields just the Ladeplan document. */}
-      <div className="print:hidden">
-        {/* Шапка «Настройки» стратегию только ЗАПОМИНАЕТ (решение владельца 1): пересчитывать
-            готовый план из его прежнего груза нельзя — заявку могли уже поправить, и план разошёлся
-            бы с тем, что на экране. Выбор применяет следующий «Рассчитать». */}
-        <SetupScreen
-          onCalculate={onCalculate}
-          onReset={onReset}
-          loadingMode={loadingMode}
-          orderGrouping={orderGrouping}
-          onLoadingModeChange={chooseLoadingMode}
-          onOrderGroupingChange={chooseOrderGrouping}
-          hasManualEdits={hasManualEdits}
-        />
-      </div>
-      {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until the
-          first Berechnen it stands in as an empty state. There is no "back": the plan is removed by
-          Zurücksetzen, which says so and asks first. */}
-      {result ? (
-        <LadeplanScreen
-          load={result.load}
-          layout={result.layout}
-          orderColors={result.orderColors}
-          onManualEditsChange={setHasManualEdits}
-        />
-      ) : (
-        <EmptyPlan />
-      )}
+      {/* Setup is screen-only; printing yields just the Ladeplan document — print:hidden несут
+          setup-части внутри SetupScreen, а не обёртка здесь: план передаётся ДЕТЬМИ SetupScreen
+          (LKWkalk-9tq), чтобы липкая шапка «Настройки» и план делили одного родителя — sticky
+          прижимает элемент только в его пределах, и соседний план увозил шапку за экран. */}
+      {/* Шапка «Настройки» стратегию только ЗАПОМИНАЕТ (решение владельца 1): пересчитывать
+          готовый план из его прежнего груза нельзя — заявку могли уже поправить, и план разошёлся
+          бы с тем, что на экране. Выбор применяет следующий «Рассчитать». */}
+      <SetupScreen
+        onCalculate={onCalculate}
+        onReset={onReset}
+        loadingMode={loadingMode}
+        orderGrouping={orderGrouping}
+        onLoadingModeChange={chooseLoadingMode}
+        onOrderGroupingChange={chooseOrderGrouping}
+        hasManualEdits={hasManualEdits}
+      >
+        {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until
+            the first Berechnen it stands in as an empty state. There is no "back": the plan is
+            removed by Zurücksetzen, which says so and asks first. */}
+        {result ? (
+          <LadeplanScreen
+            load={result.load}
+            layout={result.layout}
+            orderColors={result.orderColors}
+            onManualEditsChange={setHasManualEdits}
+          />
+        ) : (
+          <EmptyPlan />
+        )}
+      </SetupScreen>
     </LocaleProvider>
   );
 }
