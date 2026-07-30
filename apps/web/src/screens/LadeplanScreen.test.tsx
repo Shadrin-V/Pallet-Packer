@@ -100,6 +100,41 @@ describe('LadeplanScreen — unplaced figure', () => {
     expect(fig).toHaveTextContent('3'); // 11 requested − 8 placed
     expect(fig).toHaveTextContent('Nicht platziert');
   });
+
+  // LKWkalk-x7e, решение владельца: печатный лист говорит только о том, что погружено. Это ОТМЕНА
+  // прежнего решения rgv.7 («худшая новость плана едет со сводкой»), поэтому проверяются оба места,
+  // где неразмещённое просачивалось в печать: показатель в сводной ленте и приписки в легенде. На
+  // экране оба остаются — прячет их только @media print, а в jsdom раскладки нет, так что честно
+  // проверить можно лишь СЦЕПКУ: крючок `print:hidden` стоит на тех самых элементах.
+  describe('печать не показывает неразмещённое (x7e)', () => {
+    const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
+    const renderOverloaded = () =>
+      render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={overloaded} layout={calculateLayout(overloaded)} />
+        </LocaleProvider>,
+      );
+
+    it('показатель «Не размещено» несёт крючок печати и остаётся виден на экране', () => {
+      renderOverloaded();
+      const fig = screen.getByTestId('fig-unplaced');
+      expect(fig).toBeInTheDocument(); // на экране — как было
+      expect(fig.className).toContain('print:hidden');
+    });
+
+    it('приписки «N не размещено» в легенде несут тот же крючок', () => {
+      renderOverloaded();
+      const notes = document.querySelectorAll('[data-testid="legend-unplaced"]');
+      expect(notes.length).toBeGreaterThan(0); // приписка есть — груз действительно не влез
+      for (const n of notes) expect(n.className).toContain('print:hidden');
+    });
+
+    it('остальная легенда крючок печати НЕ несёт — на листе остаётся то, что погружено', () => {
+      renderOverloaded();
+      const placed = document.querySelector('[data-testid="legend-placed"]')!;
+      expect(placed.className).not.toContain('print:hidden');
+    });
+  });
 });
 
 // The buffer (dwc.3): what is NOT in the hold. This describe block only checks wiring and the

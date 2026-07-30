@@ -53,9 +53,14 @@ function writeYardGrouping(on: boolean): void {
   }
 }
 
+// `danger` — это ровно показатель неразмещённого. Он экранный: на печатном листе неразмещённого нет
+// вовсе (x7e, решение владельца), поэтому крючок печати висит на том же флаге, что и красный цвет.
 function Figure({ value, label, danger = false }: { value: string; label: string; danger?: boolean }) {
   return (
-    <div className="text-right" data-testid={danger ? 'fig-unplaced' : undefined}>
+    <div
+      className={`text-right${danger ? ' print:hidden' : ''}`}
+      data-testid={danger ? 'fig-unplaced' : undefined}
+    >
       <div
         className={`text-title font-[700] leading-none tabular-nums ${danger ? 'text-danger' : 'text-brand'}`}
       >
@@ -518,7 +523,9 @@ export function LadeplanScreen({
   // Single source for the summary figures: the meta band renders these, and the PNG carries the
   // same objects — the exported sheet cannot disagree with the screen it depicts.
   // Unplaced is the plan's worst news, so it rides with the figures (in danger colour) rather than
-  // hiding in the legend — but only when there is bad news to tell (rgv.7).
+  // hiding in the legend — but only when there is bad news to tell (rgv.7). Это верно для ЭКРАНА:
+  // с печатного листа неразмещённое убрано целиком (x7e, решение владельца) — и показатель здесь, и
+  // приписки в легенде. PNG-экспорт ниже неразмещённое по-прежнему несёт.
   const unplacedTotal = edited.unplaced.reduce((sum, u) => sum + u.count, 0);
   const figures = [
     { label: tt('ladeplan.fig.pallets'), value: grp(m.totalPlaced) },

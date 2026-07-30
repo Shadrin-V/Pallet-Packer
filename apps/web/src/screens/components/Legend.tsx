@@ -35,11 +35,14 @@ export function Legend({
               {/* Load-composition reference: article · dimensions · placed count (compact for A4). */}
               <ul className="mt-0.5 text-muted">
                 {o.items.map((it) => (
-                  <li key={it.cargoTypeId} className="tabular-nums">
+                  <li key={it.cargoTypeId} className="tabular-nums" data-testid="legend-placed">
                     {it.name} <span className="text-faint">{it.length}×{it.width}×{it.height}</span>{' '}
                     <b className="font-semibold text-ink">×{it.placed}</b>
+                    {/* Неразмещённое — экранная новость: печатный лист говорит только о погруженном
+                        (x7e, решение владельца). Прячется здесь же, а не в @media print по классу
+                        text-danger: тем же красным подсвечивается не только эта приписка. */}
                     {it.unplaced > 0 && (
-                      <span className="text-danger">
+                      <span className="text-danger print:hidden" data-testid="legend-unplaced">
                         {' '}
                         ({fillTemplate(tt('ladeplan.notPlaced'), { n: it.unplaced })})
                       </span>
