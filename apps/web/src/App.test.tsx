@@ -75,8 +75,8 @@ describe('App shell (single page)', () => {
 
   it('clicking the order-grouping info hint does not toggle the strategy', () => {
     render(<App />);
-    // The hint's "i" button shares the aria-label but is a button, not the checkbox.
-    fireEvent.click(screen.getByRole('button', { name: 'Dichte vor Auftragstrennung' }));
+    // The hint's "i" button carries its own name since 2tp — it must never reach the checkbox.
+    fireEvent.click(screen.getByRole('button', { name: 'Erklärung zur Auftragstrennung' }));
     expect((screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }) as HTMLInputElement).checked).toBe(false);
   });
 
