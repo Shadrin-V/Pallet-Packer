@@ -315,7 +315,7 @@ describe('LadeplanScreen — group selection', () => {
   const bandThenDrag = (container: HTMLElement, ref: string, toX: number, toY: number) => {
     // The pointer handlers moved to the nested cargo svg (Task 5 nested-svg wrap); events on the
     // outer chrome svg would not reach them. data-stack-ref g's are still descendants of it.
-    const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+    const svg = container.querySelector('svg[data-hold="top"]')!;
     fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
     fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
     fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
@@ -413,7 +413,7 @@ describe('LadeplanScreen — group selection', () => {
           <LadeplanScreen load={load} layout={layout} />
         </LocaleProvider>,
       );
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!; // nested cargo svg holds the handlers
+      const svg = container.querySelector('svg[data-hold="top"]')!; // nested cargo svg holds the handlers
       fireEvent.pointerDown(svg, { clientX: 0, clientY: 0 });
       fireEvent.pointerMove(svg, { clientX: 1500, clientY: 500 });
       fireEvent.pointerUp(svg, { clientX: 1500, clientY: 500 });
@@ -497,7 +497,7 @@ describe('LadeplanScreen — hold-drag ghost (page-level, T3)', () => {
     const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 2000, height: 2000 });
     try {
       const { container } = renderLadeplan(); // 8 Box cubes fill the 2×2×2 hold
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       expect(screen.queryByTestId('hold-drag-ghost')).not.toBeInTheDocument();
 
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c1@0,0"]')!, { clientX: 500, clientY: 500 });
@@ -517,7 +517,7 @@ describe('LadeplanScreen — hold-drag ghost (page-level, T3)', () => {
     const restoreSvg = installSvgGeometry({ left: 0, top: 0, width: 2000, height: 2000 });
     try {
       const { container } = renderLadeplan();
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
 
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c1@0,0"]')!, { clientX: 500, clientY: 500 });
       fireEvent.pointerMove(svg, { clientX: 400, clientY: 2600 });
@@ -592,7 +592,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
    *  the identity CTM installed above, so client px double as mm in whichever frame the point falls
    *  in — any y past the hold's own (tiny) spanY=50 is what CrossSection reads as "outside". */
   const dropStackAt = (container: HTMLElement, toX: number, toY: number) => {
-    const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+    const svg = container.querySelector('svg[data-hold="top"]')!;
     fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
     fireEvent.pointerMove(svg, { clientX: toX, clientY: toY });
     fireEvent.pointerUp(svg, { clientX: toX, clientY: toY });
@@ -600,7 +600,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
 
   it('previews the drop with a dashed phantom slot before release (live gap)', () => {
     withDropRig((container) => {
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       // x=700 falls between A's and B's centres (450 and 1150), y=400 within their shared row —
       // `onCarry` fires on every move, not just past the hold's own edge, so the preview appears
@@ -717,7 +717,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
           <LadeplanScreen load={bayLoad} layout={dropLayout} />
         </LocaleProvider>,
       );
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       // Точка внутри загона SO-1 (левый верхний угол двора) — ЧУЖОГО для C загона; куда именно
       // внутри буфера легла C, здесь не проверяется (см. комментарий выше теста), важен только
@@ -798,7 +798,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
     // Магнит обязан запарковать C в КОНЦЕ её собственного загона SO-1 (после A) — точка вне всех
     // границ загона всегда садится в его хвост (warehouseLayout.ts, insertionIndexAt).
     withTwoBaysRig((container) => {
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       fireEvent.pointerMove(svg, { clientX: 100, clientY: 100 });
       fireEvent.pointerUp(svg, { clientX: 100, clientY: 100 });
@@ -822,7 +822,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
     // Загоны — режим, а не умолчание (77g): этот тест про них, значит режим надо включить.
     localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     withTwoBaysRig((container) => {
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       fireEvent.pointerMove(svg, { clientX: 100, clientY: 100 });
 
@@ -852,7 +852,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
       dragBayTo('SO-2', 300, 600);
       expect([...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'))).toEqual(['SO-2', 'SO-1']);
 
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       fireEvent.pointerMove(svg, { clientX: 300, clientY: 600 });
       fireEvent.pointerUp(svg, { clientX: 300, clientY: 600 });
@@ -873,7 +873,7 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
       const own = document.querySelector('[data-testid="warehouse-bay"][data-order="SO-1"] [data-outline]')!;
       const bx = Number(own.getAttribute('x'));
 
-      const svg = container.querySelector('svg[data-cutaway="top"] svg')!;
+      const svg = container.querySelector('svg[data-hold="top"]')!;
       fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
       fireEvent.pointerMove(svg, { clientX: 300, clientY: 600 });
 
@@ -1000,7 +1000,7 @@ describe('LadeplanScreen — bayOrder помнит заказ, уехавший 
   const bays = () =>
     [...document.querySelectorAll('[data-testid="warehouse-bay"]')].map((b) => b.getAttribute('data-order'));
   const yardSvg = () => document.querySelector('svg[data-warehouse]')!;
-  const holdSvg = (container: HTMLElement) => container.querySelector('svg[data-cutaway="top"] svg')!;
+  const holdSvg = (container: HTMLElement) => container.querySelector('svg[data-hold="top"]')!;
   const dragBayTo = (orderId: string, x: number, y: number) => {
     const grip = document.querySelector(`[data-testid="warehouse-bay"][data-order="${orderId}"] [data-tag-grip]`)!;
     fireEvent.pointerDown(grip, { clientX: 2400, clientY: 300 });

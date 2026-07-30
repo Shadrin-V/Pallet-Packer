@@ -359,7 +359,7 @@ describe('group selection', () => {
     );
     // The nested cargo svg holds the pointer handlers now; events fired on the outer chrome svg
     // would not reach them (they bubble up, not down). Target the nested one.
-    const svg = utils.container.querySelector('svg[data-cutaway="top"] svg')!;
+    const svg = utils.container.querySelector('svg[data-hold="top"]')!;
     return { ...utils, svg };
   };
 
@@ -549,7 +549,7 @@ describe('group selection', () => {
         <MovableGroup />
       </LocaleProvider>,
     );
-    const svg = container.querySelector('svg[data-cutaway="top"] svg')!; // nested cargo svg holds the handlers
+    const svg = container.querySelector('svg[data-hold="top"]')!; // nested cargo svg holds the handlers
     rubberBand(svg, 0, 0, 1500, 500);
 
     dragFirstStack(svg, container, 500, 1500); // one metre down…
@@ -613,7 +613,7 @@ describe('group selection', () => {
         />
       </LocaleProvider>,
     );
-    const svg = utils.container.querySelector('svg[data-cutaway="top"] svg')!;
+    const svg = utils.container.querySelector('svg[data-hold="top"]')!;
     return { ...utils, svg };
   };
 
@@ -688,7 +688,7 @@ describe('group selection', () => {
         <MovableGroup />
       </LocaleProvider>,
     );
-    const svg = container.querySelector('svg[data-cutaway="top"] svg')!; // nested cargo svg holds the handlers
+    const svg = container.querySelector('svg[data-hold="top"]')!; // nested cargo svg holds the handlers
     rubberBand(svg, 0, 0, 1500, 500);
 
     // far past the 2000 mm-wide hold — out of the magnet's reach, so the refusal must be a no-op
@@ -971,7 +971,7 @@ describe('nested cargo viewport (1:1 preserved)', () => {
   it('cargo viewport stays exactly 1:1 (length × spanY) after the nested-svg wrap', () => {
     const { container } = renderCut('side', 'Seitenansicht');
     const outer = container.querySelector('svg[data-cutaway="side"]')!;
-    const nested = outer.querySelector('svg')!; // the cargo viewport
+    const nested = outer.querySelector('svg[data-hold="side"]')!; // the cargo viewport, by its own mark (8h4)
     expect(nested.getAttribute('viewBox')).toBe(`0 0 ${V.length} ${V.height}`);
     // hold outline rect unchanged: 0,0,length,height in the nested coordinate space
     const frame = [...nested.querySelectorAll('rect')].find(
@@ -983,7 +983,7 @@ describe('nested cargo viewport (1:1 preserved)', () => {
 
   it('top cargo viewport is length × width', () => {
     const { container } = renderCut('top', 'Draufsicht');
-    const nested = container.querySelector('svg[data-cutaway="top"] svg')!;
+    const nested = container.querySelector('svg[data-hold="top"]')!;
     expect(nested.getAttribute('viewBox')).toBe(`0 0 ${V.length} ${V.width}`);
   });
 });
