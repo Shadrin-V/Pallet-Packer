@@ -33,6 +33,7 @@ const ABB: Article = {
   height: 144,
   nestStepPairwise: 22,
   rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' },
+  erpFields: ['name', 'length', 'width', 'height'],
   source: 'erp',
   updatedAt: 'x',
 };

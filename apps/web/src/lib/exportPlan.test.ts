@@ -190,7 +190,7 @@ describe('downloadBlob', () => {
 
     expect(createUrl).toHaveBeenCalledWith(blob);
     expect(click).toHaveBeenCalledOnce();
-    const anchor = click.mock.instances[0] as HTMLAnchorElement;
+    const anchor = click.mock.instances[0] as unknown as HTMLAnchorElement;
     expect(anchor.download).toBe('ladungsplaner-lkw-standard-2026-07-17.json');
     expect(anchor.getAttribute('href')).toBe('blob:fake');
     // the url must outlive the click — Safari/Firefox can still be starting the transfer

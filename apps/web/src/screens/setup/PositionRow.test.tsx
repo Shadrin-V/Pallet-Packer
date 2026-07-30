@@ -16,7 +16,7 @@ function renderRow(over: Partial<PositionState> = {}, props: Partial<Parameters<
       <PositionRow
         position={{ ...emptyPosition(), name: 'Gestell A', length: 2400, width: 1000, height: 1900, ...over }}
         index={0} vehicle={vehicle} selected={false}
-        onSelect={onSelect} onChange={onChange} armed={false} onArm={() => {}} onRemove={() => {}}
+        onSelect={onSelect} onDeselect={() => {}} onChange={onChange} armed={false} onArm={() => {}} onRemove={() => {}}
         {...props}
       />
     </LocaleProvider>,
