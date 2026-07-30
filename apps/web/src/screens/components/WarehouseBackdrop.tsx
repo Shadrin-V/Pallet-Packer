@@ -44,6 +44,21 @@ export const FLOOR = '#cbcdcd';
 /** Muted a touch so the coloured stacks (drawn opaque over the floor) still lead, but the docks read. */
 const SCENERY_OPACITY = 0.9;
 
+/** Доля минимальной глубины двора, которую занимают доки (LKWkalk-103). Доки во всю эту глубину
+ *  оказывались настолько широкими (547 и 828 мм при кузове 2430), что отведённые под них боковые
+ *  поля съедали ~1,4 м полезной ширины ряда. Ужатые до 0,6 они стоят двору ~0,85 м. */
+export const DOCK_DEPTH_RATIO = 0.6;
+
+/** Ширины доков в мм при заданной их высоте — каждый по своей пропорции, поэтому картинки не
+ *  искажаются. Экспортируется, потому что по этим ширинам двор отводит боковые поля: сценерия и
+ *  раскладка обязаны считать их ОДНОЙ формулой, иначе наезд вернётся при первой же смене картинки. */
+export function dockWidths(dockHeight: number): { left: number; right: number } {
+  return {
+    left: (WAREHOUSE_ASSET.left.w / WAREHOUSE_ASSET.left.h) * dockHeight,
+    right: (WAREHOUSE_ASSET.right.w / WAREHOUSE_ASSET.right.h) * dockHeight,
+  };
+}
+
 /** The yard behind the buffer's stacks. `width`/`height` are the floor surface in mm (the same units
  *  the tiles are laid out in): width = vehicle length, height grows with the buffer's depth. */
 export function WarehouseBackdrop({
@@ -58,11 +73,10 @@ export function WarehouseBackdrop({
   height: number;
   dockHeight: number;
 }) {
-  const { left, right } = WAREHOUSE_ASSET;
   // Выше пола док не бывает: на мелком дворе постоянная мера обрезается его собственной глубиной.
   const dockH = Math.min(dockHeight, height);
-  const capL = (left.w / left.h) * dockH; // width follows each dock's own ratio — nothing distorts
-  const capR = (right.w / right.h) * dockH;
+  // width follows each dock's own ratio — nothing distorts
+  const { left: capL, right: capR } = dockWidths(dockH);
   return (
     <g aria-hidden="true" pointerEvents="none" data-testid="warehouse-backdrop">
       {/* Flat floor — one tone, seamless at any width or depth. */}
