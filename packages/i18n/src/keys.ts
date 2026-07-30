@@ -37,6 +37,7 @@ export const TRANSLATION_KEYS = [
   'setup.chip.restricted',
   'setup.chip.perStack',
   'setup.col.rules',
+  'setup.positionCount',
   'setup.rule.entschachtelt',
   'setup.rule.sequential',
   'setup.rule.pairwise',

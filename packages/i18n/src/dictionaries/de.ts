@@ -34,6 +34,7 @@ export const de: Dictionary = {
   'setup.chip.restricted': 'Orientierung eingeschränkt',
   'setup.chip.perStack': '{count} pro Stapel',
   'setup.col.rules': 'Regeln',
+  'setup.positionCount': '{count} × {label}',
   'setup.rule.entschachtelt': 'Werden ganz aufeinander gestellt, je {base} mm. Es passen {count}.',
   'setup.rule.sequential': 'Jedes weitere Stück sitzt im vorherigen und legt {step} mm drauf. Das unterste ist {base} mm hoch.',
   'setup.rule.pairwise': 'Werden paarweise verschachtelt: das unterste steht ganz, jedes weitere Paar legt {base} + {step} mm drauf.',

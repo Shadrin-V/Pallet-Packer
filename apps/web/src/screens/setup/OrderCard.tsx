@@ -3,6 +3,7 @@
 // Извлечено из SetupScreen.tsx: аккордеон `openId` удалён целиком, его роль перешла к выбору строки.
 import type { Vehicle } from '@shadrin-v/engine';
 import { ArmedDelete } from '../components/ArmedDelete';
+import { fillTemplate } from '../components/stackFormula';
 import { OrderSwatch } from '../../lib/swatch';
 import { TextField } from '../../ui/primitives';
 import { useT } from '../../i18n/LocaleContext';
@@ -70,8 +71,13 @@ export function OrderCard({
       <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
         <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
         <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
+        {/* Счётчик — целиком из словаря (LKWkalk-5gi п.3): конкатенация в коде отдавала переводчику
+            только слово, а порядок и разделитель зашивала намертво. */}
         <span className="ml-auto text-caption text-muted">
-          {order.positions.length} × {tt('cargoType.label')}
+          {fillTemplate(tt('setup.positionCount'), {
+            count: order.positions.length,
+            label: tt('cargoType.label'),
+          })}
         </span>
         {/* Reorder the order queue — list order = priority (4bj.11). Hidden when there is nothing
             to reorder; ends are disabled. Only UI: moving a card reorders the semantic cargo list. */}

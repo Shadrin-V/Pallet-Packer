@@ -34,6 +34,7 @@ export const ru: Dictionary = {
   'setup.chip.restricted': 'Ориентация ограничена',
   'setup.chip.perStack': '{count} в стопке',
   'setup.col.rules': 'Правила',
+  'setup.positionCount': '{count} × {label}',
   'setup.rule.entschachtelt': 'Ставятся друг на друга целиком, по {base} мм. Помещается {count}.',
   'setup.rule.sequential': 'Каждая следующая садится в предыдущую и добавляет {step} мм. Нижняя — {base} мм.',
   'setup.rule.pairwise': 'Складываются парами: нижняя стоит целиком, каждая следующая пара добавляет {base} + {step} мм.',
