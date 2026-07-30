@@ -87,6 +87,7 @@ export const ru: Dictionary = {
   'article.save': 'Сохранить артикул в базу',
   'article.update': 'Обновить артикул',
   'article.lockedHint': 'Меняется в ERPNext, артикул {code}',
+  'article.lockedHintLabel': 'Пояснение к привязке артикула',
   'article.saveError': 'Не удалось сохранить. Попробуйте ещё раз.',
   'article.renameInErp': 'Имя меняется в ERPNext. Сохранение создаст НОВЫЙ артикул.',
 

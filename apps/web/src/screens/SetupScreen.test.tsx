@@ -838,7 +838,7 @@ describe('SetupScreen article combobox', () => {
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'abb');
     await userEvent.click(await screen.findByRole('option', { name: /ABB101/ }));
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Artikel' })[0]);
+    await userEvent.click(screen.getAllByRole('button', { name: 'Erklärung zur Artikelbindung' })[0]);
     expect(screen.getByRole('tooltip')).toHaveTextContent('ABB101');
   });
 
@@ -1390,9 +1390,8 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
   // soon as the row is bound, before any retyping.
   it('shows a lock hint next to the article combobox for an ERP-named article, and none for a local one', async () => {
     // erpFields: ['name'] only (no dimensions locked) isolates the name hint from the pre-existing
-    // per-dimension hints, which reuse the very same accessible name ('Artikel', via lockedHint) —
-    // a fixture that also locks length/width/height would make getByRole ambiguous for a reason
-    // unrelated to this finding.
+    // per-dimension hints — с 0il у всех хинтов привязки одно СВОЁ имя (article.lockedHintLabel),
+    // и фикстура с запертыми габаритами дала бы пять кнопок вместо одной.
     const NAME_ONLY = { ...ERP_NAMED, erpFields: ['name'] as const };
     const LOCAL = { ...ERP_NAMED, itemCode: 'LOC1', name: 'Eigenbau', source: 'local', erpFields: [] } as const;
     renderSetupWithCatalogue({ searchArticles: vi.fn().mockResolvedValue([NAME_ONLY, LOCAL]) });
@@ -1400,12 +1399,12 @@ describe('SetupScreen — the name belongs to ERPNext', () => {
     const box = screen.getByLabelText('Artikel');
     await userEvent.type(box, 'ABB');
     await userEvent.click(await screen.findByText('Gitterbox'));
-    expect(screen.getByRole('button', { name: 'Artikel' })).toBeInTheDocument(); // the hint toggle
+    expect(screen.getByRole('button', { name: 'Erklärung zur Artikelbindung' })).toBeInTheDocument(); // the hint toggle
 
     await userEvent.clear(box);
     await userEvent.type(box, 'Eig');
     await userEvent.click(await screen.findByText('Eigenbau'));
-    expect(screen.queryByRole('button', { name: 'Artikel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Erklärung zur Artikelbindung' })).toBeNull();
   });
 
   it('explains where the name is changed once the user edits it away from an ERP article', async () => {

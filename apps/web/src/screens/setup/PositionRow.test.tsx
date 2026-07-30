@@ -66,4 +66,19 @@ describe('PositionRow', () => {
     renderRow();
     expect(screen.queryByLabelText('details')).toBeNull();
   });
+
+  // LKWkalk-0il п.2: хинты запертых полей носили имя самого комбобокса ('Artikel') — скринридер
+  // объявлял кнопки и поле ввода одним именем, а getByRole(..., { name: 'Artikel' }) становился
+  // неоднозначным (SetupScreen.test.tsx даже строил фикстуры в обход). Тот же приём, что 2tp и
+  // lu6: у подсказки собственный ключ.
+  it('lock hints carry their own name, distinct from the combobox (0il)', () => {
+    renderRow({
+      articleCode: 'ABB101',
+      locked: { name: true, length: true, width: true, height: true },
+    });
+    // Комбобокс по имени находится однозначно, несмотря на четыре открытых хинта.
+    expect(screen.getByRole('combobox', { name: 'Artikel' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Artikel' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Erklärung zur Artikelbindung' })).toHaveLength(4);
+  });
 });

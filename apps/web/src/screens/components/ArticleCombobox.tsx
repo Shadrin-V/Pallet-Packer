@@ -88,6 +88,9 @@ export function ArticleCombobox({
     if (!query.trim()) {
       setItems([]);
       setSearched(false);
+      // Список размонтируется вместе с пунктами — активный индекс обязан уйти с ними, иначе
+      // aria-activedescendant повиснет на несуществующем id (LKWkalk-0il).
+      setActive(-1);
       return;
     }
     setSearched(false);
@@ -140,7 +143,9 @@ export function ArticleCombobox({
         role="combobox"
         aria-label={ariaLabel}
         aria-expanded={open && items.length > 0}
-        aria-controls={listId}
+        // Только пока listbox реально в DOM: висящая ссылка на неотрендеренный id (например, при
+        // хинте «нет совпадений») — такая же ошибка ARIA, как висящий activedescendant (0il).
+        aria-controls={open && items.length > 0 ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
         className="w-full min-w-0 rounded-ctl border border-line bg-card px-2 py-1.5 text-body font-semibold outline-none focus:border-brand"

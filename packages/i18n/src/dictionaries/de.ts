@@ -87,6 +87,7 @@ export const de: Dictionary = {
   'article.save': 'Artikel in die Datenbank speichern',
   'article.update': 'Artikel aktualisieren',
   'article.lockedHint': 'Wird in ERPNext geändert, Artikel {code}',
+  'article.lockedHintLabel': 'Erklärung zur Artikelbindung',
   'article.saveError': 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
   'article.renameInErp': 'Der Name wird in ERPNext geändert. Speichern legt einen NEUEN Artikel an.',
 

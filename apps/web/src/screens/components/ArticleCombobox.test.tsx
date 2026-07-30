@@ -133,6 +133,32 @@ describe('ArticleCombobox', () => {
     expect(overlayWidthUnclamped(status)).toBe(false);
   });
 
+  // LKWkalk-0il п.1: ARIA-ссылки комбобокса не должны висеть в пустоте.
+  it('clearing the query drops aria-activedescendant instead of pointing at an unmounted option', async () => {
+    renderBox();
+    const input = screen.getByRole('combobox', { name: 'Artikel' });
+    await userEvent.type(input, 'abb');
+    await screen.findByRole('option', { name: /ABB101/ });
+    await userEvent.keyboard('{ArrowDown}');
+    expect(input).toHaveAttribute('aria-activedescendant');
+
+    await userEvent.clear(input);
+    // Список размонтирован — активного пункта больше нет, и ссылка обязана исчезнуть вместе с ним.
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('aria-controls never references an id that is not in the document (no-matches state)', async () => {
+    renderBox({ search: async () => [] });
+    const input = screen.getByRole('combobox', { name: 'Artikel' });
+    await userEvent.type(input, '9');
+    await screen.findByRole('status'); // показан хинт «нет совпадений», listbox не отрендерен
+    const controls = input.getAttribute('aria-controls');
+    if (controls !== null) {
+      expect(document.getElementById(controls)).not.toBeNull();
+    }
+  });
+
   it('navigates with arrow keys and picks with Enter, closes with Escape', async () => {
     const { onPick } = renderBox();
     const input = screen.getByRole('combobox', { name: 'Artikel' });
