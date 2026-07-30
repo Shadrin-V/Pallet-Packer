@@ -24,6 +24,18 @@
 
 ## [Unreleased]
 
+### 2026-07-30 — инфраструктура: Basic Auth на проде + ночной бэкап (PR #66, #67)
+
+Закрыты `LKWkalk-i6b` и `LKWkalk-zbi`; кода приложения не менялось.
+
+- **Прод теперь за HTTP Basic Auth** (Traefik middleware через `custom_labels` Coolify): браузер
+  спрашивает логин/пароль, `curl`/CDP-проверки требуют `-u`. Грабли включения (декоративный нативный
+  флаг Coolify 4.1.2, экранирование `$`, замещение всего набора лейблов) —
+  [INFRASTRUKTUR-ladungsplaner.md §5](INFRASTRUKTUR-ladungsplaner.md).
+- **Ночной бэкап тома `/app/data`** (SQLite): host-скрипт по cron 03:15, снапшот через readonly
+  `.backup()` из контейнера, ротация 14 дней; истина — `apps/server/scripts/backup.sh`
+  ([§6](INFRASTRUKTUR-ladungsplaner.md)).
+
 ### 2026-07-30 — батч из 17 багфиксов: хвосты этапа 2, a11y, сервер, ядро (PR #49–#64)
 
 Закрыто 18 задач beads (`3c5 bmi 5oq e2g 5gi fvh wmd 2tp 0il v1m 8vy 8h4 zyc rvy 5zy pkm 7bb
