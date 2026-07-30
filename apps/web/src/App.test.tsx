@@ -321,6 +321,34 @@ describe('App shell (single page)', () => {
       expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
     });
 
+    // LKWkalk-wmd: choose* сохранял СНИМОК обоих полей из текущего состояния, а состояние после
+    // Demo показывает пришпиленную демо-стратегию (rear/strict) — не выбор пользователя. Щелчок по
+    // одному переключателю утаскивал в хранилище и второе, демонстрационное поле. Сохраняться
+    // должно только то поле, которое пользователь реально тронул.
+    it('галочка группировки при показанном Demo не сохраняет демо-режим rear (wmd)', async () => {
+      const { unmount } = render(<App />);
+      await userEvent.click(screen.getByRole('button', { name: 'Demo' })); // пришпиливает rear
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }));
+      unmount();
+
+      render(<App />);
+      // Галочка — выбор пользователя, переживает перезагрузку; rear пользователь не выбирал.
+      expect(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toBeChecked();
+      expect(screen.getByRole('button', { name: 'Hinten und Seite' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('выбор режима после Demo не затирает сохранённую галочку демо-значением (wmd, симметрия)', async () => {
+      const { unmount } = render(<App />);
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Demo' })); // пришпиливает strict — галочка гаснет
+      await userEvent.click(screen.getByRole('button', { name: 'Von der Seite' }));
+      unmount();
+
+      render(<App />);
+      expect(screen.getByRole('button', { name: 'Von der Seite' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toBeChecked();
+    });
+
     it('«Сброс» забывает и сохранённую стратегию', async () => {
       vi.spyOn(window, 'confirm').mockReturnValue(true);
       const { unmount } = render(<App />);
