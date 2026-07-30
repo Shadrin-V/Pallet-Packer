@@ -613,9 +613,9 @@ export function CrossSection({
         <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--truck)" strokeWidth={1.75} vectorEffect="non-scaling-stroke" pointerEvents="none" />
         </svg>
         {/* chrome: front cab gutter (both views), wheels+ground (side), ruler lane (both). Drawn AFTER
-            the nested cargo svg so that svg stays the outer svg's first <svg> descendant (existing
-            tests key off that), and so chrome — which lives only in the outer gutters — paints on top
-            without ever touching the cargo viewport's own 1:1 coordinate space. */}
+            the nested cargo svg so chrome — which lives only in the outer gutters — paints on top
+            without ever touching the cargo viewport's own 1:1 coordinate space. (Tests select the
+            cargo svg by data-hold since 8h4, not by DOM order — the ordering here is paint order.) */}
         {/* All box-relative chrome shifts down by the top ruler's lane so it stays glued to the box. */}
         <g pointerEvents="none" transform={`translate(0 ${topGutter})`}>
           {view === 'side' && (
