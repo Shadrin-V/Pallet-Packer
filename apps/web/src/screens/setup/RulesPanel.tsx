@@ -18,6 +18,8 @@ import { orderColorToken } from '../../lib/orderColor';
 import { OrderSwatch } from '../../lib/swatch';
 import { useT, useLocale } from '../../i18n/LocaleContext';
 import { ruleSentences } from './positionRules';
+import { LoadSummary } from './LoadSummary';
+import type { SetupMessage, SetupMessageWhere, SetupSummary } from './setupValidation';
 import {
   activeStep,
   activeStepField,
@@ -36,14 +38,23 @@ export interface RulesPanelProps {
   onChange: (patch: Partial<PositionState>) => void;
   onSaveArticle: () => Promise<Article | undefined>;
   onClose?: () => void; // задан только в режиме drawer (Task 6)
+  /** Пустое состояние панели (§6): сводка и сообщения. Без них панель остаётся с прежней заглушкой. */
+  summary?: SetupSummary;
+  messages?: SetupMessage[];
+  onGoTo?: (where: SetupMessageWhere) => void;
 }
 
-export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onSaveArticle, onClose }: RulesPanelProps) {
+export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onSaveArticle, onClose, summary, messages, onGoTo }: RulesPanelProps) {
   const tt = useT();
   const { locale } = useLocale();
   const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!p) {
+    // Пустое состояние — не заглушка: панель показывает сводку заявки и список сообщений (§6).
+    // Пропы необязательные: старые тесты рендерят панель без них и должны продолжать работать.
+    if (summary && messages && onGoTo) {
+      return <LoadSummary summary={summary} messages={messages} onGoTo={onGoTo} />;
+    }
     return (
       <aside className="rounded-card bg-card p-4 shadow-card">
         <p className="text-caption text-muted">{tt('setup.panel.empty')}</p>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatLength } from './format';
+import { formatLength, formatVolume } from './format';
 
 // Intl.NumberFormat('ru-RU') groups thousands with U+00A0 NO-BREAK SPACE, not a plain space.
 // Built via fromCharCode (not a literal/escaped character) so the separator is unambiguous and
@@ -28,5 +28,11 @@ describe('formatLength', () => {
   it('formats a typical EPAL pallet height', () => {
     expect(formatLength(2650, 'de')).toBe('2.650 mm');
     expect(formatLength(2650, 'ru')).toBe(`2${NBSP}650 мм`);
+  });
+
+  it('formats cubic millimetres as m³ with one decimal', () => {
+    expect(formatVolume(18_400_000_000, 'de')).toBe('18,4 m³');
+    expect(formatVolume(18_400_000_000, 'ru')).toBe('18,4 м³');
+    expect(formatVolume(0, 'de')).toBe('0 m³');
   });
 });

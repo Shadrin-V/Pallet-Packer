@@ -16,14 +16,11 @@ import {
   type EngineError,
   type Layout,
   type Load,
-  type LoadingMode,
-  type OrderGrouping,
   type StackRef,
 } from '@shadrin-v/engine';
 import { formatLength } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
 import { Button, InfoHint } from '../ui/primitives';
-import { LoadingModeSwitch } from '../ui/LoadingModeSwitch';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
@@ -75,24 +72,16 @@ function Figure({ value, label, danger = false }: { value: string; label: string
 function ActionGroup({
   label,
   className = '',
-  ariaGroup = true,
   children,
 }: {
   label: string;
   className?: string;
-  /** false when a child already exposes a group with this same name (e.g. the Segmented switch) —
-   *  two nested groups sharing one name are ambiguous to assistive tech. */
-  ariaGroup?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       <span className="text-label uppercase tracking-wide text-faint">{label}</span>
-      <div
-        role={ariaGroup ? 'group' : undefined}
-        aria-label={ariaGroup ? label : undefined}
-        className="flex flex-wrap items-center gap-1.5"
-      >
+      <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
         {children}
       </div>
     </div>
@@ -139,15 +128,16 @@ export function LadeplanScreen({
   load,
   layout,
   orderColors,
-  onLoadingModeChange,
-  onOrderGroupingChange,
+  onManualEditsChange,
 }: {
   load: Load;
   layout: Layout;
   /** Stable orderId→palette slot from Setup, so plan colours survive a reorder and match Setup (QA #2). */
   orderColors?: Record<string, number>;
-  onLoadingModeChange?: (mode: LoadingMode) => void;
-  onOrderGroupingChange?: (grouping: OrderGrouping) => void;
+  /** Есть ли на плане ручные правки раскладки. Выбрасывает их теперь «Рассчитать» на другом экране
+   *  (5nb этап 2: переключатели стратегии уехали в шапку «Настройки»), а знает о них только этот
+   *  компонент — поэтому факт сообщается наверх, а предупреждает тот, кто правки теряет. */
+  onManualEditsChange?: (hasEdits: boolean) => void;
 }) {
   const { locale, tt } = useLocale();
   // An unknown code would be a contract drift; show the raw code rather than an empty red line.
@@ -161,6 +151,15 @@ export function LadeplanScreen({
     setBufferOrder([]); // the release order spoke about the previous plan's buffer; this one is fresh
     setBayOrder([]); // порядок загонов говорил о прежнем плане — в новом этих заказов может не быть
   }, [layout]);
+  // `edited !== layout` истинно только после ручной правки: пересчёт возвращает обе ссылки к одному
+  // объекту. Раньше этот же признак читал withDiscardGuard прямо здесь, потому что стратегию меняли
+  // тоже здесь; теперь единственное, что выбрасывает правки, — «Рассчитать» на экране «Настройка»,
+  // и признак приходится сообщать наверх. Уборка гасит флаг при размонтировании (план сняли со
+  // страницы — терять больше нечего).
+  useEffect(() => {
+    onManualEditsChange?.(edited !== layout);
+    return () => onManualEditsChange?.(false);
+  }, [edited, layout, onManualEditsChange]);
   // The top view keeps its own selection and drag state, and those are only meaningful for the plan
   // they were made on: a selection is a list of floor coordinates, and a recompute repacks the hold
   // underneath it. Remount it whenever a NEW layout arrives — the very event the effect above answers
@@ -493,17 +492,6 @@ export function LadeplanScreen({
   };
   const violations = findGeometryViolations(load, edited).length;
 
-  // Any strategy change recomputes from scratch, discarding manual edits. `edited !== layout` holds
-  // only after a manual edit (both reset to the same reference on recompute), so warn only on loss.
-  const withDiscardGuard = (recompute: () => void) => {
-    if (edited !== layout && !globalThis.confirm(tt('ladeplan.discardEditsConfirm'))) return;
-    recompute();
-  };
-  const handleLoadingModeChange = (mode: LoadingMode) =>
-    withDiscardGuard(() => onLoadingModeChange?.(mode));
-  const handleOrderGroupingChange = (checked: boolean) =>
-    withDiscardGuard(() => onOrderGroupingChange?.(checked ? 'densityFirst' : 'strict'));
-
   const v = load.vehicle;
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
   const dims = `${grp(v.length)} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
@@ -571,41 +559,11 @@ export function LadeplanScreen({
       data-violations={violations}
       className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 print:max-w-none print:p-0"
     >
-      {/* On-screen action bar (not printed). Two named groups — strategy on the left, output on the
-          right — instead of one undifferentiated row of controls (rgv.3). */}
+      {/* On-screen action bar (not printed). Стратегия отсюда уехала (5nb этап 2, решение
+          владельца 2): её переключатели живут в липкой шапке «Настройки», которая и так всегда на
+          экране, — два контрола с одним и тем же именем на одной странице были лишними и для
+          скринридера, и для глаза. Здесь остался только вывод. */}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 print:hidden">
-        {(onLoadingModeChange || onOrderGroupingChange) && (
-          <ActionGroup label={tt('ladeplan.loadingMode')} ariaGroup={false}>
-            {onLoadingModeChange && (
-              <>
-                <LoadingModeSwitch value={load.loadingMode ?? 'combined'} onChange={handleLoadingModeChange} />
-                {/* "Hinten und Seite" names the access (both doors open), not a magic mode — the hint
-                    spells out that both variants are computed and the denser one is shown (QA). */}
-                <InfoHint
-                  ariaLabel={tt('ladeplan.loadingMode')}
-                  text={tt('ladeplan.loadingModeHint')}
-                />
-              </>
-            )}
-            {onOrderGroupingChange && (
-              // InfoHint is a button and must stay OUTSIDE the <label>, else clicking it would activate
-              // the label and toggle the checkbox (flip the strategy just from reading the hint).
-              <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-muted">
-                <label className="inline-flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    aria-label={tt('ladeplan.orderGrouping')}
-                    checked={(load.orderGrouping ?? 'strict') === 'densityFirst'}
-                    onChange={(e) => handleOrderGroupingChange(e.target.checked)}
-                  />
-                  <span className="truncate">{tt('ladeplan.orderGrouping')}</span>
-                </label>
-                <InfoHint ariaLabel={tt('ladeplan.orderGrouping')} text={tt('ladeplan.orderGroupingHint')} />
-              </span>
-            )}
-          </ActionGroup>
-        )}
-
         {/* Output group. PDF deliberately routes through the same print dialog as "Drucken" — the
             A4 sheet IS the report; the hint tells the user to pick "save as PDF" there. */}
         <ActionGroup label={tt('action.export')} className="ml-auto">

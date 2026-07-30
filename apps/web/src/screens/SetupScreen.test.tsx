@@ -1,19 +1,65 @@
 import { describe, it, expect, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
-import { SetupScreen, keepsArmed } from './SetupScreen';
+import { SetupScreen, keepsArmed, type OrderState, type PositionState, type SetupScreenProps } from './SetupScreen';
+import { emptyPosition } from './setup/setupState';
+import { VEHICLE_PRESETS } from '../data/presets';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
 import type { Article, ArticleInput } from '@shadrin-v/contracts';
 
-function renderSetup(onCalculate: (l: Load) => void, onReset?: () => void) {
+/** Стратегия расчёта — проп сверху (5nb этап 2): экран её только показывает и меняет колбэком,
+ *  владеет ею App. `opts` перекрывает любой проп, чтобы тесту не приходилось расширять хелпер
+ *  каждый раз, когда нужен ещё один вход. */
+function renderSetup(
+  onCalculate: (l: Load) => void,
+  onReset?: () => void,
+  opts: Partial<SetupScreenProps> = {},
+) {
   return render(
     <LocaleProvider initial="de">
-      <SetupScreen onCalculate={onCalculate} onReset={onReset} />
+      <SetupScreen
+        onCalculate={onCalculate}
+        onReset={onReset}
+        loadingMode="combined"
+        orderGrouping="strict"
+        onLoadingModeChange={() => {}}
+        onOrderGroupingChange={() => {}}
+        {...opts}
+      />
     </LocaleProvider>,
   );
+}
+
+/** Позиция с валидными габаритами: с 5nb этапа 2 «Berechnen» не считает заявку с незаполненными
+ *  размерами (§6 — это ошибка, а не мелочь), поэтому фикстура по умолчанию расчётопригодна, а
+ *  дефект тест вносит точечно. */
+const position = (p: Partial<PositionState> = {}): PositionState => ({
+  ...emptyPosition(),
+  name: 'EPAL 1',
+  length: 1200,
+  width: 800,
+  height: 144,
+  quantity: 10,
+  ...p,
+});
+
+const order = (orderId: string, positions: PositionState[]): OrderState => ({
+  key: `key-${orderId}`,
+  orderId,
+  colorIndex: 0,
+  positions,
+});
+
+/** Заполнить габариты i-й позиции экрана (0-based). Индекс +1, потому что нулевые Länge/Breite/Höhe
+ *  принадлежат кузову в шапке. fireEvent, а не userEvent: это подготовка фикстуры, а не проверка
+ *  ввода, и лишние сотни синтетических нажатий только кормят известный флейк (LKWkalk-bmi). */
+function fillDims(i = 0, dims: { l: string; w: string; h: string } = { l: '1200', w: '800', h: '144' }) {
+  fireEvent.change(screen.getAllByLabelText('Länge')[i + 1], { target: { value: dims.l } });
+  fireEvent.change(screen.getAllByLabelText('Breite')[i + 1], { target: { value: dims.w } });
+  fireEvent.change(screen.getAllByLabelText('Höhe')[i + 1], { target: { value: dims.h } });
 }
 
 const ERP_ARTICLE: Article = {
@@ -39,7 +85,13 @@ function renderSetupWithCatalogue(dpOverrides: Partial<DataProvider> = {}) {
   render(
     <LocaleProvider initial="de">
       <DataProviderProvider value={dp}>
-        <SetupScreen onCalculate={() => {}} />
+        <SetupScreen
+          onCalculate={() => {}}
+          loadingMode="combined"
+          orderGrouping="strict"
+          onLoadingModeChange={() => {}}
+          onOrderGroupingChange={() => {}}
+        />
       </DataProviderProvider>
     </LocaleProvider>,
   );
@@ -59,6 +111,7 @@ describe('SetupScreen', () => {
   it('builds a Load with the order zone and calls onCalculate', async () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
+    fillDims(); // §6: без габаритов «Berechnen» ведёт к ошибке вместо расчёта
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     expect(onCalculate).toHaveBeenCalledTimes(1);
@@ -85,6 +138,7 @@ describe('SetupScreen', () => {
     // select and its InfoHint under one <label>, which makes dom-testing-library's label-text
     // heuristic match both — getByRole resolves the select's own accessible name unambiguously.
     expect(screen.getByRole('combobox', { name: 'Gabelzufahrt' })).toBeInTheDocument();
+    fillDims();
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
@@ -104,11 +158,19 @@ describe('SetupScreen', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(/hinten/i);
   });
 
-  it('Verschachtelt without a valid Δh disables Berechnen', async () => {
-    renderSetup(() => {});
+  // Раньше этот тест фиксировал `anyInvalid`: кнопка гасла. По §6 она больше не гаснет никогда —
+  // погашенная кнопка не фокусируется и не объявляется скринридером, то есть прячет и причину, и
+  // адрес ошибки. Осталось то же требование «с плохим Δh не считаем», но выраженное новым способом.
+  it('Verschachtelt without a valid Δh no longer disables Berechnen — the press leads to the row', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate);
+    fillDims(); // габариты в порядке, единственная ошибка — шаг вложения
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // nesting rules live in the panel
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    expect(screen.getByRole('button', { name: 'Berechnen' })).toBeDisabled();
+    const berechnen = screen.getByRole('button', { name: 'Berechnen' });
+    expect(berechnen).toBeEnabled();
+    await userEvent.click(berechnen);
+    expect(onCalculate).not.toHaveBeenCalled();
   });
 
   it('Verschachtelt with a valid Δh emits nesting and enables Berechnen', async () => {
@@ -119,6 +181,7 @@ describe('SetupScreen', () => {
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     await userEvent.type(screen.getByLabelText('Höhenzuwachs je Palette (Δh)'), '22');
+    fillDims();
     const berechnen = screen.getByRole('button', { name: 'Berechnen' });
     expect(berechnen).toBeEnabled();
     await userEvent.click(berechnen);
@@ -143,7 +206,7 @@ describe('SetupScreen', () => {
     await userEvent.selectOptions(screen.getByLabelText('Verschachtelungsmodus'), 'pairwise');
     expect((screen.getByLabelText(STEP) as HTMLInputElement).value).toBe('22');
 
-    await userEvent.type(screen.getAllByLabelText('Höhe')[1], '144');
+    fillDims(); // включая Höhe 144 — иначе заявка без габаритов не считается вовсе (§6)
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     // the engine still receives a single stepHeight — the one matching the selected mode
@@ -379,6 +442,8 @@ describe('SetupScreen', () => {
       expect((screen.getAllByLabelText('Auftrags-ID') as HTMLInputElement[]).map((i) => i.value)).toEqual(
         ['SO-2', 'SO-1'],
       );
+      fillDims(0);
+      fillDims(1);
       await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
       const load = onCalculate.mock.calls.at(-1)![0] as Load;
       expect([...new Set(load.cargo.map((c) => c.orderId))]).toEqual(['SO-2', 'SO-1']);
@@ -425,6 +490,8 @@ describe('SetupScreen', () => {
     const addButtons = screen.getAllByRole('button', { name: /Auftrag hinzufügen/ });
     expect(addButtons.length).toBe(2); // top bar + below the last order
     await userEvent.click(addButtons[1]); // the bottom duplicate
+    fillDims(0);
+    fillDims(1);
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const load = onCalculate.mock.calls[0][0] as Load;
@@ -467,7 +534,179 @@ describe('SetupScreen — rules panel selection (5nb)', () => {
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     unmount();
     renderSetup(() => {});
-    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
+    // Пустое состояние панели — теперь сводка загрузки (§6), а не прежняя заглушка «выберите
+    // позицию»: панель никогда не пустует. Признак «ничего не выбрано» — отсутствие разбора.
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(screen.queryByText('So wird gerechnet')).toBeNull();
+  });
+});
+
+// Шапка, сводка и новое поведение «Рассчитать» (LKWkalk-5nb этап 2, спека §6). Кнопка больше не
+// гаснет: при ошибке нажатие не считает, а ведёт к первой ошибочной строке — причина и адрес
+// перестают быть невидимыми.
+describe('SetupScreen — «Рассчитать» и сводка (5nb этап 2)', () => {
+  it('«Рассчитать» не гаснет при ошибке, а выбирает первую ошибочную позицию', async () => {
+    const onCalculate = vi.fn();
+    // verschachtelt без шага вложения — ошибка stepInvalid; габариты при этом в порядке
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', state: 'verschachtelt' })])],
+    });
+    const calc = screen.getByRole('button', { name: 'Berechnen' });
+    expect(calc).toBeEnabled();
+    await userEvent.click(calc);
+
+    expect(onCalculate).not.toHaveBeenCalled();
+    // панель разбора открылась именно на этой строке (в широком режиме это <aside>, а не диалог —
+    // отсюда проверка по содержимому панели, а не по роли)
+    expect(await screen.findByText('So wird gerechnet')).toBeInTheDocument();
+    expect(screen.getByLabelText('Artikel')).toHaveValue('EPAL 1');
+    // …и фокус уехал в первое поле строки. waitFor: фокус ставится в requestAnimationFrame.
+    await waitFor(() => expect(screen.getByLabelText('Artikel')).toHaveFocus());
+  });
+
+  it('«Рассчитать» ведёт к ПЕРВОЙ ошибочной строке, а не к любой', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [
+        order('SO-1001', [
+          position({ id: 'p1', name: 'Heil' }),
+          position({ id: 'p2', name: 'Kaputt', width: '' }),
+          position({ id: 'p3', name: 'Auch kaputt', height: '' }),
+        ]),
+      ],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(await screen.findByText('So wird gerechnet')).toBeInTheDocument();
+    // Панель называет разбираемую строку текстом (имена строк живут в input.value, не в тексте),
+    // поэтому getByText однозначно указывает на выбранную: вторая, первая ошибочная, — не третья.
+    expect(screen.getByText('Kaputt')).toBeInTheDocument();
+    expect(screen.queryByText('Auch kaputt')).toBeNull();
+  });
+
+  it('без ошибок «Рассчитать» считает', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(onCalculate).toHaveBeenCalledOnce();
+  });
+
+  it('предупреждение расчёт не блокирует', async () => {
+    const onCalculate = vi.fn();
+    // количество 0 — законный способ временно исключить позицию, а не ошибка (§6)
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(onCalculate).toHaveBeenCalledOnce();
+  });
+
+  it('клик по сообщению в сводке открывает его строку', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', width: '' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: /EPAL 1.*Maße unvollständig/ }));
+    expect(screen.getByLabelText('Artikel')).toHaveValue('EPAL 1');
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+  });
+
+  it('сводка в пустом состоянии панели считает заказы, позиции и единицы', () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [
+        order('SO-1001', [position({ id: 'p1', quantity: 10 }), position({ id: 'p2', quantity: 5 })]),
+      ],
+    });
+    // 1 заказ · 2 позиции · 15 единиц — панель без выбора занята делом, а не заглушкой
+    const summary = screen.getByText('Ladung').closest('aside')!;
+    expect(within(summary).getByText('2')).toBeInTheDocument();
+    expect(within(summary).getByText('15')).toBeInTheDocument();
+    expect(within(summary).getByText('Alles bereit zur Berechnung.')).toBeInTheDocument();
+  });
+
+  it('кладёт выбранную стратегию в Load явно, а не оставляет её прежнему плану', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+      loadingMode: 'rear',
+      orderGrouping: 'densityFirst',
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.loadingMode).toBe('rear');
+    expect(load.orderGrouping).toBe('densityFirst');
+  });
+
+  // Ревью Задачи 5: `onVehicleChange` шапки можно было заменить на пустышку, и все 99 тестов
+  // проходили — правка кузова не была покрыта ничем. Кузов задаёт весь расчёт, так что путь
+  // «поле в шапке → состояние экрана → Load и сохранённый черновик» обязан быть прибит.
+  it('правка габаритов кузова в шапке доезжает до Load и до черновика', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    // [0] — поле кузова в шапке; [1] и дальше принадлежат строкам позиций
+    fireEvent.change(screen.getAllByLabelText('Länge')[0], { target: { value: '7200' } });
+    fireEvent.change(screen.getAllByLabelText('Höhe')[0], { target: { value: '2600' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.vehicle.length).toBe(7200);
+    expect(load.vehicle.height).toBe(2600);
+    const saved = JSON.parse(globalThis.localStorage.getItem('ladungsplaner.setup') ?? '{}');
+    expect(saved.vehicle).toMatchObject({ length: 7200, height: 2600 });
+  });
+
+  it('смена пресета кузова в шапке заменяет габариты целиком', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.selectOptions(screen.getByLabelText('Fahrzeug'), 'Wechselbrücke');
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const preset = VEHICLE_PRESETS.find((p) => p.name === 'Wechselbrücke')!;
+    const load = onCalculate.mock.calls.at(-1)![0] as Load;
+    expect(load.vehicle).toMatchObject({ name: preset.name, length: preset.length, width: preset.width, height: preset.height });
+  });
+
+  // Защита от потери ручных правок раскладки переехала сюда с переключателей ладеплана: они больше
+  // ничего не пересчитывают, а «Рассчитать» строит план с нуля (5nb этап 2, решение владельца 2).
+  it('«Рассчитать» предупреждает о потере ручных правок раскладки и при отказе не считает', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+      hasManualEdits: true,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onCalculate).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('без ручных правок «Рассчитать» ни о чём не спрашивает', async () => {
+    const confirm = vi.spyOn(window, 'confirm');
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onCalculate).toHaveBeenCalledOnce();
+    confirm.mockRestore();
+  });
+
+  it('переключатели стратегии в шапке зовут колбэк, а не считают', async () => {
+    const onCalculate = vi.fn();
+    const onLoadingModeChange = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+      onLoadingModeChange,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
+    expect(onLoadingModeChange).toHaveBeenCalledWith('rear');
+    expect(onCalculate).not.toHaveBeenCalled();
   });
 });
 
@@ -619,7 +858,7 @@ describe('SetupScreen article combobox', () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'Sonderkiste');
-    await userEvent.type(screen.getAllByLabelText('Länge')[1], '500');
+    fillDims(0, { l: '500', w: '400', h: '300' });
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.cargo[0].name).toBe('Sonderkiste');
@@ -733,7 +972,13 @@ describe('SetupScreen article combobox', () => {
     render(
       <LocaleProvider initial="de">
         <DataProviderProvider value={dp}>
-          <SetupScreen onCalculate={() => {}} />
+          <SetupScreen
+            onCalculate={() => {}}
+            loadingMode="combined"
+            orderGrouping="strict"
+            onLoadingModeChange={() => {}}
+            onOrderGroupingChange={() => {}}
+          />
         </DataProviderProvider>
       </LocaleProvider>,
     );
@@ -921,15 +1166,17 @@ describe('SetupScreen — removing from the calculation', () => {
   it('clears the panel selection when the selected position is deleted, even though its order survives', async () => {
     renderSetup(() => {});
     await userEvent.click(addPosition()); // a second position in SO-1
-    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
+    // Пустое состояние панели — сводка загрузки (§6); «So wird gerechnet» есть только при разборе.
+    expect(screen.queryByText('So wird gerechnet')).toBeNull();
 
     await userEvent.click(screen.getAllByTestId('rule-chip')[1]); // select the SECOND row
-    expect(screen.queryByText('Position auswählen, um ihre Regeln zu sehen.')).toBeNull();
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
 
     await userEvent.click(trashes()[1]); // delete that same (selected) row
     await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
 
-    expect(screen.getByText('Position auswählen, um ihre Regeln zu sehen.')).toBeInTheDocument();
+    expect(screen.queryByText('So wird gerechnet')).toBeNull();
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
   });
 
   it('moves focus to "+ Auftrag hinzufügen" after confirming an order delete', async () => {
@@ -951,6 +1198,7 @@ describe('SetupScreen — removing from the calculation', () => {
 
     await userEvent.click(orderTrashes()[0]); // remove the FIRST order (SO-1, slot 0)
     await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
+    fillDims(0);
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     expect(onCalculate.mock.calls.at(-1)?.[1]?.orderColors).toEqual({ 'SO-2': 1 });
@@ -989,6 +1237,8 @@ describe('SetupScreen — removing from the calculation', () => {
     await userEvent.type(orderIdField, 'AB-4711');
 
     await userEvent.click(addOrder());
+    fillDims(0);
+    fillDims(1);
     await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
 
     const orderColors = onCalculate.mock.calls.at(-1)?.[1]?.orderColors as Record<string, number>;
@@ -1276,5 +1526,135 @@ describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
     expect(chip).toHaveFocus();
 
     vi.unstubAllGlobals();
+  });
+});
+
+// Находки финального ревью этапа 2 (5nb): у сводки не было поверхности на узком экране (I1), из
+// панели правил не было выхода в широком (I2), а «Рассчитать» на телефоне ставил фокус ЗА
+// полноэкранным drawer (I3). matchMedia в jsdom нет вовсе, поэтому по умолчанию useIsWide отвечает
+// «широко» — узкий экран тесты подставляют сами.
+describe('SetupScreen — сводка и выход из панели в обоих режимах (финальное ревью)', () => {
+  const narrow = () =>
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+
+  it('на узком экране сводка и предупреждения видны и без выбранной строки (I1)', () => {
+    narrow();
+    // Количество 0 — предупреждение: расчёт возможен, но позиция в него не войдёт (§6). Ниже 1280px
+    // такому сообщению негде было показаться: колонка рендерилась только в широком режиме, drawer —
+    // только при выбранной строке.
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(screen.getByText(/Menge 0/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('на узком экране сводка остаётся под списком и при открытом drawer — список не прыгает', async () => {
+    narrow();
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
+    });
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('в широком режиме повторный клик по чипу закрывает разбор и возвращает сводку (I2)', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' })])],
+    });
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip);
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+    expect(screen.queryByText('Ladung')).toBeNull();
+
+    await userEvent.click(chip);
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(screen.queryByText('So wird gerechnet')).toBeNull();
+    expect(chip).toHaveFocus();
+  });
+
+  it('в широком режиме Esc тоже возвращает к сводке', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' })])],
+    });
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    await userEvent.click(chip);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+    expect(chip).toHaveFocus();
+  });
+
+  it('взведённое удаление и в широком режиме забирает первый Esc себе', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [
+        order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' }), position({ id: 'p2', name: 'EPAL 2' })]),
+      ],
+    });
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    const trashes = screen.getAllByRole('button', { name: 'Position aus der Berechnung entfernen' });
+    await userEvent.click(trashes[1]);
+
+    // Первый Esc — разоружение (договорённость Task 6), панель разбора при этом не закрывается…
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Löschen bestätigen' })).toBeNull();
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
+    // …и только следующий возвращает сводку.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+  });
+
+  it('в широком режиме у панели разбора есть крестик, и он тоже ведёт к сводке (I2)', async () => {
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1' })])],
+    });
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Regeln schließen' }));
+    expect(screen.getByText('Ladung')).toBeInTheDocument();
+  });
+
+  it('на узком экране «Рассчитать» с ошибкой уводит фокус В панель, а не в поле за ней (I3)', async () => {
+    narrow();
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', width: '' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+
+    const drawer = await screen.findByRole('dialog', { name: 'Regeln' });
+    // waitFor: фокус ставится в requestAnimationFrame.
+    await waitFor(() => expect(drawer).toHaveFocus());
+    // Поле артикула строки на 375px лежит ЗА панелью — каретка там равносильна вводу в никуда.
+    expect(screen.getByLabelText('Artikel')).not.toHaveFocus();
+    vi.unstubAllGlobals();
+  });
+
+  it('на узком экране клик по сообщению сводки тоже уводит фокус в панель', async () => {
+    narrow();
+    renderSetup(() => {}, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', width: '' })])],
+    });
+    await userEvent.click(screen.getByRole('button', { name: /EPAL 1.*Maße unvollständig/ }));
+    const drawer = await screen.findByRole('dialog', { name: 'Regeln' });
+    await waitFor(() => expect(drawer).toHaveFocus());
+    vi.unstubAllGlobals();
+  });
+  // Esc отменяет самое внутреннее. Раз Esc теперь закрывает панель и в широком режиме, открытый
+  // список подсказок обязан забирать нажатие себе (ArticleCombobox.stopPropagation) — иначе одно
+  // нажатие делало бы два дела: гасило список И закрывало разбор, которого пользователь не трогал.
+  it('Esc при открытом списке подсказок гасит только список, панель разбора остаётся', async () => {
+    renderSetupWithCatalogue();
+    await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
+    const box = screen.getByRole('combobox', { name: 'Artikel' });
+    await userEvent.type(box, 'Git');
+    expect(await screen.findByRole('listbox')).toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
   });
 });

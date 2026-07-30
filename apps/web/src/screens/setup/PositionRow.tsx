@@ -21,7 +21,12 @@ export interface PositionRowProps {
   index: number; // палитра заказа
   vehicle: Vehicle;
   selected: boolean;
-  onSelect: () => void; // клик по чипу — выбрать строку и открыть панель
+  onSelect: () => void; // выбрать строку и открыть панель (чип, подхваченный артикул)
+  /** Снять выбор. Чип — это disclosure (`aria-expanded`), поэтому повторный клик по нему обязан
+   *  закрывать панель: в широком режиме это единственный способ вернуться к сводке загрузки
+   *  (финальное ревью, находка I2). Отдельный проп, а не переключалка внутри `onSelect`: тот же
+   *  колбэк зовёт подхват артикула из подсказок, и ему закрывать панель нельзя. */
+  onDeselect: () => void;
   onChange: (patch: Partial<PositionState>) => void;
   armed: boolean;
   onArm: () => void;
@@ -33,7 +38,7 @@ export interface PositionRowProps {
 }
 
 export function PositionRow({
-  position: p, index, vehicle, selected, onSelect, onChange, armed, onArm, onRemove, chipRef, nameRef,
+  position: p, index, vehicle, selected, onSelect, onDeselect, onChange, armed, onArm, onRemove, chipRef, nameRef,
 }: PositionRowProps) {
   // One translation source for the whole row — the dominant pattern in this repo (ArticleCombobox,
   // WarehouseFloor, Legend, HeroHeader, EmptyPlan, ...). Threading `tt` down as a prop is a
@@ -106,7 +111,7 @@ export function PositionRow({
         data-testid="rule-chip"
         aria-expanded={selected}
         aria-controls={RULES_PANEL_ID}
-        onClick={onSelect}
+        onClick={selected ? onDeselect : onSelect}
         className={`ml-auto inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-caption transition-colors ${
           invalid ? 'border-danger text-danger'
             : selected ? 'border-brand text-brand' : 'border-line bg-sub text-muted hover:border-brand hover:text-brand'

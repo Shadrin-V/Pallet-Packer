@@ -50,6 +50,23 @@ export const de: Dictionary = {
   'setup.panel.catalogue': 'Katalog',
   'setup.panel.empty': 'Position auswählen, um ihre Regeln zu sehen.',
   'setup.panel.close': 'Regeln schließen',
+  'setup.summary.title': 'Ladung',
+  'setup.summary.orders': 'Aufträge',
+  'setup.summary.positions': 'Positionen',
+  'setup.summary.units': 'Einheiten',
+  'setup.summary.volume': 'Ladevolumen',
+  'setup.summary.ofVehicle': 'von {vehicle}',
+  'setup.msg.errors': 'Berechnung nicht möglich',
+  'setup.msg.warnings': 'Hinweise',
+  'setup.msg.none': 'Alles bereit zur Berechnung.',
+  'setup.msg.stepInvalid': 'Verschachtelungsschritt fehlt oder ist ungültig',
+  'setup.msg.dimsMissing': 'Maße unvollständig',
+  'setup.msg.tooTall': 'Höher als der Laderaum',
+  'setup.msg.volumeOver': 'Ladevolumen übersteigt den Laderaum — es bleibt etwas stehen',
+  'setup.msg.zeroQuantity': 'Menge 0 — wird nicht gerechnet',
+  'setup.msg.goToPosition': 'Zur Position springen',
+  'setup.header.calcBlocked': 'Berechnung nicht möglich: {n} Fehler',
+  'unit.m3': 'm³',
   'warehouse.title': 'Lager',
   'warehouse.hint':
     'Nicht platzierte Stapel, im Maßstab 1:1 wie im Laderaum. Einen Stapel in den Laderaum ziehen, um ihn zu setzen — oder einen Stapel aus dem Laderaum hierher ziehen, um Platz zu schaffen (z. B. zum Drehen).',
@@ -87,6 +104,10 @@ export const de: Dictionary = {
   'ladeplan.loadingMode': 'Belademodus',
   'ladeplan.loadingModeHint':
     'Von welcher Seite be- und entladen wird. «Von hinten»: nur die Hecktür — Reihen wachsen von vorne zur Tür. «Von der Seite»: nur die Plane. «Hinten und Seite»: beide offen — es werden beide Varianten gerechnet und die dichtere gezeigt.',
+  // Отдельное имя для кнопки-подсказки: совпади оно с именем самого переключателя, на странице
+  // оказались бы два элемента «Belademodus» — ровно та коллизия имён, что уже тянется у галочки
+  // группировки (LKWkalk-lu6).
+  'ladeplan.loadingModeHintLabel': 'Erklärung zum Belademodus',
   'ladeplan.orderGrouping': 'Dichte vor Auftragstrennung',
   'ladeplan.orderGroupingHint':
     'Dichter gepackt, aber Aufträge sind gemischt und müssen beim Entladen sortiert werden.',

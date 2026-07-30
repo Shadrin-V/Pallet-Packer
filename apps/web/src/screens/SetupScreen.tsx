@@ -5,25 +5,29 @@
 // колонки от xl. Собственно строка (PositionRow), карточка заказа (OrderCard) и разбор правил
 // (RulesPanel) живут в ./setup/ — здесь их только соединяют.
 import { useEffect, useRef, useState } from 'react';
-import type { Load, Vehicle } from '@shadrin-v/engine';
-import { fillTemplate, stepInvalid } from './components/stackFormula';
+import type { Load, LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
+import { fillTemplate } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
-import { Measure, Select, Button } from '../ui/primitives';
+import { Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
+import { LoadSummary } from './setup/LoadSummary';
 import { RulesPanel } from './setup/RulesPanel';
+import { SetupHeader } from './setup/SetupHeader';
 import { RULES_PANEL_ID } from './setup/PositionRow';
 import { useIsWide } from './setup/useIsWide';
+import { useStickyCompact } from './setup/useStickyCompact';
+import { firstError, setupMessages, setupSummary, type SetupMessageWhere } from './setup/setupValidation';
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
   emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, saveSetup,
   SETUP_STORAGE_KEY, toCargo,
-  type LockedFields, type Num, type OrderState, type PositionState,
+  type LockedFields, type OrderState, type PositionState,
 } from './setup/setupState';
 
 export {
@@ -39,6 +43,17 @@ export interface SetupScreenProps {
   onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => void;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
+  /** Стратегия расчёта (5nb этап 2, решение владельца 3): одно состояние на два экрана, владеет им
+   *  `App`. Здесь её только ВЫБИРАЮТ — пересчёта отсюда нет, потому что плана может ещё не быть;
+   *  выбранное значение уходит в `Load` при нажатии «Рассчитать». */
+  loadingMode: LoadingMode;
+  orderGrouping: OrderGrouping;
+  onLoadingModeChange: (m: LoadingMode) => void;
+  onOrderGroupingChange: (g: OrderGrouping) => void;
+  /** Есть ли на показанном ладеплане ручные правки раскладки. «Рассчитать» строит план заново и
+   *  потому их выбрасывает — единственное действие, которое их теряет, с тех пор как переключатели
+   *  стратегии перестали пересчитывать (5nb этап 2). Отсюда предупреждение перед расчётом. */
+  hasManualEdits?: boolean;
 }
 
 /** How long an armed delete waits before disarming itself (ADR 022). */
@@ -75,7 +90,10 @@ interface Selection {
 }
 
 // ---- component ------------------------------------------------------------
-export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onReset }: SetupScreenProps) {
+export function SetupScreen({
+  initialVehicle, initialOrders, onCalculate, onReset,
+  loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange, hasManualEdits = false,
+}: SetupScreenProps) {
   const tt = useT();
   const preset0 = VEHICLE_PRESETS[0];
   const defaultVehicle = (): Vehicle => ({ id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height });
@@ -102,12 +120,17 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // this to return focus to a sibling row after a position delete instead of evicting it onto
   // "+ Auftrag hinzufügen" (see removePosition below).
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
+  // Сам drawer: фокус после «Рассчитать» с ошибкой должен уезжать ВНУТРЬ него (спека §7). На 375px
+  // панель занимает весь экран, и прежний фокус в поле артикула строки оставлял каретку и системную
+  // клавиатуру за непрозрачной панелью — набранное уходило в невидимое поле (финальное ревью, I3).
+  const drawerRef = useRef<HTMLDivElement>(null);
   const closePanel = () => {
     const id = selection?.positionId;
     setSelection(null);
     if (id) chipRefs.current.get(id)?.focus();
   };
-  const drawerOpen = !wide && !!selectedPosition;
+  /** Панель разбора открыта в любом из двух режимов — колонкой (wide) или drawer (иначе). */
+  const panelOpen = !!selectedPosition;
 
   // Demo is a transient preview: it loads the demo into state but must NOT persist over the user's
   // saved draft (QA). This one-shot flag skips the very next save (the demo state change); any later
@@ -123,7 +146,9 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // holds by construction instead of by keeping a flag per row in step (ADR 022).
   const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
 
-  // Esc closes the drawer. A document-level listener (not onKeyDown on the dialog element) because
+  // Esc закрывает панель разбора — в ОБОИХ режимах (финальное ревью, I2: в широком режиме выхода из
+  // панели не было вовсе, и сводка загрузки становилась одноразовой — видной только до первого
+  // выбора строки). A document-level listener (not onKeyDown on the dialog element) because
   // opening the drawer does not move focus into it — the chip that opened it keeps focus, so a
   // handler scoped to the dialog's own subtree would never see the keydown bubble through it.
   // Depends on `selection` (not just the open/closed flag) so switching to a different row while
@@ -137,7 +162,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
   // data), so it must win: while something is armed, Esc only disarms (via the effect below) and this
   // handler no-ops; the drawer only closes on a later Esc once nothing is armed.
   useEffect(() => {
-    if (!drawerOpen) return;
+    if (!panelOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || armed) return;
       closePanel();
@@ -147,7 +172,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     // `closePanel` closes over `selection`, so it must be treated as reactive: the effect is
     // re-established (with a fresh closePanel closure) whenever selection changes, so switching to a
     // different row while the drawer stays open still returns focus to THAT row's chip.
-  }, [drawerOpen, selection, armed]);
+  }, [panelOpen, selection, armed]);
 
   useEffect(() => {
     if (!armed) return;
@@ -337,53 +362,85 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
     });
   };
 
-  // A nestable position with an invalid Δh/h_д blocks calculation (ERR_INVALID_NESTING otherwise).
-  const anyInvalid = orders.some((o) =>
-    o.positions.some((p) => stepInvalid(p.state, activeStep(p), p.height)),
-  );
+  // §6: сводка и сообщения — чистые функции от того же состояния, что уходит в Load, поэтому
+  // показанное в шапке и в панели не может разойтись с тем, что реально посчитается.
+  const summary = setupSummary(orders, vehicle);
+  const messages = setupMessages(orders, vehicle);
+  const errorCount = messages.filter((m) => m.level === 'error').length;
+  const [compact, sentinelRef] = useStickyCompact();
+
+  /** Открыть строку по адресу из сообщения — общий путь для клика по сообщению и для «Рассчитать»
+   *  с ошибками: выбрать строку, открыть её панель, увести туда фокус. */
+  const goTo = (where: SetupMessageWhere) => {
+    setSelection({ orderKey: where.orderKey, positionId: where.positionId });
+    // requestAnimationFrame, потому что в режиме drawer панель монтируется только после этого
+    // setState, а в режиме колонки строка может быть за пределами вьюпорта — к моменту кадра
+    // React уже применил выбор.
+    requestAnimationFrame(() => {
+      // В широком режиме фокус — в поле артикула строки: это её первое поле, строка и панель видны
+      // одновременно, и с него естественно продолжить правку.
+      if (wide) {
+        nameRefs.current.get(where.positionId)?.focus();
+        return;
+      }
+      // В режиме drawer панель на телефоне закрывает экран целиком, и та же строка оказывается ЗА
+      // ней: каретка и системная клавиатура — в невидимом поле, набранное уходит в никуда
+      // (финальное ревью, I3). Спека §7 требует уводить фокус внутрь панели, поэтому фокус получает
+      // сам drawer (tabIndex −1); Esc и крестик по-прежнему вернут его на чип.
+      drawerRef.current?.focus();
+    });
+  };
 
   const handleCalculate = () => {
-    if (anyInvalid) return;
+    // Кнопка больше не гаснет (§6): погашенная не фокусируется и не объявляется скринридером, то
+    // есть молча прячет и причину, и адрес ошибки. Нажатие при ошибках не считает, а ведёт к первой
+    // ошибочной строке; предупреждения (количество 0, объём, высота) расчёт не блокируют.
+    const first = firstError(messages);
+    if (first?.where) {
+      goTo(first.where);
+      return;
+    }
+    // Пересчёт строит раскладку с нуля и выбрасывает ручные правки стопок. Раньше об этом
+    // предупреждали переключатели стратегии на ладеплане (withDiscardGuard); с 5nb этапа 2 они
+    // ничего не пересчитывают, и единственный, кто теряет правки, — эта кнопка. Спрашиваем только
+    // когда терять действительно есть что.
+    if (hasManualEdits && typeof window !== 'undefined' && !window.confirm(tt('ladeplan.discardEditsConfirm')))
+      return;
     const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
-    onCalculate({ vehicle, cargo }, { orderColors: buildOrderColors(orders) });
+    // Стратегия кладётся в Load ЯВНО: сама по себе она ничего не пересчитывает (решение владельца
+    // 1), выбор из шапки применяется именно здесь.
+    onCalculate(
+      { vehicle, cargo, loadingMode, orderGrouping },
+      { orderColors: buildOrderColors(orders) },
+    );
   };
 
   return (
     <>
       <HeroHeader />
       <main className="mx-auto max-w-[1120px] px-5 py-6 sm:px-6">
-      {/* Vehicle bar */}
-      <section className="mb-6 rounded-card bg-card shadow-card">
-        <div className="flex flex-wrap items-end gap-4 p-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-label uppercase font-semibold text-faint">{tt('vehicle.label')}</span>
-            <Select
-              ariaLabel={tt('vehicle.label')}
-              value={vehicle.name}
-              onChange={(name) => {
-                const p = VEHICLE_PRESETS.find((v) => v.name === name);
-                if (p) setVehicle({ id: p.key, name: p.name, length: p.length, width: p.width, height: p.height });
-                else setVehicle((v) => ({ ...v, name: tt('setup.vehiclePreset.custom') }));
-              }}
-              options={[
-                { value: tt('setup.vehiclePreset.custom'), label: tt('setup.vehiclePreset.custom') },
-                ...VEHICLE_PRESETS.map((p) => ({ value: p.name, label: p.name })),
-              ]}
-            />
-          </div>
-          <MeasureField label={tt('field.length')} value={vehicle.length} onChange={(length) => setVehicle((v) => ({ ...v, length: numOr0(length) }))} />
-          <MeasureField label={tt('field.width')} value={vehicle.width} onChange={(width) => setVehicle((v) => ({ ...v, width: numOr0(width) }))} />
-          <MeasureField label={tt('field.height')} value={vehicle.height} onChange={(height) => setVehicle((v) => ({ ...v, height: numOr0(height) }))} />
-        </div>
-      </section>
-
-      {/* Orders. Demo lives here, with the input it fills — not next to the destructive Reset (rgv.4). */}
+      {/* Маячок ПЕРЕД шапкой: пока он виден, шапка полная; уехал за верх — ужимается (§6).
+          Наблюдаем за элементом, а не за скроллом — см. useStickyCompact. Отрицательные поля шапки
+          гасят паддинг <main>, поэтому она обязана жить внутри него, а не рядом. */}
+      <div ref={sentinelRef} aria-hidden className="h-px" />
+      <SetupHeader
+        vehicle={vehicle}
+        summary={summary}
+        errorCount={errorCount}
+        compact={compact}
+        loadingMode={loadingMode}
+        orderGrouping={orderGrouping}
+        onLoadingModeChange={onLoadingModeChange}
+        onOrderGroupingChange={onOrderGroupingChange}
+        onVehicleChange={setVehicle}
+        onDemo={handleDemo}
+        onReset={handleReset}
+        onCalculate={handleCalculate}
+      />
+      {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать». */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={handleDemo}>{tt('action.demo')}</Button>
-          <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
-        </div>
+        <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
       {loadedDemo !== null && (
         // What this demo IS comes first; how to get the next one is an aside at the end (QA).
@@ -428,6 +485,7 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
               onRemovePosition={(pid) => removePosition(o.key, pid)}
               selectedPositionId={selection?.orderKey === o.key ? selection.positionId : null}
               onSelectPosition={(pid) => setSelection({ orderKey: o.key, positionId: pid })}
+              onDeselectPosition={closePanel}
               onChipRef={(pid, el) => {
                 if (el) chipRefs.current.set(pid, el);
                 else chipRefs.current.delete(pid);
@@ -459,8 +517,23 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
               vehicle={vehicle}
               onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
               onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
+              // Крестик есть и в широком режиме (финальное ревью, I2): без него из разбора правил
+              // нельзя было вернуться к сводке загрузки и списку предупреждений — а «Рассчитать» с
+              // ошибкой сам выбирает строку, так что попасть в панель можно было и не желая того.
+              onClose={selectedPosition ? closePanel : undefined}
+              summary={summary}
+              messages={messages}
+              onGoTo={goTo}
             />
           </aside>
+        )}
+        {/* Ниже порога двух колонок сводка живёт В ПОТОКЕ под списком заказов (финальное ревью, I1).
+            Раньше на узком экране её не было вовсе: колонка рендерилась только при `wide`, а drawer —
+            только при выбранной строке, и у предупреждений (количество 0, позиция выше кузова, объём
+            больше кузова) не оставалось никакой поверхности. Рендерится всегда, а не только при
+            пустом выборе: drawer накрывает её сверху, и список не прыгает при открытии-закрытии. */}
+        {!wide && (
+          <LoadSummary summary={summary} messages={messages} onGoTo={goTo} />
         )}
       </div>
 
@@ -478,6 +551,10 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
         // tech; full modality is tracked separately (LKWkalk-tn9).
         <div
           id={RULES_PANEL_ID}
+          ref={drawerRef}
+          // tabIndex −1: панель не попадает в Tab-порядок, но её можно сфокусировать программно —
+          // так «Рассчитать» с ошибкой уводит фокус ВНУТРЬ панели, а не в поле строки за ней (I3).
+          tabIndex={-1}
           role="dialog"
           aria-label={tt('setup.panel.rules')}
           className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto bg-card shadow-pop"
@@ -491,32 +568,19 @@ export function SetupScreen({ initialVehicle, initialOrders, onCalculate, onRese
             onChange={(patch) => selection && patchPosition(selection.orderKey, selection.positionId, patch)}
             onSaveArticle={() => (selectedPosition ? saveArticle(selectedPosition) : Promise.resolve(undefined))}
             onClose={closePanel}
+            summary={summary}
+            messages={messages}
+            onGoTo={goTo}
           />
         </div>
       )}
 
-      {/* Duplicate add-order action below the last order (E10). */}
+      {/* Duplicate add-order action below the last order (E10). «Сброс» и «Рассчитать» отсюда
+          уехали в липкую шапку (§6): под шестью заказами до них надо было домотать. */}
       <div className="mt-3 flex justify-center">
         <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
-
-      <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={handleReset}>{tt('action.reset')}</Button>
-        <Button variant="primary" onClick={handleCalculate} disabled={anyInvalid}>{tt('action.calculate')}</Button>
-      </div>
       </main>
     </>
-  );
-}
-
-// ---- vehicle measure field (label + Measure) ------------------------------
-function MeasureField({ label, value, onChange }: { label: string; value: Num; onChange: (v: Num) => void }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-label uppercase font-semibold text-faint">{label}</span>
-      <span className="w-24">
-        <Measure ariaLabel={label} value={value} onChange={onChange} />
-      </span>
-    </label>
   );
 }

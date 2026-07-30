@@ -1111,17 +1111,20 @@ describe('LadeplanScreen — section order', () => {
 });
 
 describe('LadeplanScreen — action bar groups', () => {
-  it('labels the strategy and export groups instead of one flat row (rgv.3)', () => {
+  // Раньше тест проверял ДВЕ именованные группы, стратегию и вывод (rgv.3). Стратегия уехала в
+  // шапку «Настройки» (5nb этап 2, решение владельца 2): два контрола с одним именем на одной
+  // странице были лишними и для скринридера, и для глаза. Осталась группа вывода — и проверка, что
+  // стратегии здесь больше нет.
+  it('keeps the named export group and no longer carries the strategy controls', () => {
     render(
       <LocaleProvider initial="de">
-        <LadeplanScreen load={load} layout={layout} onLoadingModeChange={vi.fn()} />
+        <LadeplanScreen load={load} layout={layout} />
       </LocaleProvider>,
     );
-    // The mode switch already exposes its own group named "Belademodus"; the bar adds the visible
-    // heading above it, plus a real group around the output actions.
-    expect(screen.getByRole('group', { name: 'Belademodus' })).toBeInTheDocument();
     expect(screen.getByText('Export')).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Export' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Belademodus' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toBeNull();
   });
 });
 
@@ -1200,7 +1203,9 @@ describe('LadeplanScreen — export', () => {
   });
 });
 
-// Strategy switch changes recompute the layout and discard manual edits, so warn first when edits exist.
+// Ручные правки раскладки живут в этом компоненте, а выбрасывает их «Рассчитать» на другом экране
+// (5nb этап 2: переключатели стратегии отсюда убраны и больше ничего не пересчитывают). Значит,
+// экран обязан сообщать наверх, есть ли что терять — предупреждает тот, кто теряет.
 const editable: Load = {
   vehicle: { id: 'v2', name: 'LKW', length: 3000, width: 2000, height: 2000 },
   cargo: [
@@ -1220,49 +1225,38 @@ const editable: Load = {
   ],
 };
 
-function renderEditable(onLoadingModeChange = vi.fn()) {
-  render(
+function renderEditable(onManualEditsChange = vi.fn()) {
+  const { unmount } = render(
     <LocaleProvider initial="de">
       <LadeplanScreen
         load={editable}
         layout={calculateLayout(editable)}
-        onLoadingModeChange={onLoadingModeChange}
+        onManualEditsChange={onManualEditsChange}
       />
     </LocaleProvider>,
   );
-  return onLoadingModeChange;
+  return { onManualEditsChange, unmount };
 }
 
-describe('LadeplanScreen — strategy switch vs manual edits', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('switches strategy without a prompt when there are no manual edits', async () => {
-    const confirm = vi.spyOn(window, 'confirm');
-    const onLoadingModeChange = renderEditable();
-    await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
-    expect(confirm).not.toHaveBeenCalled();
-    expect(onLoadingModeChange).toHaveBeenCalledWith('rear');
+describe('LadeplanScreen — сообщает наверх о ручных правках', () => {
+  it('свежий план правок не имеет', () => {
+    const { onManualEditsChange } = renderEditable();
+    expect(onManualEditsChange).toHaveBeenCalledWith(false);
+    expect(onManualEditsChange).not.toHaveBeenCalledWith(true);
   });
 
-  it('warns and keeps the current strategy when the user declines after editing', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const onLoadingModeChange = renderEditable();
-    // Make a manual edit: select the stack, then rotate it.
+  it('поворот стопки объявляется как ручная правка', async () => {
+    const { onManualEditsChange } = renderEditable();
     await userEvent.click(screen.getAllByText('×2')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Stapel drehen' }));
-
-    await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(onLoadingModeChange).not.toHaveBeenCalled();
+    expect(onManualEditsChange).toHaveBeenLastCalledWith(true);
   });
 
-  it('switches strategy after editing once the user confirms', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const onLoadingModeChange = renderEditable();
+  it('снятый со страницы план ничего не теряет — флаг гаснет', async () => {
+    const { onManualEditsChange, unmount } = renderEditable();
     await userEvent.click(screen.getAllByText('×2')[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Stapel drehen' }));
-
-    await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
-    expect(onLoadingModeChange).toHaveBeenCalledWith('rear');
+    unmount();
+    expect(onManualEditsChange).toHaveBeenLastCalledWith(false);
   });
 });

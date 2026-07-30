@@ -9,4 +9,4 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export { TRANSLATION_KEYS } from './keys';
 export type { TranslationKey } from './keys';
 export { t } from './translate';
-export { formatLength } from './format';
+export { formatLength, formatVolume } from './format';
