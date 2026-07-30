@@ -302,7 +302,12 @@ resolveGroupDrop(
 раскладка без ошибки. Дельта `(0, 0)` с ref, не называющим ни одной колонки, — по-прежнему отказ
 (`ERR_EDIT_NO_STACK`): ref проверяется до короткого пути нулевой дельты.
 
-Коды ошибок — существующие: `ERR_EDIT_NO_STACK`, `ERR_EDIT_OUT_OF_BOUNDS`, `ERR_EDIT_OVERLAP`.
+Коды ошибок — существующие: `ERR_EDIT_NO_STACK`, `ERR_EDIT_OUT_OF_BOUNDS`, `ERR_EDIT_OVERLAP`,
+а с фикса `LKWkalk-v1m` (2026-07-30) также `ERR_EDIT_ROTATION` и `ERR_EDIT_FORK_ACCESS`:
+`resolveGroupDrop` гоняет те же позиц-независимые проверки, что одиночный `resolveDrop`, по
+каждой участнице — ориентацию колонна берёт из раскладки, судит её ТЕКУЩИЙ `load`. Иначе при
+`load`, изменённом после расчёта (смена `forkAxis`/`rotation`/`loadingMode`), магнит обещал
+`ok:true` для дельты, которую `moveStacks` отвергнет, — вопреки обещанию ADR 020.
 
 ## 3. Коды ошибок
 
