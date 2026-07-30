@@ -65,6 +65,7 @@ export const de: Dictionary = {
   'setup.msg.tooTall': 'Höher als der Laderaum',
   'setup.msg.volumeOver': 'Ladevolumen übersteigt den Laderaum — es bleibt etwas stehen',
   'setup.msg.zeroQuantity': 'Menge 0 — wird nicht gerechnet',
+  'setup.msg.duplicateOrderId': 'Auftrags-Nr. wiederholt sich — die Aufträge zählen als einer',
   'setup.msg.goToPosition': 'Zur Position springen',
   'setup.header.calcBlocked': 'Berechnung nicht möglich: {n} Fehler',
   'unit.m3': 'm³',

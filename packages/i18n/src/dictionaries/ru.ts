@@ -65,6 +65,7 @@ export const ru: Dictionary = {
   'setup.msg.tooTall': 'Выше кузова',
   'setup.msg.volumeOver': 'Объём груза больше объёма кузова — что-то останется',
   'setup.msg.zeroQuantity': 'Количество 0 — в расчёт не идёт',
+  'setup.msg.duplicateOrderId': 'Auftrags-ID повторяется — заказы посчитаются как один',
   'setup.msg.goToPosition': 'Перейти к позиции',
   'setup.header.calcBlocked': 'Расчёт невозможен: ошибок — {n}',
   'unit.m3': 'м³',
