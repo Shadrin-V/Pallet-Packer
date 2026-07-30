@@ -82,6 +82,7 @@ export function CrossSection({
   preview,
   onCarry,
   onCarryEnd,
+  showTruck = true,
 }: {
   load: Load;
   layout: Layout;
@@ -123,6 +124,10 @@ export function CrossSection({
   /** Fires once the carry gesture ends, however it ends (a drop, an outside hand-off, or a cancel) —
    *  the parent's ghost must not outlive the drag that produced it. */
   onCarryEnd?: () => void;
+  /** Рисовать ли обвес грузовика — кабину, шасси, колёса, линию земли (7i6). По умолчанию да:
+   *  выключение — осознанный выбор пользователя, а не состояние по умолчанию. Линеек и рамки кузова
+   *  не касается. */
+  showTruck?: boolean;
 }) {
   const tt = useT();
   const { length, width, height } = load.vehicle;
@@ -641,16 +646,23 @@ export function CrossSection({
             cargo svg by data-hold since 8h4, not by DOM order — the ordering here is paint order.) */}
         {/* All box-relative chrome shifts down by the top ruler's lane so it stays glued to the box. */}
         <g pointerEvents="none" transform={`translate(0 ${topGutter})`}>
-          {view === 'side' && (
-            <>
-              <FrontCap height={spanY} />
-              <g transform={`translate(${frontGutter} 0)`}>
-                <TrailerUnder length={length} height={spanY} />
-              </g>
-              <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
-            </>
+          {/* Обвес грузовика — кабина, шасси с колёсами, линия земли, верхние фитинги — под одним
+              маркёром: его целиком снимает тумблер «показывать грузовик» (7i6). Линейки и рамка
+              кузова СНАРУЖИ этой группы: без них чертёж перестал бы быть чертежом. */}
+          {showTruck && (
+          <g data-truck-chrome>
+            {view === 'side' && (
+              <>
+                <FrontCap height={spanY} />
+                <g transform={`translate(${frontGutter} 0)`}>
+                  <TrailerUnder length={length} height={spanY} />
+                </g>
+                <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
+              </>
+            )}
+            {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
+          </g>
           )}
-          {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
           {/* Length ruler ALONG THE TOP edge (owner): numbers grow upward into the top lane (dir −1). */}
           <g transform={`translate(${frontGutter} 0)`}>
             <MetreRuler length={length} y={0} unit={tt('ladeplan.rulerUnit')} dir={-1} />
