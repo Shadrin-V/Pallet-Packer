@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Load } from '@shadrin-v/engine';
@@ -9,6 +9,15 @@ import { VEHICLE_PRESETS } from '../data/presets';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
 import type { Article, ArticleInput } from '@shadrin-v/contracts';
+
+// Заглушки снимаются ЗДЕСЬ, а не в конце тела теста (LKWkalk-3c5). Тесты узкого экрана подменяют
+// `matchMedia`, и когда такой тест падал по таймауту (флейк LKWkalk-bmi), строка снятия в конце тела
+// не выполнялась: заглушка «узкого экрана» переживала тест и валила каскадом все последующие широкие
+// — одно настоящее падение превращалось в горсть ложных, и гейт врал о причине.
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 
 /** Стратегия расчёта — проп сверху (5nb этап 2): экран её только показывает и меняет колбэком,
  *  владеет ею App. `opts` перекрывает любой проп, чтобы тесту не приходилось расширять хелпер
@@ -1494,7 +1503,6 @@ describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(chip).toHaveFocus();
-    vi.unstubAllGlobals();
   });
 
   it('an armed delete on another row wins the first Escape; the drawer only closes on the next one (Important review fix)', async () => {
@@ -1524,8 +1532,6 @@ describe('SetupScreen — narrow-screen drawer (5nb, Task 6)', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(chip).toHaveFocus();
-
-    vi.unstubAllGlobals();
   });
 });
 
@@ -1550,7 +1556,6 @@ describe('SetupScreen — сводка и выход из панели в обо
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('Ladung')).toBeInTheDocument();
     expect(screen.getByText(/Menge 0/)).toBeInTheDocument();
-    vi.unstubAllGlobals();
   });
 
   it('на узком экране сводка остаётся под списком и при открытом drawer — список не прыгает', async () => {
@@ -1561,7 +1566,6 @@ describe('SetupScreen — сводка и выход из панели в обо
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect(screen.getByRole('dialog', { name: 'Regeln' })).toBeInTheDocument();
     expect(screen.getByText('Ladung')).toBeInTheDocument();
-    vi.unstubAllGlobals();
   });
 
   it('в широком режиме повторный клик по чипу закрывает разбор и возвращает сводку (I2)', async () => {
@@ -1630,7 +1634,6 @@ describe('SetupScreen — сводка и выход из панели в обо
     await waitFor(() => expect(drawer).toHaveFocus());
     // Поле артикула строки на 375px лежит ЗА панелью — каретка там равносильна вводу в никуда.
     expect(screen.getByLabelText('Artikel')).not.toHaveFocus();
-    vi.unstubAllGlobals();
   });
 
   it('на узком экране клик по сообщению сводки тоже уводит фокус в панель', async () => {
@@ -1641,7 +1644,6 @@ describe('SetupScreen — сводка и выход из панели в обо
     await userEvent.click(screen.getByRole('button', { name: /EPAL 1.*Maße unvollständig/ }));
     const drawer = await screen.findByRole('dialog', { name: 'Regeln' });
     await waitFor(() => expect(drawer).toHaveFocus());
-    vi.unstubAllGlobals();
   });
   // Esc отменяет самое внутреннее. Раз Esc теперь закрывает панель и в широком режиме, открытый
   // список подсказок обязан забирать нажатие себе (ArticleCombobox.stopPropagation) — иначе одно
