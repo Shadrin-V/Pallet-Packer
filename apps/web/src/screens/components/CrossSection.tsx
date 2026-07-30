@@ -24,6 +24,7 @@ import { useT } from '../../i18n/LocaleContext';
 import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
+import { selectionBadge } from './selectionBadge';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
 import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
@@ -532,16 +533,38 @@ export function CrossSection({
                 strokeDasharray="2 3"
                 vectorEffect="non-scaling-stroke"
               />
-              <text
-                data-testid="group-count"
-                x={box.x}
-                y={box.y - countFont * 0.3}
-                fill="var(--brand)"
-                fontSize={countFont * 0.7}
-                fontWeight={700}
-              >
-                {fillTemplate(tt('ladeplan.selection.count'), { n: sel.length })}
-              </text>
+              {(() => {
+                // Счётчик на залитой плашке и всегда внутри кузова (5tg): голый текст --brand тонул
+                // в штриховке соседнего ряда, а у выделения в первом ряду уезжал за стенку.
+                const text = fillTemplate(tt('ladeplan.selection.count'), { n: sel.length });
+                const font = countFont * 0.7;
+                // Групповая рамка живёт только в виде сверху, значит кузов здесь — длина × ширина.
+                const b = selectionBadge(box, text, font, { width: length, height: spanY });
+                return (
+                  <>
+                    <rect
+                      data-testid="group-count-bg"
+                      x={b.x}
+                      y={b.y}
+                      width={b.w}
+                      height={b.h}
+                      rx={b.h * 0.3}
+                      fill="var(--brand)"
+                    />
+                    <text
+                      data-testid="group-count"
+                      x={b.textX}
+                      y={b.textY}
+                      fill="var(--card)"
+                      fontSize={font}
+                      fontWeight={700}
+                      dominantBaseline="central"
+                    >
+                      {text}
+                    </text>
+                  </>
+                );
+              })()}
             </g>
           );
         })()}

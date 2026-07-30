@@ -421,6 +421,30 @@ describe('group selection', () => {
     expect(getByTestId('group-frame')).toHaveAttribute('width', '2000');
   });
 
+  // LKWkalk-5tg. Подпись счётчика — тёмный текст цвета --brand — рисовалась голой над рамкой, то
+  // есть поверх штриховки соседнего ряда. Подложка обязана быть, иначе подпись снова станет
+  // нечитаемой ровно там, где выделение и происходит: посреди груза.
+  it('кладёт счётчик выделения на залитую подложку, а не голым текстом на груз', () => {
+    const { svg, getByTestId } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    const bg = getByTestId('group-count-bg');
+    expect(bg.getAttribute('fill')).toBeTruthy();
+    expect(bg.getAttribute('fill')).not.toBe('none');
+    expect(Number(bg.getAttribute('width'))).toBeGreaterThan(0);
+  });
+
+  // Стопки в renderTop стоят у передней стенки (y = 0), поэтому старая формула y = box.y − кегль*0.3
+  // выносила подпись за пределы кузова. Здесь падает именно это.
+  it('держит счётчик внутри кузова, когда выделение стоит у передней стенки', () => {
+    const { svg, getByTestId } = renderTop();
+    rubberBand(svg, 0, 0, 1500, 500);
+
+    expect(getByTestId('group-frame')).toHaveAttribute('y', '0'); // выделение действительно у стенки
+    expect(Number(getByTestId('group-count-bg').getAttribute('y'))).toBeGreaterThanOrEqual(0);
+    expect(Number(getByTestId('group-count').getAttribute('y'))).toBeGreaterThanOrEqual(0);
+  });
+
   it('a click on empty floor clears the selection', () => {
     const { svg, queryByTestId } = renderTop();
     rubberBand(svg, 0, 0, 1500, 500);
