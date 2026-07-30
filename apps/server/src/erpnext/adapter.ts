@@ -30,7 +30,10 @@ export class ErpNextAdapter {
   private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly cfg: ErpNextConfig) {
-    this.fetchImpl = cfg.fetchImpl ?? fetch;
+    // Лямбда, а не голый `fetch`: `this.fetchImpl(...)` подставляет получателем адаптер, и
+    // проверяющая получателя среда (браузер, воркер) ответила бы «Illegal invocation» — ровно
+    // паттерн, убивший каталог в LKWkalk-7wb. Node-undici прощает, но привычка одна на репозиторий.
+    this.fetchImpl = cfg.fetchImpl ?? ((...args) => globalThis.fetch(...args));
   }
 
   private headers(): Record<string, string> {

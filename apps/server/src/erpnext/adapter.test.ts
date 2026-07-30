@@ -102,6 +102,32 @@ describe('ErpNextAdapter.importOrder', () => {
   });
 });
 
+// LKWkalk-8vy — тот же класс, что LKWkalk-7wb: адаптер хранил `cfg.fetchImpl ?? fetch` и звал его
+// как метод, подставляя себя получателем. Node-undici получателя не проверяет, поэтому сейчас это
+// не падало; браузер/воркер ответил бы «Illegal invocation» на первом же запросе. Стенд записывает
+// получателей, а не просто отвергает неверных: проверка ПЕРВОГО вызова исключает и лечение
+// «повторить после падения» (см. одноимённый тест HttpDataProvider).
+describe('ErpNextAdapter default fetch binding (8vy)', () => {
+  it('calls the global fetch with an untainted receiver on the very first request', async () => {
+    const realFetch = globalThis.fetch;
+    const calls: { receiver: unknown; input: string }[] = [];
+    globalThis.fetch = function (this: unknown, input: string) {
+      calls.push({ receiver: this, input });
+      return Promise.resolve(jsonResponse({ data: [] }));
+    } as unknown as typeof fetch;
+    try {
+      const adapter = new ErpNextAdapter(CFG); // без fetchImpl — работает дефолт
+      await expect(adapter.searchOrders('SAL')).resolves.toEqual([]);
+      expect(calls).toHaveLength(1);
+      // Получатель обязан быть глобальным объектом либо undefined (свободный вызов лямбды) — но
+      // никогда самим адаптером.
+      expect(calls[0].receiver === globalThis || calls[0].receiver === undefined).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
+
 describe('ErpNextAdapter.searchOrders', () => {
   it('maps the resource list to OrderRefs', async () => {
     const list = {
