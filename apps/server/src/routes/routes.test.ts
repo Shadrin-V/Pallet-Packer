@@ -129,4 +129,35 @@ describe('REST routes', () => {
     expect(response.updatedAt).not.toBe(bogusUpdatedAt); // Must be current server time, not 1970
     await app.close();
   });
+
+  // LKWkalk-5zy: роуты кастовали req.body без проверки формы — отсутствующие name/rules доходили
+  // до слоя БД (или движка) и падали как 500. Кривое тело — ошибка клиента: 400 с конвертом
+  // ApiError ({code, details}), как остальные ошибки API.
+  describe('runtime-валидация тел запросов (5zy)', () => {
+    const badBodies: [string, 'PUT' | 'POST', string, unknown][] = [
+      ['пустой объект вместо Vehicle', 'PUT', '/api/vehicles', {}],
+      ['Vehicle с нечисловой длиной', 'PUT', '/api/vehicles', { ...V, length: 'long' }],
+      ['пустой объект вместо ArticleInput', 'PUT', '/api/articles/A1', {}],
+      ['ArticleInput без rules', 'PUT', '/api/articles/A1', { itemCode: 'A1', name: 'Box' }],
+      ['пустой объект вместо LoadingPlanInput', 'POST', '/api/plans', {}],
+      ['LoadingPlanInput без load.cargo', 'POST', '/api/plans', { name: 'P', load: { vehicle: V }, erpnextOrderIds: [] }],
+    ];
+
+    for (const [label, method, url, payload] of badBodies) {
+      it(`${method} ${url}: ${label} → 400, не 500`, async () => {
+        const app = buildApp({ db: openDb(':memory:') });
+        const res = await app.inject({ method, url, payload: payload as object });
+        expect(res.statusCode).toBe(400);
+        expect(res.json()).toMatchObject({ code: 'ERR_VALIDATION' });
+        await app.close();
+      });
+    }
+
+    it('валидное тело по-прежнему проходит (страховка от чрезмерной строгости схемы)', async () => {
+      const app = buildApp({ db: openDb(':memory:') });
+      const ok = await app.inject({ method: 'PUT', url: '/api/vehicles', payload: V });
+      expect(ok.statusCode).toBe(200);
+      await app.close();
+    });
+  });
 });

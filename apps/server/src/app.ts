@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import { ENGINE_CONTRACT_VERSION } from '@shadrin-v/engine';
@@ -22,6 +22,19 @@ export interface BuildAppOptions {
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false });
+
+  // Кривое тело — ошибка клиента (LKWkalk-5zy): схемы роутов режут его 400-кой в конверте ApiError
+  // ({code, details}), как остальные ошибки API. Всё прочее уходит в дефолтную обработку Fastify —
+  // reply.send(err) сохраняет её сериализацию и статус (в т.ч. 500) один в один.
+  // Параметр типизирован явно: инференс Fastify здесь различается между локальной и свежей (CI)
+  // установкой и на CI давал 'err: unknown'.
+  app.setErrorHandler((err: FastifyError, _req, reply) => {
+    if (err.validation) {
+      return reply.code(400).send({ code: 'ERR_VALIDATION', details: { message: err.message } });
+    }
+    return reply.send(err);
+  });
+
   app.get('/api/health', async () => ({ status: 'ok', contract: ENGINE_CONTRACT_VERSION }));
 
   if (opts.db) {
