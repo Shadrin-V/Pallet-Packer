@@ -2,13 +2,19 @@
 
 Проверяемый чеклист для новой машины. Архитектура — [design.md](design.md); задачи — beads.
 
-## 0. Версии (проверено на рабочей машине 2026-07-09)
-- Node **v24.16.0** (24.x), npm **11.13.0**, git **2.50.1**
+## 0. Версии
+- Node **22.x** — версия зафиксирована в [`.nvmrc`](../.nvmrc) и в `engines` корневого
+  `package.json`, и это та же версия, на которой собирает CI (`.github/workflows/ci.yml`).
+  **Ставить именно её.** Нативный модуль `better-sqlite3` в `apps/server` компилируется под
+  ABI конкретного мажора Node: собранный под 24 (`NODE_MODULE_VERSION 137`) он не грузится в 22
+  (`127`), и корневой `npm test` даёт три десятка падений, не относящихся к коду (`LKWkalk-3c5`).
+  Если это случилось — `npm rebuild better-sqlite3`.
+- npm **11.x**, git **2.50+**
 - beads (bd) **1.1.0** (Homebrew); gh (GitHub CLI); Homebrew
 
 ## 1. Инструменты
 ```bash
-# Node 24.x (nvm или офиц. установщик), git, gh — установить отдельно
+nvm install && nvm use      # возьмёт версию из .nvmrc (Node 22.x)
 brew install beads          # bd 1.1.0
 ```
 
@@ -22,7 +28,9 @@ npm install                 # npm workspaces: @shadrin-v/engine, @shadrin-v/i18n
 
 ## 3. Smoke-check кода
 ```bash
-npm test                    # ОЖИДАНИЕ на main: 39/39 passed
+npm test                    # весь монорепо; на main зелено, кроме флейка LKWkalk-bmi
+                            # (таймаут userEvent в SetupScreen.test.tsx — перепроверяй
+                            #  одиночным прогоном файла, это не регрессия)
 npm run typecheck           # 0 ошибок
 npm run build               # ESM ×2 пакета
 ```
