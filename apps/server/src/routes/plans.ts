@@ -4,12 +4,13 @@ import type Database from 'better-sqlite3';
 import { calculateLayout } from '@shadrin-v/engine';
 import type { LoadingPlanInput } from '@shadrin-v/contracts';
 import { getPlan, listPlans, savePlan } from '../db/plans';
+import { loadingPlanInputBody } from './schemas';
 
 /** Loading-plan endpoints. The layout is computed here (single source of truth: the engine). */
 export function plansRoutes(app: FastifyInstance, db: Database.Database): void {
   app.get('/api/plans', async () => listPlans(db));
 
-  app.post('/api/plans', async (req) => {
+  app.post('/api/plans', { schema: { body: loadingPlanInputBody } }, async (req) => {
     const input = req.body as LoadingPlanInput;
     const layout = calculateLayout(input.load);
     return savePlan(db, input, layout, { id: randomUUID(), now: new Date().toISOString() });

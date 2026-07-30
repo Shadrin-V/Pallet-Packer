@@ -22,6 +22,17 @@ export interface BuildAppOptions {
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false });
+
+  // Кривое тело — ошибка клиента (LKWkalk-5zy): схемы роутов режут его 400-кой в конверте ApiError
+  // ({code, details}), как остальные ошибки API. Всё прочее уходит в дефолтную обработку Fastify —
+  // reply.send(err) сохраняет её сериализацию и статус (в т.ч. 500) один в один.
+  app.setErrorHandler((err, _req, reply) => {
+    if (err.validation) {
+      return reply.code(400).send({ code: 'ERR_VALIDATION', details: { message: err.message } });
+    }
+    return reply.send(err);
+  });
+
   app.get('/api/health', async () => ({ status: 'ok', contract: ENGINE_CONTRACT_VERSION }));
 
   if (opts.db) {
