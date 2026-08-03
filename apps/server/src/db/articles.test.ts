@@ -188,6 +188,19 @@ describe('article repo', () => {
     db.close();
   });
 
+  it('treats % and _ in the query as literal characters, not LIKE wildcards', () => {
+    const db = openDb(':memory:');
+    const mk = (itemCode: string, name: string) =>
+      upsertArticle(db, { itemCode, name, rules: { ...RULES } }, { now: NOW });
+    mk('50%', 'Rabattposten');
+    mk('5099', 'Nur ein Wildcard-Treffer'); // '50%' unescaped would match this too
+    mk('A_B', 'Unterstrich');
+    mk('AXB', 'Nur ein Wildcard-Treffer'); // 'A_B' unescaped would match this too
+    expect(searchArticles(db, '50%').map((a) => a.itemCode)).toEqual(['50%']);
+    expect(searchArticles(db, 'a_b').map((a) => a.itemCode)).toEqual(['A_B']);
+    db.close();
+  });
+
   it('an empty query returns the catalogue head, capped by the limit', () => {
     const db = openDb(':memory:');
     for (let i = 0; i < 25; i++) upsertArticle(db, { itemCode: `A${i}`, name: `n${i}`, rules: { ...RULES } }, { now: NOW });

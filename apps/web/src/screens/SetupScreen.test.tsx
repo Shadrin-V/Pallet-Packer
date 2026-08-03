@@ -1659,3 +1659,43 @@ describe('SetupScreen — сводка и выход из панели в обо
     expect(screen.getByText('So wird gerechnet')).toBeInTheDocument();
   });
 });
+
+// Хвосты ревью финальной волны 5nb: разметка панели разбора обещала вспомогательным технологиям
+// больше, чем давала. LKWkalk-bab — landmark без имени; LKWkalk-58v — aria-controls в пустоту.
+describe('SetupScreen — панель разбора: честная разметка (bab, 58v)', () => {
+  const narrow = () =>
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+
+  // bab: <aside> — landmark complementary. Без имени он объявлен, но не назван: скринридер
+  // перечисляет его как безымянный ориентир, а тест не может запросить его по имени.
+  it('даёт широкой панели разбора доступное имя (bab)', () => {
+    renderSetup(() => {});
+    expect(screen.getByRole('complementary', { name: 'Regeln' })).toBeInTheDocument();
+  });
+
+  // 58v: в узком режиме drawer монтируется только при выбранной строке, а чип нёс aria-controls
+  // всегда — до первого клика атрибут указывал на id, которого нет нигде в DOM. Для AT это хуже
+  // отсутствующего атрибута: обещанная цель не находится.
+  it('не оставляет aria-controls чипа висеть в пустоту до первого выбора (58v)', async () => {
+    narrow();
+    renderSetup(() => {});
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    expect(chip).not.toHaveAttribute('aria-controls');
+
+    await userEvent.click(chip);
+    const target = chip.getAttribute('aria-controls');
+    expect(target).toBeTruthy();
+    expect(document.getElementById(target as string)).toBeInTheDocument();
+  });
+
+  // Широкий режим: панель смонтирована всегда, поэтому связь чипа с ней должна быть заявлена сразу.
+  it('в широком режиме чип связан с панелью с самого начала (58v)', () => {
+    renderSetup(() => {});
+    const chip = screen.getAllByTestId('rule-chip')[0];
+    const target = chip.getAttribute('aria-controls');
+    expect(target).toBeTruthy();
+    expect(document.getElementById(target as string)).toBeInTheDocument();
+  });
+});

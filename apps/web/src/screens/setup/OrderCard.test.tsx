@@ -21,6 +21,7 @@ function renderCard(positionCount: number) {
         index={0}
         vehicle={vehicle}
         reorderable={false}
+        panelDocked
         canMoveUp={false}
         canMoveDown={false}
         onMove={() => {}}

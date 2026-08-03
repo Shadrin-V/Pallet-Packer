@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Vehicle } from '@shadrin-v/engine';
 import { LocaleProvider } from '../../i18n/LocaleContext';
@@ -106,5 +106,45 @@ describe('RulesPanel — empty-state delegation to LoadSummary (5nb, задач�
     renderPanel(null);
     expect(screen.getByText('Выберите позицию, чтобы увидеть её правила.')).toBeInTheDocument();
     expect(screen.queryByText('Груз')).toBeNull();
+  });
+});
+
+// LKWkalk-clb: кнопка сохранения не блокировалась на время запроса, поэтому двойной клик слал две
+// одинаковые записи. Upsert идемпотентен, так что последствия косметические, но вторая запись —
+// лишний круг по сети и вторая возможность отрисовать ошибку.
+describe('RulesPanel — сохранение артикула не дублируется (clb)', () => {
+  const saveable = (): PositionState => ({
+    ...emptyPosition(), name: 'Gitterbox', length: 1200, width: 800, height: 970,
+  });
+
+  it('не шлёт вторую запись, пока первая в полёте, и снова принимает клик после ответа', async () => {
+    let settle!: () => void;
+    const onSaveArticle = vi.fn(
+      () => new Promise<undefined>((resolve) => { settle = () => resolve(undefined); }),
+    );
+    renderPanel(saveable(), vi.fn(), { onSaveArticle });
+
+    const btn = screen.getByRole('button', { name: 'Сохранить артикул в базу' });
+    await userEvent.click(btn);
+    expect(onSaveArticle).toHaveBeenCalledTimes(1);
+    expect(btn).toBeDisabled();
+
+    await userEvent.click(btn); // второй клик по той же кнопке, ответа ещё нет
+    expect(onSaveArticle).toHaveBeenCalledTimes(1);
+
+    settle();
+    await waitFor(() => expect(btn).toBeEnabled());
+    await userEvent.click(btn);
+    expect(onSaveArticle).toHaveBeenCalledTimes(2);
+  });
+
+  it('снимает блокировку и после неудачного сохранения — иначе повторить было бы нечем', async () => {
+    const onSaveArticle = vi.fn(async () => { throw new Error('network'); });
+    renderPanel(saveable(), vi.fn(), { onSaveArticle });
+
+    const btn = screen.getByRole('button', { name: 'Сохранить артикул в базу' });
+    await userEvent.click(btn);
+    expect(await screen.findByText('Не удалось сохранить. Попробуйте ещё раз.')).toBeInTheDocument();
+    expect(btn).toBeEnabled();
   });
 });

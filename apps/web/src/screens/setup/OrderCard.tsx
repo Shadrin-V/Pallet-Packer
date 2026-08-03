@@ -28,6 +28,9 @@ export interface OrderCardProps {
   /** Позиция, чей разбор сейчас открыт в RulesPanel (или ничьей, если панель показывает пустое
    *  состояние либо разбирается позиция другого заказа). */
   selectedPositionId: string | null;
+  /** Стоит ли панель разбора рядом со списком постоянно (широкий режим), а не появляется drawer'ом
+   *  только у выбранной строки. Нужно чипу для `aria-controls` — см. PositionRow.panelMounted. */
+  panelDocked: boolean;
   onSelectPosition: (pid: string) => void;
   /** Закрыть разбор (повторный клик по чипу выбранной строки) — см. PositionRow.onDeselect. */
   onDeselectPosition: () => void;
@@ -55,6 +58,7 @@ export function OrderCard({
   onRemoveOrder,
   onRemovePosition,
   selectedPositionId,
+  panelDocked,
   onSelectPosition,
   onDeselectPosition,
   onChipRef,
@@ -135,6 +139,7 @@ export function OrderCard({
             index={index}
             vehicle={vehicle}
             selected={selectedPositionId === p.id}
+            panelMounted={panelDocked || selectedPositionId === p.id}
             onSelect={() => onSelectPosition(p.id)}
             onDeselect={onDeselectPosition}
             onChange={(patch) => onPositionChange(p.id, patch)}

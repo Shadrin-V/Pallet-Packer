@@ -458,10 +458,15 @@ export function CrossSection({
         viewBox={`0 0 ${outerW} ${outerH}`}
         width="100%"
         preserveAspectRatio="xMidYMid meet"
-        role="img"
+        // Роль следует за поведением (LKWkalk-xzp). В режиме «только смотреть» разрез — настоящая
+        // статичная графика, и `img` честен. Как только появляются tabIndex и обработчик стрелок,
+        // `img` начинает врать: он объявляет содержимое атомарным и неинтерактивным. `group` —
+        // именованный контейнер, он не преувеличивает: заявлять `application` было бы такой же
+        // неправдой в другую сторону, пока выделить стопку с клавиатуры нельзя (LKWkalk-dwc.5).
+        role={draggable ? 'group' : 'img'}
         aria-label={label}
         // Marks this svg as a projection of the plan: the PNG export picks the cutaways by this
-        // attribute. role="img" alone would also match legend swatches and the stack diagram. It
+        // attribute. The role alone would also match legend swatches and the stack diagram. It
         // stays on the OUTER svg so the export/print captures chrome + cargo together — the nested
         // cargo svg must NOT also carry it.
         // Правки разрешены — разрез становится точкой входа для клавиатуры: стрелки прижимают

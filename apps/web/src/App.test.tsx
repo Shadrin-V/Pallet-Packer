@@ -41,14 +41,14 @@ describe('App shell (single page)', () => {
     const empty = screen.getByTestId('empty-plan');
     expect(empty).toHaveTextContent('Ladeplan');
     expect(empty).toHaveTextContent(/Aufträge ausfüllen und «Berechnen» drücken/);
-    expect(screen.queryByRole('img', { name: 'Draufsicht' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Draufsicht' })).not.toBeInTheDocument();
   });
 
   it('replaces the empty state with the plan once computed, and offers no "Zurück"', async () => {
     render(<App />);
     await calculate();
 
-    expect(screen.getByRole('img', { name: 'Draufsicht' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Draufsicht' })).toBeInTheDocument();
     expect(screen.queryByTestId('empty-plan')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Zurück' })).not.toBeInTheDocument();
   });
@@ -61,7 +61,7 @@ describe('App shell (single page)', () => {
     await calculate();
 
     // Ladeplan result appears on the same page…
-    expect(screen.getByRole('img', { name: 'Draufsicht' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Draufsicht' })).toBeInTheDocument();
     // …and the Setup input is still there with its value (SetupScreen was not remounted).
     expect((screen.getByLabelText('Auftrags-ID') as HTMLInputElement).value).toBe('SO-42');
   });
@@ -124,7 +124,7 @@ describe('App shell (single page)', () => {
     it('на ладеплане переключателей стратегии больше нет', async () => {
       render(<App />);
       await calculate();
-      expect(screen.getByRole('img', { name: 'Draufsicht' })).toBeInTheDocument(); // план на экране
+      expect(screen.getByRole('group', { name: 'Draufsicht' })).toBeInTheDocument(); // план на экране
       // ровно один комплект на всю страницу — тот, что в шапке «Настройки»
       expect(screen.getAllByRole('button', { name: 'Von hinten' })).toHaveLength(1);
       expect(screen.getAllByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })).toHaveLength(1);
