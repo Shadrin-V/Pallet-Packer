@@ -158,7 +158,17 @@ export function SetupScreen({
   // the error-redirect and discard-confirm branches leave it untouched, since neither produced a
   // new result to report (announcing summary counts there would claim a calculation that a
   // screen-reader user was, at that moment, blocked from getting).
-  const [lastResult, setLastResult] = useState<string | null>(null);
+  //
+  // `seq` (финальное ревью, находка 7): a bare `string | null` went silent on a screen reader when
+  // a recalculation produced the SAME text as last time (unchanged quantities, only a dimension
+  // edited) — React's host-text reconciliation (`updateHostText` in
+  // ReactFiberCompleteWork) skips the DOM commit when the new string is value-equal to the old
+  // one, so the `role="status"` paragraph's text node was never touched and nothing was
+  // re-announced. `seq` increments on every successful calculation regardless of the text, and is
+  // used as the paragraph's React `key` below — a key change always unmounts and remounts the
+  // element, which recreates the text node from scratch and is picked up as a fresh live-region
+  // update even when its content happens to read the same as before.
+  const [lastResult, setLastResult] = useState<{ text: string; seq: number } | null>(null);
 
   // Esc закрывает панель разбора — в ОБОИХ режимах (финальное ревью, I2: в широком режиме выхода из
   // панели не было вовсе, и сводка загрузки становилась одноразовой — видной только до первого
@@ -432,9 +442,14 @@ export function SetupScreen({
     // from what the screen displays. Placement percentages live in the Load result the parent (App)
     // computes, not here, so the announcement reports what this screen actually knows: how much was
     // asked for.
-    setLastResult(
-      fillTemplate(tt('setup.calcDone'), { orders: summary.orders, positions: summary.positions, units: summary.units }),
-    );
+    setLastResult((prev) => ({
+      text: fillTemplate(tt('setup.calcDone'), {
+        orders: summary.orders,
+        positions: summary.positions,
+        units: summary.units,
+      }),
+      seq: (prev?.seq ?? 0) + 1,
+    }));
   };
 
   return (
@@ -633,9 +648,21 @@ export function SetupScreen({
           the header's error count (SetupHeader.tsx): polite, does not interrupt, read after whatever
           the user was doing. Filled from the actual summary in handleCalculate — never a hardcoded
           sentence — and left empty here (not e.g. "0 Positionen") so a screen reader says nothing
-          before the first real calculation instead of announcing a false result. */}
-      <p role="status" data-testid="calc-announce" className="mt-2 text-center text-caption text-muted">
-        {lastResult ?? ''}
+          before the first real calculation instead of announcing a false result.
+
+          `key={lastResult?.seq ?? 0}` (финальное ревью, находка 7): recalculating with unchanged
+          counts produces text identical to last time, and React skips the DOM text-node commit
+          for value-equal strings — silently, with no re-announcement. Keying on the monotonically
+          increasing `seq` forces React to unmount and remount this paragraph on every successful
+          calculation, so there is always a fresh text node for the live region to pick up, even
+          when its content reads the same as before. */}
+      <p
+        role="status"
+        key={lastResult?.seq ?? 0}
+        data-testid="calc-announce"
+        className="mt-2 text-center text-caption text-muted"
+      >
+        {lastResult?.text ?? ''}
       </p>
       </main>
       {/* План (LadeplanScreen/EmptyPlan) — внутри той же обёртки, что и липкая шапка (9tq). */}

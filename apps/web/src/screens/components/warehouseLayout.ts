@@ -200,10 +200,6 @@ export function warehouseFloor(
     width?: number;
     gap?: number;
     pad?: number;
-    /** Боковые поля двора, мм. Разные слева и справа, потому что таковы доки: левый узкий, правый
-     *  с погрузчиком — шире (LKWkalk-103). Не заданы — берётся общее `pad`. */
-    padLeft?: number;
-    padRight?: number;
     bayOrder?: string[];
     /** Разбивать ли двор на загоны заказов. По умолчанию НЕТ (LKWkalk-77g): владелец после прода —
      *  «без неё удобнее», так что загоны из умолчания 41e.2 стали режимом, который просят явно.
@@ -220,9 +216,12 @@ export function warehouseFloor(
   const width = opts.width ?? truckFrame(load.vehicle, 'top', opts.showTruck ?? true).outerW;
   const gap = opts.gap ?? GAP;
   const pad = opts.pad ?? PAD;
-  // Вертикальные поля остаются общими: доки прижаты к верху и ограничивают двор только по бокам.
-  const padL = opts.padLeft ?? pad;
-  const padR = opts.padRight ?? pad;
+  // Поля двора одинаковы со всех сторон. `padLeft`/`padRight` держали асимметрию слева/направо
+  // ради доков (LKWkalk-103: левый узкий, правый — с погрузчиком, шире), но растровая сцена с
+  // доками была удалена, и просить их по отдельности стало некому — ни одного вызывающего кода,
+  // ни одного теста. Опции убраны финальным ревью этой задачи, а не переписаны: сохранять мёртвую
+  // асимметрию в комментариях значило приглашать следующего читателя воскресить её и снова
+  // сломать инвариант масштаба 1:1 двор↔разрез, который этот файл и так предупреждает беречь.
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
   const sourced: SourcedTile[] = tiles.map((tile, srcIndex) => ({ tile, srcIndex }));
 
@@ -231,9 +230,9 @@ export function warehouseFloor(
   // Группировка не запрошена, либо меньше двух заказов — делить нечего: рамка вокруг всего ничего
   // не разделяет. Двор остаётся ровно таким, каким был до 41e.2.
   if (!opts.grouped || groups.length < 2) {
-    const flow = flowTiles(sourced, byId, width - padL - padR, gap);
+    const flow = flowTiles(sourced, byId, width - 2 * pad, gap);
     return {
-      tiles: flow.tiles.map((t) => ({ ...t, x: t.x + padL, y: t.y + pad })),
+      tiles: flow.tiles.map((t) => ({ ...t, x: t.x + pad, y: t.y + pad })),
       bays: [],
       width,
       height: flow.tiles.length === 0 ? 0 : flow.height + 2 * pad,
@@ -242,10 +241,10 @@ export function warehouseFloor(
 
   // Ширина, отведённая содержимому загона: двор минус свои поля минус поля загона. Отсюда загон
   // не шире двора — с той же оговоркой, что и у плитки: стопка шире этой ширины распирает загон.
-  const contentMax = width - padL - padR - 2 * BAY_PAD;
+  const contentMax = width - 2 * pad - 2 * BAY_PAD;
   const outTiles: PlacedTile[] = [];
   const bays: PlacedBay[] = [];
-  let bx = padL;
+  let bx = pad;
   let by = pad;
   let rowH = 0;
   let rowStart = 0;
@@ -253,10 +252,10 @@ export function warehouseFloor(
     const flow = flowTiles(g.tiles, byId, contentMax, gap);
     const w = Math.max(flow.width + 2 * BAY_PAD, BAY_MIN_W);
     const h = flow.height + TAG_H + 2 * BAY_PAD;
-    if (bx > padL && bx + w > width - padR) {
+    if (bx > pad && bx + w > width - pad) {
       // Строка закрыта — её высота известна только сейчас, поэтому проставляется задним числом.
       for (let i = rowStart; i < bays.length; i++) bays[i].rowH = rowH;
-      bx = padL;
+      bx = pad;
       by += rowH + BAY_GAP;
       rowH = 0;
       rowStart = bays.length;

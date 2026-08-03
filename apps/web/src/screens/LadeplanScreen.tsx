@@ -574,10 +574,12 @@ export function LadeplanScreen({
     const pt = toWarehouseMm(carrySource.x, carrySource.y);
     if (!pt) return null;
     // Тот же режим, что рисует двор: иначе магнит целился бы в загоны, которых на экране нет. И тот
-    // же ПОРЯДОК: вызовов `warehouseFloor` на этом экране три (отрисовка, `phantomAt`,
-    // `onDropOutside`), и разошедшийся `bayOrder` целит магнит ровно туда же — в загоны, которых на
-    // экране нет (грабли 77g, находка №4). Reuses `yardFloor` (computed above, same params) rather than
-    // calling `warehouseFloor` a third time on this screen for the same answer.
+    // же ПОРЯДОК: вызовов `warehouseFloor`, чей `bayOrder` обязан совпасть, теперь два —
+    // отрисовка (`WarehouseFloor`, свои `renderTiles`) и `yardFloor` здесь, на этом экране, общий
+    // для `phantomAt` и `onDropOutside` (финальное ревью, находка 2: третий, собственный вызов
+    // `onDropOutside`, был устранён — этот файл уже трижды ловил его расхождение с `yardFloor` по
+    // аргументам). Reuses `yardFloor` (computed above, same params) rather than calling
+    // `warehouseFloor` again on this screen for the same answer.
     const index = insertionIndexAt(
       yardFloor,
       pt,
@@ -611,12 +613,11 @@ export function LadeplanScreen({
         // место внутри своего загона.
         // Тот же режим, что рисует двор (77g): с выключенной группировкой загонов нет, и точка
         // броска задаёт место в общем потоке — поведение до 41e.2. И тот же ПОРЯДОК загонов
-        // (41e.6): третий из трёх вызовов `warehouseFloor`, и разойтись ему нельзя ровно так же.
-        const idx = insertionIndexAt(
-          warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
-          pt,
-          { orderId: orderOfType(refs[0].cargoTypeId) },
-        );
+        // (41e.6). Reuses `yardFloor` (computed once above, same params) rather than calling
+        // `warehouseFloor` a third time on this screen for the same answer — this file's own
+        // comments record these arguments drifting apart three separate times already (финальное
+        // ревью, находка 2).
+        const idx = insertionIndexAt(yardFloor, pt, { orderId: orderOfType(refs[0].cargoTypeId) });
         const snapshot = orderedTiles.map((t) => t.cargoTypeId);
         snapshot.splice(idx, 0, ...refs.map((r) => r.cargoTypeId));
         setBufferOrder(snapshot);

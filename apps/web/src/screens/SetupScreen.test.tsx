@@ -760,6 +760,35 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
       expect(screen.getByTestId('calc-announce')).toHaveTextContent(/\d+/);
     });
 
+    // Финальное ревью, находка 7: пересчёт после правки РАЗМЕРА (а не количества) даёт тот же
+    // текст объявления — сводка считает заказы/позиции/единицы, а не мм — и голый `string | null`
+    // молчал во второй раз: React пропускает обновление DOM-текста, когда новая строка равна
+    // старой побайтово (`updateHostText`), так что пользователь клавиатуры/скринридера, поправив
+    // габарит и нажав «Рассчитать» повторно, не слышал вообще ничего.
+    it('пересчёт с неизменным количеством объявляется оба раза (правка размера, не количества)', async () => {
+      renderSetup(() => {}, undefined, {
+        initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 10 })])],
+      });
+      const [, bottom] = screen.getAllByRole('button', { name: 'Berechnen' });
+
+      await userEvent.click(bottom);
+      const firstAnnounce = screen.getByTestId('calc-announce');
+      expect(firstAnnounce).toHaveTextContent(/\d+/);
+      const firstText = firstAnnounce.textContent;
+
+      // Меняем ДЛИНУ, не количество — сводка (заказы/позиции/единицы) не зависит от габаритов,
+      // так что второе объявление читает СЛОВО В СЛОВО то же самое.
+      fireEvent.change(screen.getAllByLabelText('Länge')[1], { target: { value: '1500' } });
+      await userEvent.click(bottom);
+      const secondAnnounce = screen.getByTestId('calc-announce');
+      expect(secondAnnounce).toHaveTextContent(/\d+/);
+      expect(secondAnnounce.textContent).toBe(firstText);
+      // Пин структурного механизма (key={seq}) — второй раз это ДРУГОЙ узел DOM, а не тот же самый
+      // с нетронутым содержимым: ремонт по ключу гарантирует, что живая область правда мутировала
+      // и была бы перечитана скринридером, а не тихо осталась прежним, никогда не обновлённым узлом.
+      expect(firstAnnounce.isSameNode(secondAnnounce)).toBe(false);
+    });
+
     it('«Рассчитать» с ошибкой ведёт к строке, а не объявляет мнимый результат', async () => {
       // Та же фикстура, что и у «выбирает первую ошибочную позицию» выше: verschachtelt без шага —
       // stepInvalid, габариты в порядке. Нажатие не считает вовсе (goTo), поэтому объявлять здесь

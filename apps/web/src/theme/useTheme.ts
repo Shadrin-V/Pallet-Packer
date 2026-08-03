@@ -12,6 +12,10 @@ import { useCallback, useSyncExternalStore } from 'react';
 
 export type ThemeName = 'forest' | 'warm';
 
+// Литерал повторён в apps/web/index.html — инлайновый bootstrap-скрипт в <head> читает тот же
+// ключ синхронно, до первой отрисовки, чтобы у warm-пользователя не мелькал зелёный --paper
+// forest на первом кадре (applyTheme(readTheme()) ниже выполняется только после разбора этого
+// модуля — финальное ревью, находка 6). Меняешь ключ здесь — поменяй и там.
 export const THEME_STORAGE_KEY = 'ladungsplaner.theme';
 
 const isTheme = (v: unknown): v is ThemeName => v === 'forest' || v === 'warm';
