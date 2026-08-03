@@ -1401,6 +1401,31 @@ describe('LadeplanScreen — перестановка стопок во двор
     });
   });
 
+  // Fix round 2, item 1: the scenario Finding 2 was actually raised about — `yardGrouped` stuck `true`
+  // from an earlier multi-order plan, carried into a plan with only ONE order, where `warehouseFloor`
+  // never produces bays and there is no checkbox left on screen to un-stick the flag — had, after the
+  // round-1 fixture change, no test of its own. `threeTypesLoad` picked up a second order (p3 → SO-2)
+  // to make ITS "grouped" test meaningful, which means that test now exercises TWO REAL bays and would
+  // stay green even if the guard regressed from `floor.bays.length > 0` back to the raw `yardGrouped`
+  // flag. `sameTypeLoad` is single-order by construction (both cargo default to `orderId: 'SO-1'`), so
+  // it is the one fixture that can still tell the two guards apart: with `grouped: true` here, the OLD
+  // (flag-based) guard would block every reorder outright, while the FIXED (bays-based) guard sees
+  // `floor.bays.length === 0` (one order, no bays) and lets it through — which is exactly the user-facing
+  // promise the finding was about ("stuck grouping flag must not brick a single-order plan's yard").
+  it('группировка застряла включённой, но заказ в плане один — перестановка всё равно работает (Finding 2 pin)', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: true, sameType: true });
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const tiles = yardTiles(yard);
+      const before = tiles.map((el) => el.getAttribute('data-units'));
+      expect(before).toEqual(['17', '12', '1']); // p3×17, p3×12, p1×1 — see sameTypeLoad's own comment
+      await dragFromTo(tiles[2], tiles[0]); // non-adjacent: p1 to the very front
+      const after = yardTiles(yard).map((el) => el.getAttribute('data-units'));
+      expect(after).not.toEqual(before);
+      expect(after).toEqual(['1', '17', '12']);
+    });
+  });
+
   // Finding 5 (fix round 1): Step 4 of the brief (reuse the magnet's phantom for this direction too)
   // had no test at all. These three assertions in one gesture cover: no phantom on a bare press (the
   // regression Finding 1 fixed — a press alone must leave the yard completely still), the phantom
