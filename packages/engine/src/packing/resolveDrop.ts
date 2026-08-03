@@ -40,13 +40,15 @@ export interface ResolveDropOptions {
 const err = (code: string, details?: Record<string, unknown>): EngineError =>
   details ? { code, details } : { code };
 
-/** Half-open interval overlap (touching edges do not overlap) — the rule edit.ts uses. */
-const overlaps1d = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 && b0 < a1;
+/** Half-open interval overlap (touching edges do not overlap) — the rule edit.ts uses.
+ *  Exported для `resolveSlide`: «кто стоит в моей полосе» — тот же вопрос и то же правило. */
+export const overlaps1d = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 && b0 < a1;
 
 const sameRef = (a: StackRef, b: StackRef) =>
   a.cargoTypeId === b.cargoTypeId && a.x === b.x && a.y === b.y;
 
-interface Box extends StackRef {
+/** Стопка пола с её габаритами. Внутренний тип модуля, открытый `resolveSlide`. */
+export interface Box extends StackRef {
   dx: number;
   dy: number;
 }
@@ -56,8 +58,10 @@ interface Box extends StackRef {
  *
  * `exclude` is a predicate rather than a single ref because a group excludes a whole SET of columns
  * (ADR 021) — its own members. The single-stack caller passes a one-ref predicate and is unaffected.
+ *
+ * Открыта для `resolveSlide`: «что стоит на полу, кроме меня» — общий вопрос обоих запросов.
  */
-function floorBoxes(load: Load, layout: Layout, exclude?: (ref: StackRef) => boolean): Box[] {
+export function floorBoxes(load: Load, layout: Layout, exclude?: (ref: StackRef) => boolean): Box[] {
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
   const seen = new Set<string>();
   const out: Box[] = [];

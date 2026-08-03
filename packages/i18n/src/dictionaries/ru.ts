@@ -121,6 +121,7 @@ export const ru: Dictionary = {
   'ladeplan.notPlaced': '{n} не размещено',
   'ladeplan.rotateStack': 'Повернуть стопку',
   'ladeplan.selection.count': 'Выделено стопок: {n}',
+  'ladeplan.slideHint': 'Стрелки: прижать к упору',
   'ladeplan.showTruck': 'Показывать грузовик',
   'ladeplan.groupGhost': 'Выделение',
   'ladeplan.discardEditsConfirm':

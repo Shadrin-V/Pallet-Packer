@@ -28,3 +28,4 @@
 | 021 | [Групповые правки раскладки: жёсткий перенос и групповой магнит](021-group-layout-edits.md) | Принято |
 | 022 | [Имя артикула в провенансе ERPNext; два паттерна подтверждения](022-article-name-provenance-and-confirm-patterns.md) | Принято |
 | 023 | [Continuous deployment из ветки `main`](023-continuous-deploy-from-main.md)                             | Принято |
+| 024 | [Прижать к упору: запрос `resolveSlide`, а не флаг у `moveStacks`](024-slide-to-stop.md)  | Принято |

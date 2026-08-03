@@ -124,6 +124,7 @@ export const de: Dictionary = {
   'ladeplan.notPlaced': '{n} nicht platziert',
   'ladeplan.rotateStack': 'Stapel drehen',
   'ladeplan.selection.count': '{n} Stapel ausgewählt',
+  'ladeplan.slideHint': 'Pfeiltasten: an den Anschlag schieben',
   'ladeplan.showTruck': 'LKW anzeigen',
   'ladeplan.groupGhost': 'Auswahl',
   'ladeplan.discardEditsConfirm':

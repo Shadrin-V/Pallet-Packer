@@ -9,13 +9,21 @@
 // the ghost sits where the stack would actually land — green if it may, red on the aim plus red
 // outlines on whatever is in the way if it may not. The release then applies exactly what was shown;
 // anything else would make the preview a lie.
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import {
   resolveDrop,
   resolveGroupDrop,
+  resolveSlide,
   type GroupDropResolution,
   type Layout,
   type Load,
+  type SlideDir,
   type StackRef,
 } from '@shadrin-v/engine';
 import { StackShape } from './StackShape';
@@ -151,6 +159,9 @@ export function CrossSection({
   const { frontGutter, topGutter, wheelGutter, outerW, outerH } = truckFrame(load.vehicle, view);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  /** Внешний svg — тот, что несёт `data-cutaway`. Именно он держит фокус: `svgRef` смотрит на
+   *  ВЛОЖЕННЫЙ грузовой svg, а рамка фокуса вокруг одного лишь груза обрезала бы линейки. */
+  const frameRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [sel, setSel] = useState<StackRef[]>([]);
   /** Live rubber band, in mm: the press origin plus the current pointer. */
@@ -175,6 +186,49 @@ export function CrossSection({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [draggable, onCarryEnd]);
+
+  // Пустое выделение стало непустым — вот единственный момент, когда стрелки ещё никуда не
+  // ведут (фокус вне разреза) и должны начать прижимать: забираем фокус, иначе он уйдёт в
+  // прокрутку страницы, и жест «прижать» окажется недостижим ровно тогда, когда нужен. Ключевое
+  // слово — «единственный»: держим предыдущую длину в ref и сравниваем именно с ней, а не просто
+  // «есть ли сейчас выделение». Без этого условия эффект перезапускался бы на КАЖДОЕ изменение
+  // размера — в том числе на shift/ctrl-клик, который лишь уточняет уже непустое выделение — и
+  // мог бы вырвать фокус из-под другого интерактивного элемента внутри того же svg (ручка
+  // поворота, у неё тоже tabIndex=0), которым пользователь как раз занят. Проверка `contains` —
+  // подстраховка на случай, если фокус и так уже внутри разреза; `preventScroll` — чтобы сама
+  // passive-фокусировка не читалась как прыжок страницы.
+  const prevSelLenRef = useRef(sel.length);
+  useEffect(() => {
+    const prevLen = prevSelLenRef.current;
+    prevSelLenRef.current = sel.length;
+    if (!draggable || sel.length === 0 || prevLen !== 0) return;
+    const frame = frameRef.current;
+    if (!frame || frame.contains(document.activeElement)) return;
+    frame.focus?.({ preventScroll: true });
+  }, [draggable, sel.length]);
+
+  /** Клавиша → ось и знак хода. `←/→` вдоль длины кузова, `↑/↓` поперёк, к бортам. */
+  const SLIDE_KEYS: Record<string, SlideDir> = {
+    ArrowLeft: '-x',
+    ArrowRight: '+x',
+    ArrowUp: '-y',
+    ArrowDown: '+y',
+  };
+
+  const onSlideKey = (e: ReactKeyboardEvent<SVGSVGElement>) => {
+    const dir = SLIDE_KEYS[e.key];
+    // Без выделения стрелка — это прокрутка страницы, и отнимать её нельзя.
+    if (!dir || sel.length === 0 || !onMoveStacks) return;
+    e.preventDefault();
+    const { dx, dy } = resolveSlide(load, layout, sel, dir);
+    // Ехать некуда — молчаливый no-op: картинка и так показывает, что стопка касается упора.
+    if (dx === 0 && dy === 0) return;
+    onMoveStacks(sel, dx, dy);
+    // Выделение едет вместе со стопками: оно адресует их координатами, и оставшись на месте,
+    // указывало бы туда, где уже никто не стоит. Дельта законна по построению `resolveSlide`
+    // (в габаритах и без пересечений), поэтому здесь, в отличие от броска, нечего отвергать.
+    setSel(sel.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy })));
+  };
 
   const toSvg = (e: ReactPointerEvent): { x: number; y: number } => {
     const svg = svgRef.current;
@@ -400,6 +454,7 @@ export function CrossSection({
     <figure className="m-0 select-none">
       <figcaption className="mb-1 text-label uppercase font-semibold text-faint">{label}</figcaption>
       <svg
+        ref={frameRef}
         viewBox={`0 0 ${outerW} ${outerH}`}
         width="100%"
         preserveAspectRatio="xMidYMid meet"
@@ -409,6 +464,12 @@ export function CrossSection({
         // attribute. role="img" alone would also match legend swatches and the stack diagram. It
         // stays on the OUTER svg so the export/print captures chrome + cargo together — the nested
         // cargo svg must NOT also carry it.
+        // Правки разрешены — разрез становится точкой входа для клавиатуры: стрелки прижимают
+        // выделенное к упору (ADR 024). В виде сбоку и в режиме «только смотреть» ничего не
+        // меняется: ни tabIndex, ни обработчика.
+        tabIndex={draggable ? 0 : undefined}
+        onKeyDown={draggable ? onSlideKey : undefined}
+        className={draggable ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint' : undefined}
         data-cutaway={view}
         style={{ background: 'var(--paper)', display: 'block' }}
       >
@@ -672,6 +733,14 @@ export function CrossSection({
           <VerticalRuler span={spanY} floorY={spanY} rearX={frontGutter + length} font={length * RULER_FONT} unit={tt('ladeplan.rulerUnit')} />
         </g>
       </svg>
+      {/* Жест «прижать» ничем себя не выдаёт, пока о нём не сказать. Подсказка живёт ровно столько,
+          сколько выделение, — постоянная строка под каждым планом была бы шумом. Экранная: в печати
+          органов правки нет. */}
+      {draggable && sel.length > 0 && (
+        <p data-testid="slide-hint" className="mt-1 px-0.5 text-caption text-muted print:hidden">
+          {tt('ladeplan.slideHint')}
+        </p>
+      )}
       {/* Vorne / Hinten belong to the TOP view and sit under it, inside its own figure (QA): both
           cutaways share the x axis (vehicle length), so one set of markers labels the pair — and
           hanging them above the side view read as if only that view had a front and a back. */}

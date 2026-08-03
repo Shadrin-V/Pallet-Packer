@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { calculateLayout, moveStacks, type Layout, type Load } from '@shadrin-v/engine';
 import { LocaleProvider } from '../../i18n/LocaleContext';
@@ -1014,6 +1014,149 @@ describe('group selection', () => {
       fireEvent.pointerDown(svg, { clientX: 3500, clientY: 1500 });
 
       expect(onCarryEnd).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Arrows slide the selection to its first stop (ADR 024, gtw-slide-to-stop task 3).
+  describe('arrow keys slide the selection to a stop', () => {
+    /** Клик по стопке = нажать и отпустить, не сдвинув указателя: это выделение, а не перенос.
+     *  Координаты — середина стопки в мм (геометрия стоит тождественная: 1 px = 1 мм). */
+    const clickStack = (el: Element, x = 500, y = 500) => {
+      fireEvent.pointerDown(el, { clientX: x, clientY: y });
+      fireEvent.pointerUp(el, { clientX: x, clientY: y });
+    };
+    const frameOf = (container: HTMLElement) =>
+      container.querySelector('svg[data-cutaway="top"]')!;
+
+    it('стрелка прижимает выделенную стопку к борту', () => {
+      const onMoveStacks = vi.fn();
+      const { container } = renderTop({ onMoveStacks });
+      clickStack(stackEl(container, 0, 0));
+
+      fireEvent.keyDown(frameOf(container), { key: 'ArrowDown' });
+
+      expect(onMoveStacks).toHaveBeenCalledTimes(1);
+      const [refs, dx, dy] = onMoveStacks.mock.calls[0];
+      expect(refs).toEqual([{ cargoTypeId: 'c', x: 0, y: 0 }]);
+      expect({ dx, dy }).toEqual({ dx: 0, dy: 1000 }); // 2000 − 1000, до дальнего борта
+    });
+
+    it('молчит, когда ехать некуда', () => {
+      const onMoveStacks = vi.fn();
+      const { container } = renderTop({ onMoveStacks });
+      clickStack(stackEl(container, 0, 0)); // справа вплотную стоит стопка на x=1000
+
+      fireEvent.keyDown(frameOf(container), { key: 'ArrowRight' });
+      fireEvent.keyDown(frameOf(container), { key: 'ArrowLeft' }); // слева передняя стенка
+
+      expect(onMoveStacks).not.toHaveBeenCalled();
+    });
+
+    it('двигает весь выделенный блок одной дельтой', () => {
+      const onMoveStacks = vi.fn();
+      const { svg, container } = renderTop({ onMoveStacks });
+      rubberBand(svg, 0, 0, 1500, 500); // рамка выделяет стопки на x=0 и x=1000
+
+      fireEvent.keyDown(frameOf(container), { key: 'ArrowDown' });
+
+      const [refs, dx, dy] = onMoveStacks.mock.calls[0];
+      expect(refs).toHaveLength(2);
+      expect({ dx, dy }).toEqual({ dx: 0, dy: 1000 });
+    });
+
+    it('без выделения не трогает прокрутку страницы', () => {
+      const onMoveStacks = vi.fn();
+      const { container } = renderTop({ onMoveStacks });
+
+      const ev = createEvent.keyDown(frameOf(container), { key: 'ArrowDown' });
+      fireEvent(frameOf(container), ev);
+
+      expect(onMoveStacks).not.toHaveBeenCalled();
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('оставляет выделение на стопке, которую только что прижал', () => {
+      restoreSvgGeometry = installSvgGeometry();
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <MovableGroup />
+        </LocaleProvider>,
+      );
+      clickStack(stackEl(container, 2000, 0), 2500, 500);
+
+      fireEvent.keyDown(frameOf(container), { key: 'ArrowDown' });
+
+      // стопка уехала к борту…
+      expect(container.querySelector('[data-stack-ref="c@2000,1000"]')).not.toBeNull();
+      // …и осталась выделенной: с новой позиции её можно прижать вправо к задней стенке
+      fireEvent.keyDown(frameOf(container), { key: 'ArrowRight' });
+      expect(container.querySelector('[data-stack-ref="c@3000,1000"]')).not.toBeNull();
+    });
+
+    it('в виде сбоку стрелок не слушает', () => {
+      restoreSvgGeometry = installSvgGeometry();
+      const onMoveStacks = vi.fn();
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <CrossSection load={groupLoad} layout={groupLayout} view="side" label="Seitenansicht" onMoveStacks={onMoveStacks} />
+        </LocaleProvider>,
+      );
+
+      const side = container.querySelector('svg[data-cutaway="side"]')!;
+      expect(side).not.toHaveAttribute('tabindex');
+      fireEvent.keyDown(side, { key: 'ArrowDown' });
+      expect(onMoveStacks).not.toHaveBeenCalled();
+    });
+
+    // Ревью round 1, находка 1: предыдущие тесты слали keyDown прямо на элемент, минуя
+    // document.activeElement — их можно было пройти, даже удалив эффект захвата фокуса целиком.
+    // Этот тест проверяет сам захват: без выделения фокус не уезжает, с выделением — уезжает
+    // именно на внешний разрез (тот, что несёт tabIndex и слушает стрелки).
+    it('выделение забирает фокус на разрез; без выделения фокус остаётся на месте', () => {
+      const { container } = renderTop();
+      expect(document.activeElement).not.toBe(frameOf(container));
+
+      clickStack(stackEl(container, 0, 0));
+
+      expect(document.activeElement).toBe(frameOf(container));
+    });
+
+    // Ревью round 1, находка 2: расширение уже непустого выделения в группу (1 → 2 стопки) само
+    // по себе снимает ручку поворота с полотна — она рисуется только для ровно одной выбранной
+    // стопки, так что shift-клик по соседке убирает её из DOM тем же рендером. В jsdom mousedown
+    // фокус на элемент не даёт (в отличие от настоящего браузера, где клик внутри фокусируемого
+    // svg вернул бы фокус на разрез) — здесь важна не точка, куда фокус денется, а то, что он не
+    // остаётся на удалённой ручке. Вина была бы в другом: если бы эффект, увидев, что фокус
+    // «пропал», сам дотянулся и перехватил его на svg — то есть среагировал на КАЖДОЕ изменение
+    // sel.length, а не только на переход «пусто → есть». Проверяем именно это: после уточняющего
+    // клика фокус уходит с ручки и НЕ перепрыгивает на разрез.
+    it('уточняющий клик не отбирает фокус у ручки поворота', () => {
+      const { container, queryByLabelText } = renderTop();
+      clickStack(stackEl(container, 0, 0));
+      const handle = queryByLabelText('Stapel drehen')!;
+      handle.focus();
+      expect(document.activeElement).toBe(handle);
+
+      // shift-клик по соседней стопке расширяет выделение в группу — sel.length меняется 1 → 2,
+      // и вместе с этим ручка поворота (существующая только при ровно одной выбранной стопке)
+      // уходит из DOM.
+      fireEvent.pointerDown(stackEl(container, 1000, 0), { clientX: 1500, clientY: 500, shiftKey: true });
+
+      expect(container.querySelector('[aria-label="Stapel drehen"]')).toBeNull();
+      expect(document.activeElement).not.toBe(frameOf(container));
+    });
+
+    it('подсказка про стрелки видна только при выделении', () => {
+      const { container } = renderTop({ onMoveStacks: vi.fn() });
+      expect(container.querySelector('[data-testid="slide-hint"]')).toBeNull();
+
+      clickStack(stackEl(container, 0, 0));
+      expect(container.querySelector('[data-testid="slide-hint"]')).toHaveTextContent(
+        'Pfeiltasten',
+      );
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(container.querySelector('[data-testid="slide-hint"]')).toBeNull();
     });
   });
 });
