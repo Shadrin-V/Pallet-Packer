@@ -1,6 +1,8 @@
 /* Ladungsplaner — canonical design tokens (Direction D · Clean Tech + Holz-Schäfer brand).
    Ported verbatim from docs/design/theme.css (source of truth). Rule: components use ONLY tokens —
-   no hex in JSX. Light theme only (MVP). Rebrand = edit this file + docs/design/theme.css together. */
+   no hex in JSX. Две фирменные палитры, обе светлые: forest (умолчание) и warm (ADR 025).
+   Тёмной темы нет; путь к ней по-прежнему открыт токенами.
+   Ребренд = правка палитры в этом файле И в docs/design/theme.css вместе. */
 :root {
   /* ---- surfaces (cool near-white, faint sage bias) ---- */
   --paper: #f5f8f6;        /* app background / calque */
@@ -58,6 +60,70 @@
   /* ---- density presets (Setup = compact, Ladeplan = roomy) ---- */
   --pad-compact: 13px 14px;
   --pad-roomy: 18px 20px;
+}
+
+:root[data-theme='warm'] {
+  /* ---- surfaces (warm beige, из G7 как есть) ---- */
+  --paper: #faf9f7;
+  --card: #ffffff;
+  --sub: #f4f1eb;
+
+  /* ---- ink ---- */
+  /* Весь ряд сдвинут на ступень темнее G7. Причина: G7 отдаёт --faint #9a958c, а это 2.8:1 на
+     --paper при норме 4.5:1 для мелкого текста, — и на --faint висят микро-подписи, единицы и
+     метки Vorne/Hinten, то есть носители смысла, а не украшение. Подняв --faint до проходного
+     значения, мы упёрлись бы в --muted G7 (#6e6a63, 5.1:1) и потеряли различие между ними;
+     поэтому --muted уходит ещё темнее, а прежний --muted становится --faint. Лестница из трёх
+     ступеней сохраняется, и все три проходят. */
+  --ink: #242321;    /* 15.1:1 */
+  --muted: #5a564f;  /* 6.9:1 */
+  --faint: #6e6a63;  /* 5.1:1 — бывший --muted из G7 */
+
+  /* ---- lines (из G7 как есть) ---- */
+  --line: #e7e3db;
+  --line-strong: #d3ccc1;
+
+  /* ---- brand ---- */
+  /* Бренд остаётся зелёным: Holz Schäfer зелёный в обеих палитрах, меняется тёплая среда вокруг,
+     а не фирменный цвет. Берётся --primary из G7 — тот же лес, но светлее forest-овского
+     #104f25, потому что на бежевом фоне глубокий тёмный читается как чёрное пятно. */
+  --brand: #2e7d32;         /* 5.1:1 с --brand-ink */
+  --brand-strong: #256628;  /* hover/pressed — на ступень темнее --brand */
+  --brand-ink: #ffffff;
+  --mint: #84c48f;          /* фокус-кольцо, success-tint, hover; forest #71bf87, сдвинут в тепло */
+  --mint-tint: rgba(132, 196, 143, 0.16);
+  --mint-ring: rgba(132, 196, 143, 0.35);
+  --sage: #d8d1c4;          /* бледная нейтраль-разделитель; в тёплом ряду она бежевая, не sage */
+
+  /* ---- semantic — КОПИИ forest, не меняются ---- */
+  --success: #1f7a4c;  --success-ink: #ffffff;
+  --warning: #b8860b;  --warning-ink: #ffffff;
+  --danger: #b3261e;   --danger-ink: #ffffff;
+  --info: #1565c0;     --info-ink: #ffffff;
+
+  /* ---- categorical — КОПИИ forest, проверены на дальтонизм и печать ---- */
+  --s1: #2e7d32;  --s2: #1565c0;  --s3: #c62828;  --s4: #8e44ad;
+  --s5: #ef6c00;  --s6: #0097a7;  --s7: #a0522d;  --s8: #b08900;
+
+  /* ---- data-viz ---- */
+  --grid: #cfc7b9;       /* сетка 1000 мм — на тон темнее --line-strong, как forest --grid к своей */
+  --truck: #4a443c;      /* line-art обвеса, тёплый тёмный; forest #3f4a44 */
+  --yard-mark: #e8b300;  /* складская разметка — копия forest: это краска на асфальте, не UI */
+
+  /* ---- elevation ---- */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(30, 26, 20, 0.05);
+  --shadow-pop: 0 8px 24px rgba(30, 26, 20, 0.12);
+
+  /* ---- typography / motion / density — КОПИИ forest ---- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur: 150ms;
+  --pad-compact: 13px 14px;
+  --pad-roomy: 18px 20px;
+
+  /* ---- radii (из G7: чуть острее, чем forest 12/8/18) ---- */
+  --r-card: 10px;  --r-ctl: 7px;  --r-pill: 20px;
 }
 
 body {
