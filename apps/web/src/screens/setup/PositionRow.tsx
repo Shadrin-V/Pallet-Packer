@@ -21,6 +21,11 @@ export interface PositionRowProps {
   index: number; // палитра заказа
   vehicle: Vehicle;
   selected: boolean;
+  /** Смонтирована ли прямо сейчас панель, на которую указывает `aria-controls` чипа (LKWkalk-58v).
+   *  В широком режиме `<aside>` стоит всегда, в узком drawer появляется только у выбранной строки —
+   *  и до первого выбора атрибут указывал на id, которого нет нигде в DOM. Висячий `aria-controls`
+   *  хуже отсутствующего: он обещает вспомогательной технологии цель, которую та не находит. */
+  panelMounted: boolean;
   onSelect: () => void; // выбрать строку и открыть панель (чип, подхваченный артикул)
   /** Снять выбор. Чип — это disclosure (`aria-expanded`), поэтому повторный клик по нему обязан
    *  закрывать панель: в широком режиме это единственный способ вернуться к сводке загрузки
@@ -38,7 +43,8 @@ export interface PositionRowProps {
 }
 
 export function PositionRow({
-  position: p, index, vehicle, selected, onSelect, onDeselect, onChange, armed, onArm, onRemove, chipRef, nameRef,
+  position: p, index, vehicle, selected, panelMounted, onSelect, onDeselect, onChange, armed, onArm, onRemove,
+  chipRef, nameRef,
 }: PositionRowProps) {
   // One translation source for the whole row — the dominant pattern in this repo (ArticleCombobox,
   // WarehouseFloor, Legend, HeroHeader, EmptyPlan, ...). Threading `tt` down as a prop is a
@@ -113,7 +119,7 @@ export function PositionRow({
         type="button"
         data-testid="rule-chip"
         aria-expanded={selected}
-        aria-controls={RULES_PANEL_ID}
+        aria-controls={panelMounted ? RULES_PANEL_ID : undefined}
         onClick={selected ? onDeselect : onSelect}
         className={`ml-auto inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5 text-caption transition-colors ${
           invalid ? 'border-danger text-danger'

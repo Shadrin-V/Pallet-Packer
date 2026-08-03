@@ -495,6 +495,7 @@ export function SetupScreen({
               onRemoveOrder={() => removeOrder(o.key)}
               onRemovePosition={(pid) => removePosition(o.key, pid)}
               selectedPositionId={selection?.orderKey === o.key ? selection.positionId : null}
+              panelDocked={wide}
               onSelectPosition={(pid) => setSelection({ orderKey: o.key, positionId: pid })}
               onDeselectPosition={closePanel}
               onChipRef={(pid, el) => {
@@ -513,7 +514,14 @@ export function SetupScreen({
           // (PositionRow.tsx) so assistive tech can relate the two, even though the panel sits after
           // the whole order list in DOM order. `<aside>` names the landmark; `w-80` replaces the
           // arbitrary `xl:w-[20rem]` with the equivalent step already on the scale (design-system.md).
-          <aside id={RULES_PANEL_ID} className="w-full shrink-0 xl:sticky xl:top-4 xl:w-80">
+          // `aria-label` (LKWkalk-bab): `<aside>` — это landmark complementary, и без имени он
+          // объявлен, но не назван. Имя то же, что у узкого drawer'а ниже: для пользователя это
+          // одна и та же панель разбора, просто в двух раскладках.
+          <aside
+            id={RULES_PANEL_ID}
+            aria-label={tt('setup.panel.rules')}
+            className="w-full shrink-0 xl:sticky xl:top-4 xl:w-80"
+          >
             <RulesPanel
               // Review finding (Task 5, round 2): RulesPanel keeps its own `saveError` state, and this
               // is now a SINGLE persistent instance (unlike the old per-row accordion, which unmounted

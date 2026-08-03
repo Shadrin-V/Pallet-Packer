@@ -167,21 +167,30 @@ export function upsertFromErp(db: Database.Database, erp: ErpArticleFields, opts
   });
 }
 
+/**
+ * Escapes the LIKE metacharacters so a typed `%` or `_` matches itself. Without this, '50%' is the
+ * pattern "starts with 50" and matches the whole catalogue head — the query is parameterised, so
+ * this is a matching bug, not an injection. The escape character itself goes first, otherwise the
+ * backslashes this function adds would be escaped again on the next pass.
+ */
+const likeLiteral = (s: string): string => s.replace(/[\\%_]/g, '\\$&');
+
 /** Suggestions for the article combobox: exact code, then code prefix, then name match. */
 export function searchArticles(db: Database.Database, query: string, limit = 20): Article[] {
   const q = query.trim().toLowerCase();
+  const esc = likeLiteral(q);
   const rows = db
     .prepare(
       `SELECT * FROM article
-       WHERE lower(item_code) LIKE @like OR lower(name) LIKE @like
+       WHERE lower(item_code) LIKE @like ESCAPE '\\' OR lower(name) LIKE @like ESCAPE '\\'
        ORDER BY CASE
                   WHEN lower(item_code) = @q THEN 0
-                  WHEN lower(item_code) LIKE @prefix THEN 1
+                  WHEN lower(item_code) LIKE @prefix ESCAPE '\\' THEN 1
                   ELSE 2
                 END,
                 item_code
        LIMIT @limit`,
     )
-    .all({ q, like: `%${q}%`, prefix: `${q}%`, limit }) as Row[];
+    .all({ q, like: `%${esc}%`, prefix: `${esc}%`, limit }) as Row[];
   return rows.map(toArticle);
 }

@@ -96,6 +96,29 @@ describe('CrossSection rendering polish', () => {
   });
 });
 
+// LKWkalk-xzp: after gtw the outer svg became keyboard-operable (tabIndex + arrow keys slide the
+// selection to the nearest stop), but kept role="img" — a role that tells assistive tech "atomic
+// graphic, nothing to interact with". The role must follow the same `draggable` switch the
+// tabIndex and the key handler already follow.
+describe('CrossSection — роль внешнего svg следует за поведением (xzp)', () => {
+  it('does not call the keyboard-operable cutaway a static image', () => {
+    render(
+      <LocaleProvider initial="de">
+        <CrossSection load={load} layout={layout} view="top" label="Draufsicht" onMoveStack={() => {}} />
+      </LocaleProvider>,
+    );
+    expect(screen.queryByRole('img', { name: 'Draufsicht' })).not.toBeInTheDocument();
+    const cut = screen.getByRole('group', { name: 'Draufsicht' });
+    expect(cut).toHaveAttribute('tabindex', '0');
+  });
+
+  it('keeps role=img on a view-only cutaway, which really is a static graphic', () => {
+    renderCut('side', 'Seitenansicht');
+    const cut = screen.getByRole('img', { name: 'Seitenansicht' });
+    expect(cut).not.toHaveAttribute('tabindex');
+  });
+});
+
 // LKWkalk-7i6, замечание владельца: в панели раскладки нужно уметь отключить отображение грузовика
 // — сверху и снизу. Прячется ОБВЕС (кабина, шасси с колёсами, линия земли, верхние фитинги); рамка
 // кузова и линейки остаются: без них чертёж перестал бы быть чертежом.

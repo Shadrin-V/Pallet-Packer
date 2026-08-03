@@ -48,6 +48,7 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
   const tt = useT();
   const { locale } = useLocale();
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!p) {
     // Пустое состояние — не заглушка: панель показывает сводку заявки и список сообщений (§6).
@@ -62,7 +63,11 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
     );
   }
 
+  // LKWkalk-clb: пока запрос в полёте, кнопка выключена — иначе двойной клик слал две одинаковые
+  // записи. Снимается в `finally`: после неудачи повторить обязано быть чем, а сообщение об ошибке
+  // как раз просит попробовать ещё раз.
   const handleSaveArticle = async () => {
+    setSaving(true);
     try {
       const saved = await onSaveArticle();
       setSaveError(null);
@@ -76,6 +81,8 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
         });
     } catch {
       setSaveError(tt('article.saveError'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -83,7 +90,7 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
   const invalid = stepInvalid(p.state, activeStep(p), p.height);
   // Finding 3: "активна при введённом артикуле и заполненных габаритах" — the save button is always
   // present in the details panel, disabled (not hidden) until both conditions hold.
-  const saveDisabled = (p.articleCode ?? p.name).trim() === '' || !dimsPresent;
+  const saveDisabled = (p.articleCode ?? p.name).trim() === '' || !dimsPresent || saving;
   let preview: StackPreview | null = null;
   if (dimsPresent && !invalid) {
     try {

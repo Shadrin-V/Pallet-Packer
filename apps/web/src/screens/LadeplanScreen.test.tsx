@@ -41,7 +41,7 @@ describe('LadeplanScreen', () => {
     renderLadeplan();
     expect(screen.getByText('Ladeplan · Ladungsplaner')).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent('LKW');
-    expect(screen.getByRole('img', { name: 'Draufsicht' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Draufsicht' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Seitenansicht' })).toBeInTheDocument();
   });
 
