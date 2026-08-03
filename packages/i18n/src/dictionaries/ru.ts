@@ -68,6 +68,9 @@ export const ru: Dictionary = {
   'setup.msg.duplicateOrderId': 'Auftrags-ID повторяется — заказы посчитаются как один',
   'setup.msg.goToPosition': 'Перейти к позиции',
   'setup.header.calcBlocked': 'Расчёт невозможен: ошибок — {n}',
+  'theme.label': 'Цветовая схема',
+  'theme.forest': 'Зелёная',
+  'theme.warm': 'Тёплая',
   'unit.m3': 'м³',
   'warehouse.title': 'Склад',
   'warehouse.hint':

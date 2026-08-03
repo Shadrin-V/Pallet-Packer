@@ -68,6 +68,9 @@ export const de: Dictionary = {
   'setup.msg.duplicateOrderId': 'Auftrags-Nr. wiederholt sich — die Aufträge zählen als einer',
   'setup.msg.goToPosition': 'Zur Position springen',
   'setup.header.calcBlocked': 'Berechnung nicht möglich: {n} Fehler',
+  'theme.label': 'Farbschema',
+  'theme.forest': 'Grün',
+  'theme.warm': 'Warm',
   'unit.m3': 'm³',
   'warehouse.title': 'Lager',
   'warehouse.hint':

@@ -9,6 +9,7 @@ import { fillTemplate } from '../components/stackFormula';
 import { Button, InfoHint, Measure, Select } from '../../ui/primitives';
 import { LoadingModeSwitch } from '../../ui/LoadingModeSwitch';
 import { OrderGroupingToggle } from '../../ui/OrderGroupingToggle';
+import { ThemeSwitch } from '../../theme/ThemeSwitch';
 import { VEHICLE_PRESETS } from '../../data/presets';
 import { numOr0, type Num } from './setupState';
 import type { SetupSummary } from './setupValidation';
@@ -116,6 +117,9 @@ export function SetupHeader({
         <div className="ml-auto flex items-center gap-2">
           {!compact && (
             <>
+              {/* Палитра — не то, что меняют посреди прокрутки (ADR 025): скрывается вместе с
+                  Demo/Reset, а не остаётся в ужатой строке. */}
+              <ThemeSwitch />
               <Button variant="ghost" onClick={onDemo}>{tt('action.demo')}</Button>
               <Button variant="secondary" onClick={onReset}>{tt('action.reset')}</Button>
             </>
