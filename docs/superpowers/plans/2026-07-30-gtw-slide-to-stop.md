@@ -1,5 +1,10 @@
 # Slide-to-stop: прижать стопку к упору стрелкой — план реализации (`LKWkalk-gtw`)
 
+> ✅ ВЫПОЛНЕН 2026-08-03. Все пять задач сделаны сабагентами; ветка `feat/gtw-slide-to-stop` слита в
+> `main` squash-коммитом `fab49df` **локально, без PR** (шаг 3 задачи 5 разошёлся с планом — владелец
+> выбрал локальный мерж). Гейты на слитом дереве: typecheck 0 · lint 0 · тесты 917/917.
+> Итог сессии — `docs/superpowers/HANDOVER-2026-08-03-gtw-slide-to-stop.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** выделенная в виде сверху стопка (или блок) едет по стрелке до первого упора — стенки кузова или соседней стопки — и встаёт вплотную.
