@@ -1193,6 +1193,178 @@ describe('LadeplanScreen — bayOrder помнит заказ, уехавший 
   });
 });
 
+// Task 6 (2026-08-03 UI batch): releasing a yard stack anywhere other than over the hold used to be a
+// silent no-op. Over the yard, with grouping off, it now reorders the flow — the same magnet and the
+// same `insertionIndexAt` that already drives the hold→yard drop, only with the yard itself as the
+// source. Grouping on: the gesture stays a no-op, same as before this task (bays.tsx still moves
+// order tags, not stacks).
+describe('LadeplanScreen — перестановка стопок во дворе (Task 6)', () => {
+  afterEach(() => globalThis.localStorage?.clear());
+
+  const yardVehicle = { id: 'vY', name: 'LKW', length: 4000, width: 2000, height: 1700 };
+  const box = (id: string, name: string, quantity: number, extra: Partial<Load['cargo'][number]> = {}) => ({
+    id,
+    name,
+    length: 500,
+    width: 500,
+    height: 500,
+    quantity,
+    rotation: 'none' as const,
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt' as const,
+    orderId: 'SO-1',
+    ...extra,
+  });
+
+  /** Three distinguishable single-unit tiles: p1, p2, p3. */
+  const threeTypesLoad: Load = {
+    vehicle: yardVehicle,
+    cargo: [box('p1', 'P1', 1), box('p2', 'P2', 1), box('p3', 'P3', 1)],
+  };
+  const threeTypesLayout: Layout = {
+    placements: [],
+    unplaced: [
+      { cargoTypeId: 'p1', count: 1 },
+      { cargoTypeId: 'p2', count: 1 },
+      { cargoTypeId: 'p3', count: 1 },
+    ],
+    metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.14.0',
+  };
+
+  /** The known limitation, pinned rather than fixed (task-6-brief.md, bead LKWkalk-72g): the yard's
+   *  order is a list of `cargoTypeId`, not tile identities. p3 here yields TWO tiles of the SAME type
+   *  (a full stack of 17 — height 100, maxTiers 17, vehicle height 1700 — plus a remainder of 12), so
+   *  `stackBuffer` order is [p3×17, p3×12, p1×1]. */
+  const sameTypeLoad: Load = {
+    vehicle: yardVehicle,
+    cargo: [
+      box('p3', 'P3', 29, { height: 100, stacking: { stackable: true, maxTiers: 17 } }),
+      box('p1', 'P1', 1),
+    ],
+  };
+  const sameTypeLayout: Layout = {
+    placements: [],
+    unplaced: [
+      { cargoTypeId: 'p3', count: 29 },
+      { cargoTypeId: 'p1', count: 1 },
+    ],
+    metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.14.0',
+  };
+
+  function renderPlanWithYard({ grouped, sameType = false }: { grouped: boolean; sameType?: boolean }) {
+    if (grouped) localStorage.setItem('ladungsplaner.yardGrouping', 'true');
+    const l = sameType ? sameTypeLoad : threeTypesLoad;
+    const ly = sameType ? sameTypeLayout : threeTypesLayout;
+    return render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={l} layout={ly} />
+      </LocaleProvider>,
+    );
+  }
+
+  /** `installSvgGeometry` gives every svg the SAME identity CTM and, unless told otherwise, the SAME
+   *  bounding rect — which is enough for the hold→yard tests elsewhere in this file (they never need
+   *  `toHoldMm` to say "no" for a point that is genuinely over the yard). This gesture's own code DOES
+   *  need that: `dropTileAt` asks `tileAim`/`toHoldMm` first, and only falls through to the yard when
+   *  it says no. On a real screen the two svgs simply occupy different screen regions; here the two
+   *  boxes are given explicitly and kept disjoint in Y — the hold's box sits entirely in negative Y,
+   *  where no realistic yard coordinate (0..~1000 for this fixture) will ever land — so "released over
+   *  the yard, not the hold" is exercised honestly rather than by a box that happens to agree. */
+  // `async`, and AWAITS `run()`: every caller's body carries an `await dragFromTo(...)`, and a
+  // `try { run() } finally { restore() }` without awaiting would restore the shared prototype before
+  // that continuation — which reads `data-cargo-type`/`data-units` off the DOM, not off the geometry,
+  // so it would still pass by luck, but the next test file sharing this worker would inherit a
+  // half-restored prototype the moment two of these tests raced. Awaiting closes that gap for good.
+  async function withYardGeometry(run: () => void | Promise<void>) {
+    const restore = installSvgGeometry({ left: 0, top: 0, width: 10000, height: 4000 });
+    const proto = SVGSVGElement.prototype as unknown as { getBoundingClientRect: (this: SVGSVGElement) => DOMRect };
+    const shared = proto.getBoundingClientRect;
+    const rectAt = (top: number, bottom: number): DOMRect =>
+      ({ left: 0, right: 10000, top, bottom, width: 10000, height: bottom - top, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    proto.getBoundingClientRect = function (this: SVGSVGElement) {
+      if (this.hasAttribute('data-warehouse')) return rectAt(0, 4000);
+      if (this.getAttribute('data-hold') === 'top') return rectAt(-2000, -1500);
+      return shared.call(this);
+    };
+    try {
+      await run();
+    } finally {
+      proto.getBoundingClientRect = shared;
+      restore();
+    }
+  }
+
+  /** The yard's tiles, in DOM (= flow) order. Plain `querySelectorAll`, not RTL's `within(...)`: that
+   *  helper's `element` parameter is typed `HTMLElement`, and the yard is an `<svg>` — an `Element`,
+   *  never an `HTMLElement` in the DOM lib's type hierarchy, even though jsdom queries it identically
+   *  either way. */
+  const yardTiles = (yard: Element): Element[] => [...yard.querySelectorAll('[data-testid="warehouse-tile"]')];
+
+  /** Lift `fromEl` and release it centred on `toEl`'s own footprint — read straight off `toEl`'s
+   *  backing `<rect>` (mm, unscaled: `StackShape`'s coordinates ARE the caller's mm), so the release
+   *  point is exactly where `toEl` stands, independent of row/gap arithmetic changing under us. Events
+   *  go through `window`, same as the pointerId-filter tests above: the drag's own listeners in
+   *  `LadeplanScreen` are global (the gesture starts on a yard tile and can end anywhere on the page). */
+  async function dragFromTo(fromEl: Element, toEl: Element) {
+    const r = toEl.querySelector('rect')!;
+    const clientX = Number(r.getAttribute('x')) + Number(r.getAttribute('width')) / 2;
+    const clientY = Number(r.getAttribute('y')) + Number(r.getAttribute('height')) / 2;
+    fireEvent.pointerDown(fromEl, { clientX, clientY, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX, clientY, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX, clientY, pointerId: 1 });
+  }
+
+  it('при выключенной группировке бросок стопки над двором меняет её место в потоке', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: false });
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const first = yardTiles(yard)[0];
+      const third = yardTiles(yard)[2];
+      await dragFromTo(first, third);
+
+      const after = yardTiles(yard).map((el) => el.getAttribute('data-cargo-type'));
+      expect(after[0]).not.toBe('p1'); // первая уехала
+      expect(after).toContain('p1'); // но осталась во дворе
+    });
+  });
+
+  it('при включённой группировке тот же жест ничего не меняет', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: true });
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const before = yardTiles(yard).map((el) => el.getAttribute('data-cargo-type'));
+      const tiles = yardTiles(yard);
+      await dragFromTo(tiles[0], tiles[2]);
+      const after = yardTiles(yard).map((el) => el.getAttribute('data-cargo-type'));
+      expect(after).toEqual(before);
+    });
+  });
+
+  // Ограничение, а не баг: порядок двора хранится списком cargoTypeId, поэтому плитки одного типа
+  // между собой не переставляются. Тест держит это свойство явным — увидев его падение, следующий
+  // правщик должен понимать, что модель порядка сменилась, а не «тест сломался».
+  //
+  // Драг нацелен на ТРЕТЬЮ плитку (p1), а не на соседнюю: перенос на позицию непосредственно следующей
+  // плитки — тождество для ЛЮБОЙ модели порядка (вставка «перед следующим» после изъятия себя же
+  // возвращает на своё место, см. off-by-one в `reorderYard`) и потому ничего не пиннинговал бы;
+  // нацеливаясь на третью плитку, тест проверяет именно то, что заявлено — что p3×17 и p3×12
+  // неразличимы в списке cargoTypeId, а не общую арифметику вставки.
+  it('две плитки одного типа между собой не переставляются (модель порядка — по типам)', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: false, sameType: true });
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const tiles = yardTiles(yard);
+      const before = tiles.map((el) => el.getAttribute('data-units'));
+      await dragFromTo(tiles[0], tiles[2]);
+      const after = yardTiles(yard).map((el) => el.getAttribute('data-units'));
+      expect(after).toEqual(before);
+    });
+  });
+});
+
 describe('LadeplanScreen — figures (D1 + D3)', () => {
   const overloaded: Load = { ...load, cargo: [{ ...load.cargo[0], quantity: 11 }] };
 

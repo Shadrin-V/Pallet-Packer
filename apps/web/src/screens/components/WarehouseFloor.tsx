@@ -363,6 +363,11 @@ export function WarehouseFloor({
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}
                   data-testid="warehouse-tile"
+                  // Stable, type/units-bearing markers for tests (Task 6, yard→yard reorder): a
+                  // gesture test needs to tell tiles apart by TYPE and by the exact stack it grabbed,
+                  // and neither was readable from the DOM before without parsing `aria-label` text.
+                  data-cargo-type={cargo.id}
+                  data-units={pt.tile.units}
                   role="button"
                   tabIndex={0}
                   aria-label={`${cargo.name} ×${pt.tile.units}`}

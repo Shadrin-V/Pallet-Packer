@@ -436,11 +436,49 @@ export function LadeplanScreen({
 
   const dropTileAt = (index: number, clientX: number, clientY: number) => {
     const aim = tileAim(index, clientX, clientY);
-    if (!aim) return; // released outside the hold — just put the tile back, no complaint
+    if (!aim) {
+      // Released outside the hold. Over the yard, with grouping off, that is a reorder within the
+      // flow — the same magnet and the same `insertionIndexAt` that already drives a carry-in from the
+      // hold, only with the yard itself as the source (Task 6, owner 2026-08-03). With grouping on,
+      // the order is dictated by bays, and a manual reorder here would mean something else entirely —
+      // the gesture stays the no-op it already was before this task.
+      if (yardGrouped) return;
+      const at = toWarehouseMm(clientX, clientY);
+      if (!at) return; // not over the yard either — just put the tile back, no complaint
+      // No third argument: grouping is off, so `bays` is empty and the function returns a plain flow
+      // index — already an index into `orderedTiles`, nothing left to translate.
+      const to = insertionIndexAt(
+        warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
+        at,
+      );
+      reorderYard(index, to);
+      return;
+    }
     // Place where the ghost said it would go. Resolving again here (rather than reusing tilePreview)
     // keeps this correct even if the release carries a position no move event reported.
     const r = resolveDrop(load, edited, aim.spec);
     applyEdit((prev) => placeStack(load, prev, { ...aim.spec, x: r.x, y: r.y }));
+  };
+
+  /** Move a yard tile from `from` to `to` in the flow order (Task 6). `to` comes from
+   *  `insertionIndexAt` as an INSERTION index, computed with the moved tile still standing in its old
+   *  slot — so moving it to the RIGHT needs the target reduced by one, else the removal would shift
+   *  everything after it back by one and the tile would land one slot further than the point aimed at.
+   *  Landing on its own slot is a no-op: a gesture that changed nothing should not be recorded, the
+   *  same reasoning the bay-tag carry in `WarehouseFloor` already follows.
+   *
+   *  The order is stored as `cargoTypeId` strings, not tile identities (see "Известное ограничение" in
+   *  the task brief): two tiles of the SAME type are interchangeable in `bufferOrder`, so a reorder
+   *  aimed between or past tiles of one's own type can produce the identical string list and read as a
+   *  no-op even though the gesture itself was real. This is the existing buffer-order model — the
+   *  hold→yard drop path (`onDropOutside`) already has the same property — not a regression here. */
+  const reorderYard = (from: number, to: number) => {
+    const target = to > from ? to - 1 : to;
+    if (target === from) return;
+    const next = orderedTiles.map((t) => t.cargoTypeId);
+    const [moved] = next.splice(from, 1);
+    next.splice(target, 0, moved);
+    setBufferOrder(next);
   };
 
   // A tile is carried with global listeners: the drag starts in the warehouse (HTML) and ends over
@@ -479,9 +517,23 @@ export function LadeplanScreen({
    *  warehouse floor, show where it would land — spliced into `orderedTiles`' own flow so real tiles
    *  reflow around it exactly as they would once the drop actually lands there. Off the floor (or
    *  between renders, briefly), there is nothing to show. */
+  // The phantom's carry source: a stack lifted OUT of the hold (`carry`), or — Task 6 — a yard tile
+  // itself, lifted to be reordered WITHIN the yard (`dragTile`), but only while grouping is off: with
+  // grouping on, `dropTileAt` treats a release outside the hold as a no-op (the bays dictate the
+  // order there), so a phantom would promise a move that never lands.
+  const carrySource: { x: number; y: number; cargoTypeId: string; units: number; orientation: 'lwh' | 'wlh' } | null =
+    carry ??
+    (dragTile && !yardGrouped
+      ? (() => {
+          const tile = orderedTiles[dragTile.index];
+          return tile
+            ? { x: dragTile.x, y: dragTile.y, cargoTypeId: tile.cargoTypeId, units: tile.units, orientation: tile.orientation }
+            : null;
+        })()
+      : null);
   const phantomAt: { index: number; tile: BufferTile } | null = (() => {
-    if (!carry) return null;
-    const pt = toWarehouseMm(carry.x, carry.y);
+    if (!carrySource) return null;
+    const pt = toWarehouseMm(carrySource.x, carrySource.y);
     if (!pt) return null;
     // Тот же режим, что рисует двор: иначе магнит целился бы в загоны, которых на экране нет. И тот
     // же ПОРЯДОК: вызовов `warehouseFloor` на этом экране три (отрисовка, `phantomAt`,
@@ -490,11 +542,11 @@ export function LadeplanScreen({
     const index = insertionIndexAt(
       warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
       pt,
-      { orderId: orderOfType(carry.cargoTypeId) },
+      { orderId: orderOfType(carrySource.cargoTypeId) },
     );
     return {
       index,
-      tile: { cargoTypeId: carry.cargoTypeId, units: carry.units, orientation: carry.orientation },
+      tile: { cargoTypeId: carrySource.cargoTypeId, units: carrySource.units, orientation: carrySource.orientation },
     };
   })();
 
