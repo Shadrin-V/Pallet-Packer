@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <title>Ladungsplaner</title>
+    <script>
+      // Финальное ревью, находка 6: applyTheme(readTheme()) в useTheme.ts (apps/web/src/theme/useTheme.ts)
+      // запускается при импорте модуля — то есть уже ПОСЛЕ разбора бандла, на первом кадре после
+      // парсинга JS. Пользователь с сохранённой warm-палитрой на каждой загрузке видел зелёный
+      // --paper из forest первый кадр, пока модуль не выполнится. Тот же localStorage-ключ читается
+      // здесь синхронно, до первой отрисовки — комментарий с обеих сторон (см. THEME_STORAGE_KEY в
+      // useTheme.ts), чтобы ключ 'ladungsplaner.theme' не разошёлся молча. try/catch — Safari
+      // private mode бросает на доступе к localStorage, тема тогда просто остаётся дефолтной.
+      (function () {
+        try {
+          if (localStorage.getItem('ladungsplaner.theme') === 'warm') {
+            document.documentElement.setAttribute('data-theme', 'warm');
+          }
+        } catch {
+          // localStorage недоступен — остаёмся на дефолтной (forest) палитре для этой сессии.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -31,17 +31,22 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
-import { WarehouseBackdrop, FLOOR, DOCK_DEPTH_RATIO, dockWidths } from './WarehouseBackdrop';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
 export type { BufferTile };
 
-/** Below this pointer travel (px) a press is a click (select), not a drag (carry). */
-const CLICK_SLOP_PX = 5;
+/** Below this pointer travel (px) a press is a click (select), not a drag (carry). Exported: the
+ *  yard→yard reorder in `LadeplanScreen` (Task 6) uses the same threshold to decide whether a yard
+ *  tile's carry has actually started, so a press alone cannot open the gap phantom or reflow the
+ *  yard — one number, not two that could drift apart. */
+export const CLICK_SLOP_PX = 5;
 
-/** Совпадают ли два порядка загонов поэлементно. */
-const sameOrder = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+/** Совпадают ли два порядка загонов поэлементно. Exported: `LadeplanScreen`'s yard→yard reorder
+ *  (Task 6) reuses it to skip writing a `bufferOrder` that would be identical to the current one —
+ *  the same "a gesture that changed nothing records nothing" rule this file already follows for the
+ *  bay-tag carry. */
+export const sameOrder = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
 
 export function WarehouseFloor({
   load,
@@ -55,6 +60,7 @@ export function WarehouseFloor({
   onGroupedChange,
   bayOrder,
   onBayOrderChange,
+  showTruck = true,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -80,6 +86,9 @@ export function WarehouseFloor({
   bayOrder?: string[];
   /** Перенос загона завершён. Отсутствует — бирки инертны, переноса загонов нет. */
   onBayOrderChange?: (next: string[]) => void;
+  /** Рисуется ли обвес на разрезах. Двор повторяет это значение, чтобы ширина его внешнего viewBox
+   *  совпадала с разрезом — на этом равенстве держится масштаб 1:1. */
+  showTruck?: boolean;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -180,16 +189,10 @@ export function WarehouseFloor({
   // shallow row must not shrink the surface (nor its scenery) to a sliver. A deeper buffer grows past
   // it.
   const yardUnit = Math.round(load.vehicle.width);
-  // Доки занимают долю этой глубины, и ровно их ширины двор отводит под боковые поля — иначе первый
-  // ряд стопок и кромка первого загона идут поверх ящиков и погрузчика (LKWkalk-103). Считается до
-  // раскладки, потому что раскладка этими полями и пользуется.
-  const dockH = yardUnit * DOCK_DEPTH_RATIO;
-  const caps = dockWidths(dockH);
   const floor = warehouseFloor(load, renderTiles, {
     grouped,
     bayOrder: dragBay?.order ?? bayOrder,
-    padLeft: caps.left,
-    padRight: caps.right,
+    showTruck,
   });
   // Сколько различимых заказов лежит во дворе — по тому же ключу, по которому группирует раскладка
   // (груз без номера — это тоже группа). Меньше двух — делить нечего, и переключатель был бы мёртвым.
@@ -232,9 +235,30 @@ export function WarehouseFloor({
         )}
       </div>
 
-      {/* The yard card: the floor svg is full-bleed (no padding strips), overflow-hidden clips the
-          asphalt to the rounded corners, and the asphalt tone is a fallback behind the svg. */}
-      <div className="overflow-hidden rounded-card" style={{ background: FLOOR }}>
+      {/* The yard zone: a plain dashed outline on the page background (2026-08-03, owner) — the
+          raster dock scenery is gone (it was the theming blocker), and the zone is decoration only,
+          drawn as a CSS outline on the container rather than an svg rect: this svg lives in mm
+          space scaled to the vehicle's length, and a stroke drawn inside it would render at a
+          different dash length for a 13.6 m truck than for a 7.15 m Wechselbrücke.
+          `outline`, NOT `border` (found in review, round 1): per this file's own header comment
+          above (§ "ANY horizontal padding, border or scrollbar between this section and the
+          column narrows the svg, and the scale drifts while the viewBox still matches"), a
+          `border` here would eat into this div's content width and shrink the svg by the border's
+          width on each side — pixel-exact with the hold only in the viewBox numbers
+          (`holdYardScale.test.tsx`), not on screen. An outline paints outside the box model and
+          takes no layout space, so the svg keeps its full width; `-outline-offset-1` pulls the
+          dash back onto the element's edge (instead of bleeding a px into the margin outside it),
+          and `overflow-hidden` still clips the svg content to the rounded corners — it has no
+          effect on the outline itself, which is fine, since the outline is drawn on this element,
+          not clipped by it. This is the THIRD time this file's yard surface has changed hands
+          without whoever changed it knowing about the scale-invariant comment above; if you are
+          about to add spacing/border/anything with layout width to this element, read that
+          comment first. */}
+      <div
+        data-testid="warehouse-zone"
+        className="overflow-hidden rounded-card outline outline-1 outline-dashed outline-line-strong -outline-offset-1 bg-paper"
+      >
+
         <svg
           ref={svgRef}
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
@@ -245,16 +269,11 @@ export function WarehouseFloor({
           // A stable selector for the parent (LadeplanScreen's `toWarehouseMm`): it cannot reach into
           // this component's own refs, and `role="img"` alone also matches the top/side cutaways.
           data-warehouse
-          style={{ background: FLOOR, display: 'block', touchAction: 'none' }}
+          style={{ display: 'block', touchAction: 'none' }}
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) setSel(null);
           }}
         >
-          {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
-              decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
-          {/* Доки меряются `yardUnit` — МИНИМАЛЬНОЙ глубиной двора, а не текущей: иначе сценерия
-              растёт вместе с буфером и начинает доминировать над грузом (LKWkalk-jen). */}
-          <WarehouseBackdrop width={floor.width} height={floorHeight} dockHeight={dockH} />
           {/* Загоны заказов (41e.2): пустой массив, когда различимых заказов меньше двух — тогда
               двор выглядит как раньше. Рисуются между фоном и стопками, указателя не берут. */}
           {floor.bays.map((bay) => {
@@ -287,9 +306,10 @@ export function WarehouseFloor({
           })}
           {empty && (
             // A one-line invitation centred on the empty yard: the surface catches a stack pulled out
-            // of the hold. The dashed outline is gone (owner feedback) — the yard art already reads as
-            // a place to set things down. Decoration only; the drop is handled by the parent, which
-            // hit-tests this whole section.
+            // of the hold. Пунктир вернулся (владелец, 2026-08-03) вместе с удалением растровой сценерии:
+            // её сняли ровно потому, что арт «already reads as a surface» — арт ушёл, довод ушёл с ним.
+            // Обе итерации названы намеренно, чтобы никто не «вернул как было» в третий раз.
+            // Decoration only; the drop is handled by the parent, which hit-tests this whole section.
             <g data-testid="warehouse-dropzone" pointerEvents="none">
               <text
                 x={floor.width / 2}
@@ -349,6 +369,11 @@ export function WarehouseFloor({
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}
                   data-testid="warehouse-tile"
+                  // Stable, type/units-bearing markers for tests (Task 6, yard→yard reorder): a
+                  // gesture test needs to tell tiles apart by TYPE and by the exact stack it grabbed,
+                  // and neither was readable from the DOM before without parsing `aria-label` text.
+                  data-cargo-type={cargo.id}
+                  data-units={pt.tile.units}
                   role="button"
                   tabIndex={0}
                   aria-label={`${cargo.name} ×${pt.tile.units}`}

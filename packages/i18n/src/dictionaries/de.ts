@@ -68,6 +68,12 @@ export const de: Dictionary = {
   'setup.msg.duplicateOrderId': 'Auftrags-Nr. wiederholt sich — die Aufträge zählen als einer',
   'setup.msg.goToPosition': 'Zur Position springen',
   'setup.header.calcBlocked': 'Berechnung nicht möglich: {n} Fehler',
+  // Task 7: announced by the live region below the second "Berechnen" (next to the plan), right
+  // after a successful calculation — read by a screen reader that cannot see the plan appear.
+  'setup.calcDone': 'Berechnet: {orders} Aufträge, {positions} Positionen, {units} Einheiten.',
+  'theme.label': 'Farbschema',
+  'theme.forest': 'Grün',
+  'theme.warm': 'Warm',
   'unit.m3': 'm³',
   'warehouse.title': 'Lager',
   'warehouse.hint':
