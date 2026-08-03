@@ -7,7 +7,7 @@ import { LocaleProvider } from '../../i18n/LocaleContext';
 import { WarehouseFloor } from './WarehouseFloor';
 import type { BufferTile } from './warehouseLayout';
 import { truckFrame } from './truckFrame';
-import { DOCK_DEPTH_RATIO, dockWidths } from './WarehouseBackdrop';
+import { warehouseFloor } from './warehouseLayout';
 import { installSvgGeometry } from './svgTestGeometry';
 
 const V = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
@@ -70,25 +70,25 @@ describe('WarehouseFloor', () => {
     expect(w).toBe(truckFrame(V, 'top').outerW);
   });
 
-  // LKWkalk-103. Доки — сценерия, прижатая к верхним углам двора; содержимое двора начиналось от
-  // общего поля в 200 мм и заезжало на них: первый ряд стопок и верхняя кромка первого загона шли
-  // поверх ящиков и погрузчика. Решение владельца: доки ужать по глубине и отвести под них боковые
-  // поля двора. Тест держит обе стороны — иначе «поправили слева, забыли справа».
-  it('не пускает стопки под доки: боковые поля двора не уже самих доков', () => {
+  // Растровая сценерия (доки + погрузчик) снята (2026-08-03, владелец): двор упрощён до пунктирной
+  // зоны, PNG больше не рисуется, и боковые поля вернулись к общему PAD (см. блок ниже).
+  it('двор — пунктирная зона: растровой сценерии нет', () => {
     renderFloor();
-    const g = document.querySelector('[data-testid="warehouse-floor"] svg')!;
-    const capOf = (side: 'left' | 'right') => {
-      const img = g.querySelector(`image[data-cap="${side}"]`)!;
-      return { x: Number(img.getAttribute('x')), w: Number(img.getAttribute('width')) };
-    };
-    const floorW = Number(g.getAttribute('viewBox')!.split(' ')[2]);
-    const tile = document.querySelector('[data-testid="warehouse-tile"] rect')!;
-    const x = Number(tile.getAttribute('x'));
+    expect(screen.queryByTestId('warehouse-backdrop')).not.toBeInTheDocument();
+    expect(document.querySelectorAll('image')).toHaveLength(0);
+  });
 
-    expect(x).toBeGreaterThanOrEqual(capOf('left').w); // первая стопка правее левого дока
-    const right = capOf('right');
-    expect(right.x + right.w).toBe(floorW); // правый док и правда прижат к кромке
-    expect(x + Number(tile.getAttribute('width'))).toBeLessThanOrEqual(right.x); // и ряд не под ним
+  it('зона обведена пунктиром', () => {
+    renderFloor();
+    const zone = screen.getByTestId('warehouse-zone');
+    expect(zone.className).toContain('border-dashed');
+  });
+
+  it('боковые поля вернулись к общему PAD и стали симметричными', () => {
+    // Доки забирали 331 мм слева и 500 мм справа при кузове 2450 мм. Без них — по 200 мм.
+    const floor = warehouseFloor(load, tiles);
+    const first = floor.tiles[0];
+    expect(first.x).toBe(200);
   });
 
   it('draws each stack at its real footprint with the unit count', () => {
@@ -170,12 +170,12 @@ describe('WarehouseFloor', () => {
     expect(phantom).toHaveAttribute('fill', 'none');
     expect(phantom).not.toHaveAttribute('pointer-events', 'auto');
 
-    // Ряд открывается от левого поля двора — а оно шириной с левый док (103), не PAD=200. Тест
-    // держит ПОРЯДОК и шаг, а не координату начала: числа ниже отсчитываются от него, иначе тест
-    // ловил бы смену сценерии вместо перестановки плиток. GAP=200: 'p' (1000×1200) открывает ряд,
-    // фантом занимает следующий слот своей плиткой (fixed, lwh — 800×600), а настоящая 'fixed'
-    // сдвинута фантомом ещё на один слот вправо — туда, где без фантома стояла бы сама.
-    const x0 = dockWidths(V.width * DOCK_DEPTH_RATIO).left;
+    // Ряд открывается от левого поля двора — общего PAD=200 (доки сняты, 2026-08-03). Тест держит
+    // ПОРЯДОК и шаг, а не координату начала: числа ниже отсчитываются от него. GAP=200: 'p'
+    // (1000×1200) открывает ряд, фантом занимает следующий слот своей плиткой (fixed, lwh — 800×600),
+    // а настоящая 'fixed' сдвинута фантомом ещё на один слот вправо — туда, где без фантома стояла бы
+    // сама.
+    const x0 = 200;
     const [pTile, fixedTile] = screen.getAllByTestId('warehouse-tile');
     expect(Number(pTile.querySelector('rect')!.getAttribute('x'))).toBeCloseTo(x0, 6);
     expect(Number(phantom.getAttribute('x'))).toBeCloseTo(x0 + 1000 + 200, 6);

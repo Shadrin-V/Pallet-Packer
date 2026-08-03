@@ -31,7 +31,6 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
-import { WarehouseBackdrop, FLOOR, DOCK_DEPTH_RATIO, dockWidths } from './WarehouseBackdrop';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
@@ -180,16 +179,9 @@ export function WarehouseFloor({
   // shallow row must not shrink the surface (nor its scenery) to a sliver. A deeper buffer grows past
   // it.
   const yardUnit = Math.round(load.vehicle.width);
-  // Доки занимают долю этой глубины, и ровно их ширины двор отводит под боковые поля — иначе первый
-  // ряд стопок и кромка первого загона идут поверх ящиков и погрузчика (LKWkalk-103). Считается до
-  // раскладки, потому что раскладка этими полями и пользуется.
-  const dockH = yardUnit * DOCK_DEPTH_RATIO;
-  const caps = dockWidths(dockH);
   const floor = warehouseFloor(load, renderTiles, {
     grouped,
     bayOrder: dragBay?.order ?? bayOrder,
-    padLeft: caps.left,
-    padRight: caps.right,
   });
   // Сколько различимых заказов лежит во дворе — по тому же ключу, по которому группирует раскладка
   // (груз без номера — это тоже группа). Меньше двух — делить нечего, и переключатель был бы мёртвым.
@@ -232,9 +224,15 @@ export function WarehouseFloor({
         )}
       </div>
 
-      {/* The yard card: the floor svg is full-bleed (no padding strips), overflow-hidden clips the
-          asphalt to the rounded corners, and the asphalt tone is a fallback behind the svg. */}
-      <div className="overflow-hidden rounded-card" style={{ background: FLOOR }}>
+      {/* The yard zone: a plain dashed outline on the page background (2026-08-03, owner) — the
+          raster dock scenery is gone (it was the theming blocker), and the zone is decoration only,
+          drawn as a CSS border on the container rather than an svg rect: this svg lives in mm space
+          scaled to the vehicle's length, and a stroke drawn inside it would render at a different
+          length for a 13.6 m truck than for a 7.15 m Wechselbrücke. */}
+      <div
+        data-testid="warehouse-zone"
+        className="overflow-hidden rounded-card border border-dashed border-line-strong bg-paper"
+      >
         <svg
           ref={svgRef}
           viewBox={`0 0 ${floor.width} ${floorHeight}`}
@@ -245,16 +243,11 @@ export function WarehouseFloor({
           // A stable selector for the parent (LadeplanScreen's `toWarehouseMm`): it cannot reach into
           // this component's own refs, and `role="img"` alone also matches the top/side cutaways.
           data-warehouse
-          style={{ background: FLOOR, display: 'block', touchAction: 'none' }}
+          style={{ display: 'block', touchAction: 'none' }}
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) setSel(null);
           }}
         >
-          {/* The yard behind everything: dock scenery at the edges, tiled asphalt between. Inert
-              decoration under the real stacks — it replaces the old ForkliftMark (41e.5). */}
-          {/* Доки меряются `yardUnit` — МИНИМАЛЬНОЙ глубиной двора, а не текущей: иначе сценерия
-              растёт вместе с буфером и начинает доминировать над грузом (LKWkalk-jen). */}
-          <WarehouseBackdrop width={floor.width} height={floorHeight} dockHeight={dockH} />
           {/* Загоны заказов (41e.2): пустой массив, когда различимых заказов меньше двух — тогда
               двор выглядит как раньше. Рисуются между фоном и стопками, указателя не берут. */}
           {floor.bays.map((bay) => {
@@ -287,9 +280,10 @@ export function WarehouseFloor({
           })}
           {empty && (
             // A one-line invitation centred on the empty yard: the surface catches a stack pulled out
-            // of the hold. The dashed outline is gone (owner feedback) — the yard art already reads as
-            // a place to set things down. Decoration only; the drop is handled by the parent, which
-            // hit-tests this whole section.
+            // of the hold. Пунктир вернулся (владелец, 2026-08-03) вместе с удалением растровой сценерии:
+            // её сняли ровно потому, что арт «already reads as a surface» — арт ушёл, довод ушёл с ним.
+            // Обе итерации названы намеренно, чтобы никто не «вернул как было» в третий раз.
+            // Decoration only; the drop is handled by the parent, which hit-tests this whole section.
             <g data-testid="warehouse-dropzone" pointerEvents="none">
               <text
                 x={floor.width / 2}
