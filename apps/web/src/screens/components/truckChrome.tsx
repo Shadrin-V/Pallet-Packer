@@ -93,14 +93,14 @@ export function TrailerUnder({ length, height }: { length: number; height: numbe
       {/* underrun rail across the rear span */}
       <line x1={rear(1040)} y1={yOf(884)} x2={rear(1468)} y2={yOf(884)} strokeWidth={swM} />
       {/* rear mudflap at the box rear */}
-      <rect x={length} y={yOf(829)} width={12 * s} height={38 * s} fill="#ffffff" strokeWidth={swM} />
+      <rect x={length} y={yOf(829)} width={12 * s} height={38 * s} fill="var(--card)" strokeWidth={swM} />
       {/* tridem bogie */}
-      <g fill="#ffffff">
+      <g fill="var(--card)">
         {tridem.map((rx) => (
           <circle key={rx} cx={rear(rx)} cy={yOf(878)} r={r} strokeWidth={sw} />
         ))}
       </g>
-      <g fill="#ffffff">
+      <g fill="var(--card)">
         {tridem.map((rx) => (
           <circle key={`h${rx}`} cx={rear(rx)} cy={yOf(878)} r={hub} strokeWidth={swD} />
         ))}
