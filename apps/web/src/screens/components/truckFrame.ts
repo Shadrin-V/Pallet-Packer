@@ -23,13 +23,16 @@ export interface TruckFrame {
   outerH: number;
 }
 
-export function truckFrame(vehicle: Vehicle, view: 'top' | 'side'): TruckFrame {
+/** @param showTruck — рисуется ли обвес. Без него переднее поле под кабину и нижнее под ходовую
+ *  не нужны: они остаются пустыми поясами и только мельчат груз (владелец, 2026-08-03). Полоса
+ *  линейки (`topGutter`) остаётся всегда — линейка не обвес, она снаружи `data-truck-chrome`. */
+export function truckFrame(vehicle: Vehicle, view: 'top' | 'side', showTruck = true): TruckFrame {
   const { length, width, height } = vehicle;
   const spanY = view === 'top' ? width : height;
   // Переднее поле резервируется в ОБОИХ видах: одинаковый outerW → одинаковый мм→px → виды стоят
   // в колонке друг под другом по длине кузова. Колёса — только сбоку. Сзади ничего не рисуется.
-  const frontGutter = height * GUTTER.front;
-  const wheelGutter = view === 'side' ? height * GUTTER.wheel : 0;
+  const frontGutter = showTruck ? height * GUTTER.front : 0;
+  const wheelGutter = showTruck && view === 'side' ? height * GUTTER.wheel : 0;
   // Линейка длины идёт НАД коробом; её полосе нужно вместить число, растущее вверх от кромки на
   // ~1.9 кегля плюс полстроки. Кегль = length * RULER_FONT.
   const topGutter = length * RULER_FONT * 2.8;

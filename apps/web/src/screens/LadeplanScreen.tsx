@@ -488,7 +488,7 @@ export function LadeplanScreen({
     // `onDropOutside`), и разошедшийся `bayOrder` целит магнит ровно туда же — в загоны, которых на
     // экране нет (грабли 77g, находка №4).
     const index = insertionIndexAt(
-      warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder }),
+      warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
       pt,
       { orderId: orderOfType(carry.cargoTypeId) },
     );
@@ -522,7 +522,7 @@ export function LadeplanScreen({
         // броска задаёт место в общем потоке — поведение до 41e.2. И тот же ПОРЯДОК загонов
         // (41e.6): третий из трёх вызовов `warehouseFloor`, и разойтись ему нельзя ровно так же.
         const idx = insertionIndexAt(
-          warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder }),
+          warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
           pt,
           { orderId: orderOfType(refs[0].cargoTypeId) },
         );
@@ -731,6 +731,7 @@ export function LadeplanScreen({
               onGroupedChange={changeYardGrouping}
               bayOrder={bayOrder}
               onBayOrderChange={(next) => setBayOrder((prev) => mergeBayOrder(next, prev))}
+              showTruck={showTruck}
             />
             {editError && (
               <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">

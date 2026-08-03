@@ -26,4 +26,25 @@ describe('truckFrame', () => {
     const wide = { ...V, width: 2450, height: 3000 };
     expect(truckFrame(wide, 'top').outerH).toBe(truckFrame(wide, 'top').topGutter + wide.width);
   });
+
+  it('без кабины переднее и колёсное поля исчезают, полоса линейки остаётся', () => {
+    const side = truckFrame(V, 'side', false);
+    expect(side.frontGutter).toBe(0);
+    expect(side.wheelGutter).toBe(0);
+    expect(side.topGutter).toBeGreaterThan(0);
+    expect(side.outerW).toBe(V.length);
+  });
+
+  it('без кабины вид сверху тоже отдаёт переднее поле', () => {
+    const top = truckFrame(V, 'top', false);
+    expect(top.frontGutter).toBe(0);
+    expect(top.outerW).toBe(V.length);
+  });
+
+  it('с кабиной поведение прежнее', () => {
+    const side = truckFrame(V, 'side', true);
+    expect(side.frontGutter).toBeGreaterThan(0);
+    expect(side.wheelGutter).toBeGreaterThan(0);
+    expect(side.outerW).toBe(side.frontGutter + V.length);
+  });
 });

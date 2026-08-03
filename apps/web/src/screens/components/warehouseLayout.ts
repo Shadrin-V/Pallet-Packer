@@ -210,9 +210,14 @@ export function warehouseFloor(
      *  Выключенная группировка идёт ровно тем же путём, что и «заказ всего один», — сплошным
      *  потоком до-41e.2, включая магнит броска (`insertionIndexAt` при пустых `bays`). */
     grouped?: boolean;
+    /** Рисуется ли обвес грузовика. Двор обязан знать: от этого зависит ширина внешнего viewBox,
+     *  которой держится масштаб 1:1 с разрезом. */
+    showTruck?: boolean;
   } = {},
 ): WarehouseFloorLayout {
-  const width = opts.width ?? truckFrame(load.vehicle, 'top').outerW;
+  // Ширина двора обязана считаться ТОЙ ЖЕ функцией и с тем же флагом, иначе обещание 1:1
+  // разъедется молча, как уже было в LKWkalk-6n4.
+  const width = opts.width ?? truckFrame(load.vehicle, 'top', opts.showTruck ?? true).outerW;
   const gap = opts.gap ?? GAP;
   const pad = opts.pad ?? PAD;
   // Вертикальные поля остаются общими: доки прижаты к верху и ограничивают двор только по бокам.

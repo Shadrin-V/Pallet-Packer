@@ -54,6 +54,7 @@ export function WarehouseFloor({
   onGroupedChange,
   bayOrder,
   onBayOrderChange,
+  showTruck = true,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -79,6 +80,9 @@ export function WarehouseFloor({
   bayOrder?: string[];
   /** Перенос загона завершён. Отсутствует — бирки инертны, переноса загонов нет. */
   onBayOrderChange?: (next: string[]) => void;
+  /** Рисуется ли обвес на разрезах. Двор повторяет это значение, чтобы ширина его внешнего viewBox
+   *  совпадала с разрезом — на этом равенстве держится масштаб 1:1. */
+  showTruck?: boolean;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -182,6 +186,7 @@ export function WarehouseFloor({
   const floor = warehouseFloor(load, renderTiles, {
     grouped,
     bayOrder: dragBay?.order ?? bayOrder,
+    showTruck,
   });
   // Сколько различимых заказов лежит во дворе — по тому же ключу, по которому группирует раскладка
   // (груз без номера — это тоже группа). Меньше двух — делить нечего, и переключатель был бы мёртвым.

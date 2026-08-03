@@ -35,16 +35,23 @@ const tiles: BufferTile[] = [{ cargoTypeId: 'p', units: 4, orientation: 'lwh' }]
 const viewBoxWidth = (svg: Element) => Number(svg.getAttribute('viewBox')!.split(' ')[2]);
 
 describe('масштаб двора и кузова', () => {
-  it('yard and cutaway share one mm→px scale', () => {
+  it.each([true, false])('yard and cutaway share one mm→px scale (showTruck=%s)', (showTruck) => {
     render(
       <LocaleProvider initial="de">
-        <CrossSection load={load} layout={calculateLayout(load)} view="top" label="Draufsicht" />
+        <CrossSection
+          load={load}
+          layout={calculateLayout(load)}
+          view="top"
+          label="Draufsicht"
+          showTruck={showTruck}
+        />
         <WarehouseFloor
           load={load}
           tiles={tiles}
           onRotate={() => {}}
           onPickUp={() => {}}
           dragging={null}
+          showTruck={showTruck}
         />
       </LocaleProvider>,
     );

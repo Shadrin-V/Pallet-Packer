@@ -156,7 +156,7 @@ export function CrossSection({
 
   // Поля рамки и внешние габариты — из truckFrame: этими числами владеет не только разрез, но и двор
   // склада, который обещает груз в том же масштабе (LKWkalk-6n4).
-  const { frontGutter, topGutter, wheelGutter, outerW, outerH } = truckFrame(load.vehicle, view);
+  const { frontGutter, topGutter, wheelGutter, outerW, outerH } = truckFrame(load.vehicle, view, showTruck);
 
   const svgRef = useRef<SVGSVGElement>(null);
   /** Внешний svg — тот, что несёт `data-cutaway`. Именно он держит фокус: `svgRef` смотрит на
