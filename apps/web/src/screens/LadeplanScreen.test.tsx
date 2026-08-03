@@ -1217,10 +1217,14 @@ describe('LadeplanScreen — перестановка стопок во двор
     ...extra,
   });
 
-  /** Three distinguishable single-unit tiles: p1, p2, p3. */
+  /** Three distinguishable single-unit tiles: p1, p2, p3. Fix round 1 (Finding 2): p3 carries a
+   *  DIFFERENT orderId than p1/p2, so this fixture has two real bays once grouping is on —
+   *  `warehouseFloor` only produces bays for 2+ distinct orders, regardless of the `grouped` flag, so a
+   *  single-order fixture could never actually exercise "grouping is really in effect," only the raw
+   *  (and now insufficient) `yardGrouped` flag. */
   const threeTypesLoad: Load = {
     vehicle: yardVehicle,
-    cargo: [box('p1', 'P1', 1), box('p2', 'P2', 1), box('p3', 'P3', 1)],
+    cargo: [box('p1', 'P1', 1), box('p2', 'P2', 1), box('p3', 'P3', 1, { orderId: 'SO-2' })],
   };
   const threeTypesLayout: Layout = {
     placements: [],
@@ -1303,16 +1307,28 @@ describe('LadeplanScreen — перестановка стопок во двор
    *  either way. */
   const yardTiles = (yard: Element): Element[] => [...yard.querySelectorAll('[data-testid="warehouse-tile"]')];
 
-  /** Lift `fromEl` and release it centred on `toEl`'s own footprint — read straight off `toEl`'s
-   *  backing `<rect>` (mm, unscaled: `StackShape`'s coordinates ARE the caller's mm), so the release
-   *  point is exactly where `toEl` stands, independent of row/gap arithmetic changing under us. Events
-   *  go through `window`, same as the pointerId-filter tests above: the drag's own listeners in
-   *  `LadeplanScreen` are global (the gesture starts on a yard tile and can end anywhere on the page). */
+  /** The centre of an element's own backing `<rect>`, in mm — unscaled: `StackShape`'s coordinates ARE
+   *  the caller's mm, so this is also the client point under the identity CTM `withYardGeometry`
+   *  installs. */
+  const centreOf = (el: Element): { x: number; y: number } => {
+    const r = el.querySelector('rect')!;
+    return {
+      x: Number(r.getAttribute('x')) + Number(r.getAttribute('width')) / 2,
+      y: Number(r.getAttribute('y')) + Number(r.getAttribute('height')) / 2,
+    };
+  };
+
+  /** Press `fromEl` at ITS OWN position, then carry the pointer to `toEl`'s footprint and release
+   *  there. Fix round 1 (Finding 1): pressing and releasing at the SAME point must be zero travel — a
+   *  press-then-move at `toEl`'s coordinates for BOTH events would make `dragTile`'s `downX/downY`
+   *  equal its first move, always reading as "travelled," and could never catch a regression to the
+   *  no-travel-gate bug this round fixed. Events go through `window`, same as the pointerId-filter
+   *  tests above: the drag's own listeners in `LadeplanScreen` are global (the gesture starts on a yard
+   *  tile and can end anywhere on the page). */
   async function dragFromTo(fromEl: Element, toEl: Element) {
-    const r = toEl.querySelector('rect')!;
-    const clientX = Number(r.getAttribute('x')) + Number(r.getAttribute('width')) / 2;
-    const clientY = Number(r.getAttribute('y')) + Number(r.getAttribute('height')) / 2;
-    fireEvent.pointerDown(fromEl, { clientX, clientY, pointerId: 1 });
+    const down = centreOf(fromEl);
+    const { x: clientX, y: clientY } = centreOf(toEl);
+    fireEvent.pointerDown(fromEl, { clientX: down.x, clientY: down.y, pointerId: 1 });
     fireEvent.pointerMove(window, { clientX, clientY, pointerId: 1 });
     fireEvent.pointerUp(window, { clientX, clientY, pointerId: 1 });
   }
@@ -1361,6 +1377,68 @@ describe('LadeplanScreen — перестановка стопок во двор
       await dragFromTo(tiles[0], tiles[2]);
       const after = yardTiles(yard).map((el) => el.getAttribute('data-units'));
       expect(after).toEqual(before);
+    });
+  });
+
+  // Finding 6 (fix round 1): both tests above assert only that NOTHING changed — a drag rig that
+  // silently does nothing at all (e.g. a broken pointerId, a geometry box that always fails the "over
+  // the yard" check) would make them pass vacuously. This one uses the SAME `sameType` fixture but
+  // drags the other way — p1 (tiles[2], a DIFFERENT type from both p3 tiles) to the very front — where
+  // the model has no excuse to no-op: the resulting list is genuinely different from every other tile's
+  // perspective, not just the two interchangeable p3 strings. If this fails, the rig itself is broken,
+  // not the limitation.
+  it('позитивный контроль: перенос p1 в начало действительно меняет порядок (гарантия не-вакуумности пина)', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: false, sameType: true });
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const tiles = yardTiles(yard);
+      const before = tiles.map((el) => el.getAttribute('data-units'));
+      expect(before).toEqual(['17', '12', '1']); // p3×17, p3×12, p1×1 — see sameTypeLoad's own comment
+      await dragFromTo(tiles[2], tiles[0]);
+      const after = yardTiles(yard).map((el) => el.getAttribute('data-units'));
+      expect(after).not.toEqual(before);
+      expect(after).toEqual(['1', '17', '12']);
+    });
+  });
+
+  // Finding 5 (fix round 1): Step 4 of the brief (reuse the magnet's phantom for this direction too)
+  // had no test at all. These three assertions in one gesture cover: no phantom on a bare press (the
+  // regression Finding 1 fixed — a press alone must leave the yard completely still), the phantom
+  // appearing once the pointer has actually travelled over the yard with grouping off, and the SAME
+  // magnet staying silent once grouping is really in effect (this fixture's p3 sits in its own SO-2
+  // bay, so `grouped: true` here means real bays, not just the flag — Finding 2).
+  it('перенос стопки над двором открывает щель-фантом — тот же магнит, что у броска из кузова', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: false });
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const tiles = yardTiles(yard);
+      const down = centreOf(tiles[0]);
+      const target = centreOf(tiles[2]);
+
+      fireEvent.pointerDown(tiles[0], { clientX: down.x, clientY: down.y, pointerId: 1 });
+      // Finding 1: a press that has not moved yet must show nothing — no gap, no reflow.
+      expect(screen.queryByTestId('warehouse-phantom')).not.toBeInTheDocument();
+
+      fireEvent.pointerMove(window, { clientX: target.x, clientY: target.y, pointerId: 1 });
+      expect(screen.getByTestId('warehouse-phantom')).toBeInTheDocument();
+
+      fireEvent.pointerUp(window, { clientX: target.x, clientY: target.y, pointerId: 1 });
+    });
+  });
+
+  it('при включённой (реально действующей) группировке перенос стопки над двором фантом не показывает', async () => {
+    await withYardGeometry(async () => {
+      renderPlanWithYard({ grouped: true }); // threeTypesLoad: p1/p2 SO-1, p3 SO-2 — two real bays
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const tiles = yardTiles(yard);
+      const down = centreOf(tiles[0]);
+      const target = centreOf(tiles[2]);
+
+      fireEvent.pointerDown(tiles[0], { clientX: down.x, clientY: down.y, pointerId: 1 });
+      fireEvent.pointerMove(window, { clientX: target.x, clientY: target.y, pointerId: 1 });
+      expect(screen.queryByTestId('warehouse-phantom')).not.toBeInTheDocument();
+
+      fireEvent.pointerUp(window, { clientX: target.x, clientY: target.y, pointerId: 1 });
     });
   });
 });

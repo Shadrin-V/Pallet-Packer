@@ -31,7 +31,7 @@ import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
 import { snap, type StackSel } from './components/editLayout';
 import { StackShape } from './components/StackShape';
-import { WarehouseFloor } from './components/WarehouseFloor';
+import { WarehouseFloor, CLICK_SLOP_PX, sameOrder } from './components/WarehouseFloor';
 import type { DropPreview } from './components/CrossSection';
 import { warehouseFloor, insertionIndexAt, type BufferTile } from './components/warehouseLayout';
 
@@ -302,7 +302,13 @@ export function LadeplanScreen({
     writeShowTruck(next);
   };
 
-  const [dragTile, setDragTile] = useState<{ index: number; x: number; y: number; pointerId: number } | null>(null);
+  // `downX`/`downY` are the PRESS point, fixed for the whole gesture; `x`/`y` track the live pointer
+  // (updated on every move below). Task 6, fix round 1 (Finding 1): the yard→yard reorder's phantom
+  // needs to tell "picked up and travelled" apart from "just pressed" — without the fixed origin, a
+  // press alone would read as index 0 travel and the gap would open before any movement at all.
+  const [dragTile, setDragTile] = useState<
+    { index: number; x: number; y: number; downX: number; downY: number; pointerId: number } | null
+  >(null);
   // The symmetric hold→warehouse carry (T3): the stack's own visual lives INSIDE the top-view svg and
   // is clipped the instant the pointer leaves it toward the warehouse strip below, so this page-level
   // ghost — outside that svg entirely — is what stays visible for the whole trip, same as `dragTile`
@@ -434,23 +440,33 @@ export function LadeplanScreen({
     };
   })();
 
+  // Task 6, fix round 1 (Finding 2): whether the yard's order-grouping is ACTUALLY in effect right now
+  // is not the same question as the `yardGrouped` flag. `warehouseFloor` itself turns bays off whenever
+  // fewer than two distinct orders are present, and `yardGrouped` persists in localStorage across
+  // plans — so a plan with a single order (or none) can have the flag stuck `true` from an earlier,
+  // multi-order plan, with no checkbox left on screen to switch it back off (the toggle only renders
+  // when `distinctOrders > 1`). Both `dropTileAt`'s own gate and the phantom below must agree with the
+  // REAL outcome, not the flag, or one would promise a move the other refuses — computed once here and
+  // shared by both, the same way `bayOrder` already has to stay identical across every `warehouseFloor`
+  // call on this screen (77g, находка №4).
+  const yardFloor = warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck });
+  const yardGroupingActive = yardFloor.bays.length > 0;
+
   const dropTileAt = (index: number, clientX: number, clientY: number) => {
     const aim = tileAim(index, clientX, clientY);
     if (!aim) {
-      // Released outside the hold. Over the yard, with grouping off, that is a reorder within the
-      // flow — the same magnet and the same `insertionIndexAt` that already drives a carry-in from the
-      // hold, only with the yard itself as the source (Task 6, owner 2026-08-03). With grouping on,
-      // the order is dictated by bays, and a manual reorder here would mean something else entirely —
-      // the gesture stays the no-op it already was before this task.
-      if (yardGrouped) return;
+      // Released outside the hold. Over the yard, with grouping NOT actually in effect, that is a
+      // reorder within the flow — the same magnet and the same `insertionIndexAt` that already drives a
+      // carry-in from the hold, only with the yard itself as the source (Task 6, owner 2026-08-03).
+      // With grouping in effect, the order is dictated by bays, and a manual reorder here would mean
+      // something else entirely — the gesture stays the no-op it already was before this task.
+      if (yardGroupingActive) return;
       const at = toWarehouseMm(clientX, clientY);
       if (!at) return; // not over the yard either — just put the tile back, no complaint
       // No third argument: grouping is off, so `bays` is empty and the function returns a plain flow
-      // index — already an index into `orderedTiles`, nothing left to translate.
-      const to = insertionIndexAt(
-        warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
-        at,
-      );
+      // index — already an index into `orderedTiles`, nothing left to translate. Reuses `yardFloor`
+      // computed above rather than calling `warehouseFloor` a second time for the same answer.
+      const to = insertionIndexAt(yardFloor, at);
       reorderYard(index, to);
       return;
     }
@@ -471,13 +487,24 @@ export function LadeplanScreen({
    *  the task brief): two tiles of the SAME type are interchangeable in `bufferOrder`, so a reorder
    *  aimed between or past tiles of one's own type can produce the identical string list and read as a
    *  no-op even though the gesture itself was real. This is the existing buffer-order model — the
-   *  hold→yard drop path (`onDropOutside`) already has the same property — not a regression here. */
+   *  hold→yard drop path (`onDropOutside`) already has the same property — not a regression here.
+   *
+   *  Fix round 1: two more guards. `from` must be a real index into the CURRENT `orderedTiles` — the
+   *  tile can have vanished mid-drag (a fresh `layout` prop resets the buffer), and an out-of-range
+   *  `splice` would silently pull `undefined` into a `string[]` (Finding 4). And even an in-range move
+   *  can produce the IDENTICAL list — two same-type tiles are interchangeable strings — so the result
+   *  is compared against the order actually on screen, via the same `sameOrder` the bay-tag carry in
+   *  `WarehouseFloor` uses for exactly this reason: a gesture that changed nothing must not freeze an
+   *  implicit default order into an explicit user one (Finding 3). */
   const reorderYard = (from: number, to: number) => {
+    if (from < 0 || from >= orderedTiles.length) return;
     const target = to > from ? to - 1 : to;
     if (target === from) return;
-    const next = orderedTiles.map((t) => t.cargoTypeId);
+    const before = orderedTiles.map((t) => t.cargoTypeId);
+    const next = [...before];
     const [moved] = next.splice(from, 1);
     next.splice(target, 0, moved);
+    if (sameOrder(next, before)) return;
     setBufferOrder(next);
   };
 
@@ -518,12 +545,23 @@ export function LadeplanScreen({
    *  reflow around it exactly as they would once the drop actually lands there. Off the floor (or
    *  between renders, briefly), there is nothing to show. */
   // The phantom's carry source: a stack lifted OUT of the hold (`carry`), or — Task 6 — a yard tile
-  // itself, lifted to be reordered WITHIN the yard (`dragTile`), but only while grouping is off: with
-  // grouping on, `dropTileAt` treats a release outside the hold as a no-op (the bays dictate the
-  // order there), so a phantom would promise a move that never lands.
+  // itself, lifted to be reordered WITHIN the yard (`dragTile`), but only when grouping is NOT actually
+  // in effect (`yardGroupingActive`, Finding 2 above — not the raw `yardGrouped` flag): with grouping
+  // in effect, `dropTileAt` treats a release outside the hold as a no-op (the bays dictate the order
+  // there), so a phantom would promise a move that never lands.
+  //
+  // Fix round 1 (Finding 1): a yard tile only counts as "being carried" once the pointer has actually
+  // travelled past the same click/drag threshold `WarehouseFloor` itself uses (`CLICK_SLOP_PX`) — a
+  // bare press sets `dragTile` at pickup (needed so a SUBSEQUENT move can start the carry without a
+  // second event), but with no travel gate the phantom spliced in on `pointerdown` alone, before any
+  // movement: the yard tile visually jumped a slot on a plain press, and a `click` released right after
+  // landed on the phantom's `pointer-events:none` rect (or the svg background) instead of the tile,
+  // silently breaking click-to-select. A press that never moves must leave the yard completely still.
+  const dragTileTravelled =
+    !!dragTile && Math.hypot(dragTile.x - dragTile.downX, dragTile.y - dragTile.downY) >= CLICK_SLOP_PX;
   const carrySource: { x: number; y: number; cargoTypeId: string; units: number; orientation: 'lwh' | 'wlh' } | null =
     carry ??
-    (dragTile && !yardGrouped
+    (dragTile && dragTileTravelled && !yardGroupingActive
       ? (() => {
           const tile = orderedTiles[dragTile.index];
           return tile
@@ -538,9 +576,10 @@ export function LadeplanScreen({
     // Тот же режим, что рисует двор: иначе магнит целился бы в загоны, которых на экране нет. И тот
     // же ПОРЯДОК: вызовов `warehouseFloor` на этом экране три (отрисовка, `phantomAt`,
     // `onDropOutside`), и разошедшийся `bayOrder` целит магнит ровно туда же — в загоны, которых на
-    // экране нет (грабли 77g, находка №4).
+    // экране нет (грабли 77g, находка №4). Reuses `yardFloor` (computed above, same params) rather than
+    // calling `warehouseFloor` a third time on this screen for the same answer.
     const index = insertionIndexAt(
-      warehouseFloor(load, orderedTiles, { grouped: yardGrouped, bayOrder, showTruck }),
+      yardFloor,
       pt,
       { orderId: orderOfType(carrySource.cargoTypeId) },
     );
@@ -776,7 +815,9 @@ export function LadeplanScreen({
               tiles={orderedTiles}
               orderColors={orderColorMap}
               onRotate={rotateTile}
-              onPickUp={(index, e) => setDragTile({ index, x: e.clientX, y: e.clientY, pointerId: e.pointerId })}
+              onPickUp={(index, e) =>
+                setDragTile({ index, x: e.clientX, y: e.clientY, downX: e.clientX, downY: e.clientY, pointerId: e.pointerId })
+              }
               dragging={dragTile?.index ?? null}
               phantomAt={phantomAt}
               grouped={yardGrouped}

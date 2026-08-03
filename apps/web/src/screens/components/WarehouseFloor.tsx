@@ -36,11 +36,17 @@ import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayou
 
 export type { BufferTile };
 
-/** Below this pointer travel (px) a press is a click (select), not a drag (carry). */
-const CLICK_SLOP_PX = 5;
+/** Below this pointer travel (px) a press is a click (select), not a drag (carry). Exported: the
+ *  yard→yard reorder in `LadeplanScreen` (Task 6) uses the same threshold to decide whether a yard
+ *  tile's carry has actually started, so a press alone cannot open the gap phantom or reflow the
+ *  yard — one number, not two that could drift apart. */
+export const CLICK_SLOP_PX = 5;
 
-/** Совпадают ли два порядка загонов поэлементно. */
-const sameOrder = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+/** Совпадают ли два порядка загонов поэлементно. Exported: `LadeplanScreen`'s yard→yard reorder
+ *  (Task 6) reuses it to skip writing a `bufferOrder` that would be identical to the current one —
+ *  the same "a gesture that changed nothing records nothing" rule this file already follows for the
+ *  bay-tag carry. */
+export const sameOrder = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
 
 export function WarehouseFloor({
   load,
