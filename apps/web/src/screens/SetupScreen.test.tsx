@@ -71,6 +71,12 @@ function fillDims(i = 0, dims: { l: string; w: string; h: string } = { l: '1200'
   fireEvent.change(screen.getAllByLabelText('Höhe')[i + 1], { target: { value: dims.h } });
 }
 
+/** The header's "Berechnen" — index [0] of the two now-identical buttons (Task 7 adds a second one
+ *  next to the plan, below the last order). None of these existing tests care WHICH button is
+ *  pressed — both call the same handleCalculate — so they consistently pick the header one instead
+ *  of the now-ambiguous `getByRole`. The bottom button (index [1]) has its own dedicated tests. */
+const berechnenHeader = () => screen.getAllByRole('button', { name: 'Berechnen' })[0];
+
 const ERP_ARTICLE: Article = {
   itemCode: 'ABB101',
   name: 'Einwegpalette 600x800',
@@ -121,7 +127,7 @@ describe('SetupScreen', () => {
     const onCalculate = vi.fn();
     renderSetup(onCalculate);
     fillDims(); // §6: без габаритов «Berechnen» ведёт к ошибке вместо расчёта
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     expect(onCalculate).toHaveBeenCalledTimes(1);
     const load = onCalculate.mock.calls[0][0] as Load;
@@ -148,7 +154,7 @@ describe('SetupScreen', () => {
     // heuristic match both — getByRole resolves the select's own accessible name unambiguously.
     expect(screen.getByRole('combobox', { name: 'Gabelzufahrt' })).toBeInTheDocument();
     fillDims();
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.cargo[0].forkAccess).toBe('twoSides');
@@ -176,7 +182,7 @@ describe('SetupScreen', () => {
     fillDims(); // габариты в порядке, единственная ошибка — шаг вложения
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]); // nesting rules live in the panel
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    const berechnen = screen.getByRole('button', { name: 'Berechnen' });
+    const berechnen = berechnenHeader();
     expect(berechnen).toBeEnabled();
     await userEvent.click(berechnen);
     expect(onCalculate).not.toHaveBeenCalled();
@@ -191,7 +197,7 @@ describe('SetupScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Ver' }));
     await userEvent.type(screen.getByLabelText('Höhenzuwachs je Palette (Δh)'), '22');
     fillDims();
-    const berechnen = screen.getByRole('button', { name: 'Berechnen' });
+    const berechnen = berechnenHeader();
     expect(berechnen).toBeEnabled();
     await userEvent.click(berechnen);
 
@@ -216,7 +222,7 @@ describe('SetupScreen', () => {
     expect((screen.getByLabelText(STEP) as HTMLInputElement).value).toBe('22');
 
     fillDims(); // включая Höhe 144 — иначе заявка без габаритов не считается вовсе (§6)
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     // the engine still receives a single stepHeight — the one matching the selected mode
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
@@ -265,7 +271,7 @@ describe('SetupScreen', () => {
     renderSetup(onCalculate);
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'EPAL 2');
     await userEvent.click(await screen.findByRole('option', { name: /EPAL 2/ }));
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const load = onCalculate.mock.calls[0][0] as Load;
     expect(load.cargo[0]).toMatchObject({ length: 1200, width: 1000, height: 162 });
@@ -314,7 +320,7 @@ describe('SetupScreen', () => {
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('22');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 22, nestingMode: 'pairwise' });
   });
@@ -353,7 +359,7 @@ describe('SetupScreen', () => {
     await userEvent.click(screen.getAllByTestId('rule-chip')[0]);
     expect((screen.getByLabelText('Höhenzuwachs je Palette (Δh)') as HTMLInputElement).value).toBe('30');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.cargo[0].nesting).toMatchObject({ nestable: true, stepHeight: 30, nestingMode: 'sequential' });
   });
@@ -453,7 +459,7 @@ describe('SetupScreen', () => {
       );
       fillDims(0);
       fillDims(1);
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
       const load = onCalculate.mock.calls.at(-1)![0] as Load;
       expect([...new Set(load.cargo.map((c) => c.orderId))]).toEqual(['SO-2', 'SO-1']);
     });
@@ -501,7 +507,7 @@ describe('SetupScreen', () => {
     await userEvent.click(addButtons[1]); // the bottom duplicate
     fillDims(0);
     fillDims(1);
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const load = onCalculate.mock.calls[0][0] as Load;
     const orderIds = [...new Set(load.cargo.map((c) => c.orderId))];
@@ -560,7 +566,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     renderSetup(onCalculate, undefined, {
       initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', state: 'verschachtelt' })])],
     });
-    const calc = screen.getByRole('button', { name: 'Berechnen' });
+    const calc = berechnenHeader();
     expect(calc).toBeEnabled();
     await userEvent.click(calc);
 
@@ -584,7 +590,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
         ]),
       ],
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     expect(await screen.findByText('So wird gerechnet')).toBeInTheDocument();
     // Панель называет разбираемую строку текстом (имена строк живут в input.value, не в тексте),
     // поэтому getByText однозначно указывает на выбранную: вторая, первая ошибочная, — не третья.
@@ -597,7 +603,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     renderSetup(onCalculate, undefined, {
       initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     expect(onCalculate).toHaveBeenCalledOnce();
   });
 
@@ -607,7 +613,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     renderSetup(onCalculate, undefined, {
       initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     expect(onCalculate).toHaveBeenCalledOnce();
   });
 
@@ -640,7 +646,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
       loadingMode: 'rear',
       orderGrouping: 'densityFirst',
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.loadingMode).toBe('rear');
     expect(load.orderGrouping).toBe('densityFirst');
@@ -657,7 +663,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     // [0] — поле кузова в шапке; [1] и дальше принадлежат строкам позиций
     fireEvent.change(screen.getAllByLabelText('Länge')[0], { target: { value: '7200' } });
     fireEvent.change(screen.getAllByLabelText('Höhe')[0], { target: { value: '2600' } });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.vehicle.length).toBe(7200);
@@ -672,7 +678,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
       initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
     });
     await userEvent.selectOptions(screen.getByLabelText('Fahrzeug'), 'Wechselbrücke');
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const preset = VEHICLE_PRESETS.find((p) => p.name === 'Wechselbrücke')!;
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
@@ -688,7 +694,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
       initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
       hasManualEdits: true,
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     expect(confirm).toHaveBeenCalledOnce();
     expect(onCalculate).not.toHaveBeenCalled();
     confirm.mockRestore();
@@ -700,7 +706,7 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     renderSetup(onCalculate, undefined, {
       initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     expect(confirm).not.toHaveBeenCalled();
     expect(onCalculate).toHaveBeenCalledOnce();
     confirm.mockRestore();
@@ -716,6 +722,55 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
     await userEvent.click(screen.getByRole('button', { name: 'Von hinten' }));
     expect(onLoadingModeChange).toHaveBeenCalledWith('rear');
     expect(onCalculate).not.toHaveBeenCalled();
+  });
+
+  // Task 7 (owner complaint): the header's "Berechnen" is sticky, so it is still on screen after a
+  // press — but the plan it produces renders far below the fold, off screen, and nothing visible
+  // happens where the user is looking. A second, identical primary button sits right above the plan
+  // (below the last order) so the result appears next to the action that produced it. This is not
+  // the duplication oversight it looks like: the button used to live exactly here, was moved into
+  // the header (§6, "under six orders you had to scroll a long way to reach it"), and is back now
+  // for the opposite reason. The two solve different problems — reachability vs. proximity to the
+  // result — so removing either one reintroduces the complaint the other was added to fix.
+  describe('вторая кнопка «Рассчитать» рядом с планом (Task 7)', () => {
+    it('кнопок расчёта две — в шапке и под последним заказом', () => {
+      renderSetup(() => {});
+      expect(screen.getAllByRole('button', { name: 'Berechnen' })).toHaveLength(2);
+    });
+
+    it('нижняя кнопка считает так же, как верхняя', async () => {
+      const onCalculate = vi.fn();
+      renderSetup(onCalculate, undefined, {
+        initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+      });
+      // [0] — шапка, [1] — новая, под последним заказом; обе зовут один и тот же handleCalculate.
+      const [, bottom] = screen.getAllByRole('button', { name: 'Berechnen' });
+      await userEvent.click(bottom);
+      expect(onCalculate).toHaveBeenCalledTimes(1);
+    });
+
+    it('итог расчёта объявляется вслух', async () => {
+      renderSetup(() => {}, undefined, {
+        initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 10 })])],
+      });
+      // Пусто до первого расчёта — иначе живая область объявила бы результат, которого ещё нет.
+      expect(screen.getByTestId('calc-announce')).toHaveTextContent('');
+      const [, bottom] = screen.getAllByRole('button', { name: 'Berechnen' });
+      await userEvent.click(bottom);
+      expect(screen.getByTestId('calc-announce')).toHaveTextContent(/\d+/);
+    });
+
+    it('«Рассчитать» с ошибкой ведёт к строке, а не объявляет мнимый результат', async () => {
+      // Та же фикстура, что и у «выбирает первую ошибочную позицию» выше: verschachtelt без шага —
+      // stepInvalid, габариты в порядке. Нажатие не считает вовсе (goTo), поэтому объявлять здесь
+      // нечего — announce должен остаться пустым, а не показать цифры несостоявшегося расчёта.
+      renderSetup(() => {}, undefined, {
+        initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', state: 'verschachtelt' })])],
+      });
+      const [, bottom] = screen.getAllByRole('button', { name: 'Berechnen' });
+      await userEvent.click(bottom);
+      expect(screen.getByTestId('calc-announce')).toHaveTextContent('');
+    });
   });
 });
 
@@ -868,7 +923,7 @@ describe('SetupScreen article combobox', () => {
     renderSetup(onCalculate);
     await userEvent.type(screen.getByRole('combobox', { name: 'Artikel' }), 'Sonderkiste');
     fillDims(0, { l: '500', w: '400', h: '300' });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
     const load = onCalculate.mock.calls.at(-1)![0] as Load;
     expect(load.cargo[0].name).toBe('Sonderkiste');
   });
@@ -1208,7 +1263,7 @@ describe('SetupScreen — removing from the calculation', () => {
     await userEvent.click(orderTrashes()[0]); // remove the FIRST order (SO-1, slot 0)
     await userEvent.click(screen.getByRole('button', { name: 'Löschen bestätigen' }));
     fillDims(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     expect(onCalculate.mock.calls.at(-1)?.[1]?.orderColors).toEqual({ 'SO-2': 1 });
   });
@@ -1248,7 +1303,7 @@ describe('SetupScreen — removing from the calculation', () => {
     await userEvent.click(addOrder());
     fillDims(0);
     fillDims(1);
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const orderColors = onCalculate.mock.calls.at(-1)?.[1]?.orderColors as Record<string, number>;
     const values = Object.values(orderColors);
@@ -1626,7 +1681,7 @@ describe('SetupScreen — сводка и выход из панели в обо
     renderSetup(() => {}, undefined, {
       initialOrders: [order('SO-1001', [position({ id: 'p1', name: 'EPAL 1', width: '' })])],
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+    await userEvent.click(berechnenHeader());
 
     const drawer = await screen.findByRole('dialog', { name: 'Regeln' });
     // waitFor: фокус ставится в requestAnimationFrame.

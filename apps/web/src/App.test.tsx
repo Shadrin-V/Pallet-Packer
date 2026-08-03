@@ -13,10 +13,16 @@ function fillDims() {
   fireEvent.change(screen.getAllByLabelText('Höhe')[1], { target: { value: '144' } });
 }
 
+/** Header's "Berechnen" — index [0] of the two identical buttons since Task 7 added a second one
+ *  next to the plan (below the last order in Setup). None of the tests in this file care WHICH
+ *  button is pressed — both call the same handleCalculate — so they consistently pick the header
+ *  one instead of the now-ambiguous `getByRole`. */
+const berechnenHeader = () => screen.getAllByRole('button', { name: 'Berechnen' })[0];
+
 /** Заполнить заявку и посчитать — типовое начало почти каждого теста этого файла. */
 async function calculate() {
   fillDims();
-  await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+  await userEvent.click(berechnenHeader());
 }
 
 /** Сделать ручную правку раскладки: выбрать стопку на виде сверху и повернуть её. Тот же приём, что
@@ -169,7 +175,7 @@ describe('App shell (single page)', () => {
       expect(stillOld.loadingMode).toBe('combined'); // сохранённый план не тронут
       expect(stillOld.cargo[0].length).toBe(1200);
 
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
 
       const fresh = persistedLoad();
       expect(fresh.loadingMode).toBe('rear'); // выбор применён…
@@ -188,13 +194,13 @@ describe('App shell (single page)', () => {
       render(<App />);
       fillDims();
       fireEvent.change(screen.getAllByLabelText('Menge')[0], { target: { value: '2' } });
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
     }
 
     it('без ручных правок «Рассчитать» не спрашивает ничего', async () => {
       const confirm = vi.spyOn(window, 'confirm');
       await planWithEditableStack();
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
       expect(confirm).not.toHaveBeenCalled();
     });
 
@@ -204,7 +210,7 @@ describe('App shell (single page)', () => {
       await editStackManually();
 
       fireEvent.change(screen.getAllByLabelText('Länge')[1], { target: { value: '900' } });
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
 
       expect(confirm).toHaveBeenCalledOnce();
       expect(persistedLoad().cargo[0].length).toBe(1200); // расчёта не было
@@ -216,7 +222,7 @@ describe('App shell (single page)', () => {
       await editStackManually();
 
       fireEvent.change(screen.getAllByLabelText('Länge')[1], { target: { value: '900' } });
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
 
       expect(persistedLoad().cargo[0].length).toBe(900);
     });
@@ -232,7 +238,7 @@ describe('App shell (single page)', () => {
       const orderId = screen.getByLabelText('Auftrags-ID') as HTMLInputElement;
       await userEvent.clear(orderId);
       await userEvent.type(orderId, 'SO-7');
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
 
       expect(persistedLoad().loadingMode).toBe('rear');
       expect(screen.getByRole('button', { name: 'Von hinten' })).toHaveAttribute('aria-pressed', 'true');
@@ -243,7 +249,7 @@ describe('App shell (single page)', () => {
       await calculate();
       await userEvent.click(screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' })); // densityFirst
 
-      await userEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+      await userEvent.click(berechnenHeader());
 
       expect(persistedLoad().orderGrouping).toBe('densityFirst');
       expect((screen.getByRole('checkbox', { name: 'Dichte vor Auftragstrennung' }) as HTMLInputElement).checked).toBe(true);

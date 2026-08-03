@@ -152,6 +152,14 @@ export function SetupScreen({
   // holds by construction instead of by keeping a flag per row in step (ADR 022).
   const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
 
+  // Announced result of the LAST successful calculation (Task 7). `null` before the first one, so
+  // the live region below the bottom "Berechnen" starts empty rather than claiming a result that
+  // does not exist yet. Set only on the branch of handleCalculate that actually calls onCalculate —
+  // the error-redirect and discard-confirm branches leave it untouched, since neither produced a
+  // new result to report (announcing summary counts there would claim a calculation that a
+  // screen-reader user was, at that moment, blocked from getting).
+  const [lastResult, setLastResult] = useState<string | null>(null);
+
   // Esc закрывает панель разбора — в ОБОИХ режимах (финальное ревью, I2: в широком режиме выхода из
   // панели не было вовсе, и сводка загрузки становилась одноразовой — видной только до первого
   // выбора строки). A document-level listener (not onKeyDown on the dialog element) because
@@ -419,6 +427,14 @@ export function SetupScreen({
       { vehicle, cargo, loadingMode, orderGrouping },
       { orderColors: buildOrderColors(orders) },
     );
+    // Task 7: announce the result of THIS calculation from the summary already computed above —
+    // the same numbers the empty-panel state and the header show, so the announcement cannot drift
+    // from what the screen displays. Placement percentages live in the Load result the parent (App)
+    // computes, not here, so the announcement reports what this screen actually knows: how much was
+    // asked for.
+    setLastResult(
+      fillTemplate(tt('setup.calcDone'), { orders: summary.orders, positions: summary.positions, units: summary.units }),
+    );
   };
 
   return (
@@ -599,6 +615,28 @@ export function SetupScreen({
       <div className="mt-3 flex justify-center">
         <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
       </div>
+      {/* Second "Berechnen", next to the plan it produces (Task 7). Not a duplication oversight: it
+          used to live exactly here, was moved into the sticky header (§6) because under six orders
+          you had to scroll a long way to reach it, and is back now for the opposite reason — the
+          header button is off-screen by the time the plan renders below, so pressing it looks like
+          nothing happened. The two buttons fix different problems (header = reachable from
+          anywhere, this one = adjacent to the result) and call the SAME handleCalculate; removing
+          either one reintroduces the complaint the other was added to fix. `variant="primary"`
+          matches the header button — both are primary by the owner's explicit call, not "the real
+          one plus a secondary echo". */}
+      <div className="mt-3 flex justify-center">
+        <Button variant="primary" onClick={handleCalculate}>{tt('action.calculate')}</Button>
+      </div>
+      {/* Live region for the result (Task 7): proximity to the plan only helps a sighted user — a
+          keyboard/screen-reader press is otherwise silent, since the plan updates further down the
+          DOM with no announcement of its own. `role="status"` mirrors the precedent already used for
+          the header's error count (SetupHeader.tsx): polite, does not interrupt, read after whatever
+          the user was doing. Filled from the actual summary in handleCalculate — never a hardcoded
+          sentence — and left empty here (not e.g. "0 Positionen") so a screen reader says nothing
+          before the first real calculation instead of announcing a false result. */}
+      <p role="status" data-testid="calc-announce" className="mt-2 text-center text-caption text-muted">
+        {lastResult ?? ''}
+      </p>
       </main>
       {/* План (LadeplanScreen/EmptyPlan) — внутри той же обёртки, что и липкая шапка (9tq). */}
       {children}

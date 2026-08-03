@@ -73,6 +73,7 @@ export const TRANSLATION_KEYS = [
   'setup.msg.zeroQuantity',
   'setup.msg.goToPosition',
   'setup.header.calcBlocked',
+  'setup.calcDone',
   // Переключатель фирменной палитры в шапке (ADR 025)
   'theme.label',
   'theme.forest',

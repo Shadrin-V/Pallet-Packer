@@ -68,6 +68,9 @@ export const ru: Dictionary = {
   'setup.msg.duplicateOrderId': 'Auftrags-ID повторяется — заказы посчитаются как один',
   'setup.msg.goToPosition': 'Перейти к позиции',
   'setup.header.calcBlocked': 'Расчёт невозможен: ошибок — {n}',
+  // Task 7: объявляется живой областью под второй кнопкой «Рассчитать» (рядом с планом) сразу после
+  // успешного расчёта — читается скринридером, которому появление плана ниже не видно.
+  'setup.calcDone': 'Рассчитано: заказов — {orders}, позиций — {positions}, единиц — {units}.',
   'theme.label': 'Цветовая схема',
   'theme.forest': 'Зелёная',
   'theme.warm': 'Тёплая',
