@@ -226,13 +226,28 @@ export function WarehouseFloor({
 
       {/* The yard zone: a plain dashed outline on the page background (2026-08-03, owner) — the
           raster dock scenery is gone (it was the theming blocker), and the zone is decoration only,
-          drawn as a CSS border on the container rather than an svg rect: this svg lives in mm space
-          scaled to the vehicle's length, and a stroke drawn inside it would render at a different
-          length for a 13.6 m truck than for a 7.15 m Wechselbrücke. */}
+          drawn as a CSS outline on the container rather than an svg rect: this svg lives in mm
+          space scaled to the vehicle's length, and a stroke drawn inside it would render at a
+          different dash length for a 13.6 m truck than for a 7.15 m Wechselbrücke.
+          `outline`, NOT `border` (found in review, round 1): per this file's own header comment
+          above (§ "ANY horizontal padding, border or scrollbar between this section and the
+          column narrows the svg, and the scale drifts while the viewBox still matches"), a
+          `border` here would eat into this div's content width and shrink the svg by the border's
+          width on each side — pixel-exact with the hold only in the viewBox numbers
+          (`holdYardScale.test.tsx`), not on screen. An outline paints outside the box model and
+          takes no layout space, so the svg keeps its full width; `-outline-offset-1` pulls the
+          dash back onto the element's edge (instead of bleeding a px into the margin outside it),
+          and `overflow-hidden` still clips the svg content to the rounded corners — it has no
+          effect on the outline itself, which is fine, since the outline is drawn on this element,
+          not clipped by it. This is the THIRD time this file's yard surface has changed hands
+          without whoever changed it knowing about the scale-invariant comment above; if you are
+          about to add spacing/border/anything with layout width to this element, read that
+          comment first. */}
       <div
         data-testid="warehouse-zone"
-        className="overflow-hidden rounded-card border border-dashed border-line-strong bg-paper"
+        className="overflow-hidden rounded-card outline outline-1 outline-dashed outline-line-strong -outline-offset-1 bg-paper"
       >
+
         <svg
           ref={svgRef}
           viewBox={`0 0 ${floor.width} ${floorHeight}`}

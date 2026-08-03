@@ -7,7 +7,6 @@ import { LocaleProvider } from '../../i18n/LocaleContext';
 import { WarehouseFloor } from './WarehouseFloor';
 import type { BufferTile } from './warehouseLayout';
 import { truckFrame } from './truckFrame';
-import { warehouseFloor } from './warehouseLayout';
 import { installSvgGeometry } from './svgTestGeometry';
 
 const V = { id: 'v', name: 'LKW', length: 13600, width: 2430, height: 2650 };
@@ -78,17 +77,28 @@ describe('WarehouseFloor', () => {
     expect(document.querySelectorAll('image')).toHaveLength(0);
   });
 
-  it('зона обведена пунктиром', () => {
+  // `outline`, not `border` (review round 1, finding 1): a border would eat into this div's own
+  // width and narrow the svg inside it, breaking pixel-exact scale with the hold even though
+  // `holdYardScale.test.tsx`'s viewBox comparison would stay green. An outline paints outside the
+  // box model and takes no layout space.
+  it('зона обведена пунктиром — outline, не border (иначе сужает svg двора)', () => {
     renderFloor();
     const zone = screen.getByTestId('warehouse-zone');
-    expect(zone.className).toContain('border-dashed');
+    expect(zone.className).toContain('outline-dashed');
+    const classes = zone.className.split(/\s+/);
+    expect(classes).not.toContain('border');
+    expect(classes).not.toContain('border-dashed');
   });
 
-  it('боковые поля вернулись к общему PAD и стали симметричными', () => {
-    // Доки забирали 331 мм слева и 500 мм справа при кузове 2450 мм. Без них — по 200 мм.
-    const floor = warehouseFloor(load, tiles);
-    const first = floor.tiles[0];
-    expect(first.x).toBe(200);
+  // Review round 1, finding 2: the previous version of this test called `warehouseFloor` directly
+  // with no options, so it never exercised the dock-derived padding in the first place and was
+  // trivially green before AND after this change. What actually changed is that `WarehouseFloor`
+  // the COMPONENT stopped passing `padLeft`/`padRight` — so the test has to render the component
+  // and read the rendered tile position, not call the pure layout function on its own.
+  it('боковые поля двора вернулись к общему PAD — первая стопка стоит в 200 мм, не под доком (~328 мм)', () => {
+    renderFloor();
+    const tile = document.querySelector('[data-testid="warehouse-tile"] rect')!;
+    expect(Number(tile.getAttribute('x'))).toBe(200);
   });
 
   it('draws each stack at its real footprint with the unit count', () => {
