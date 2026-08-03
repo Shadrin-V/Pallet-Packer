@@ -4,6 +4,7 @@
 // apps/web/public/ — keep it inside the same absolute layer with a readable overlay.
 import { useT } from '../i18n/LocaleContext';
 import { LocaleSwitch } from './LocaleSwitch';
+import { ThemeSwitch } from '../theme/ThemeSwitch';
 
 export function HeroHeader() {
   const tt = useT();
@@ -26,7 +27,11 @@ export function HeroHeader() {
           <h1 className="text-title font-[650] leading-tight">{tt('app.title')}</h1>
           <p className="text-caption text-muted">{tt('app.subtitle')}</p>
         </div>
-        <div className="ml-auto shrink-0">
+        {/* Палитра и язык — оба персистентные настройки представления (не действия над текущим
+            расчётом), поэтому живут в одной группе рядом друг с другом (находка ревью, дубль
+            против SetupHeader). */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <ThemeSwitch />
           <LocaleSwitch />
         </div>
       </div>

@@ -27,4 +27,21 @@ describe('ThemeSwitch', () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('warm');
     expect(screen.getByRole('button', { name: 'Warm' })).toHaveAttribute('aria-pressed', 'true');
   });
+
+  // Ревью: useTheme раньше был приватным useState на каждый монтаж — состояние делят DOM-атрибут
+  // и localStorage, а не React, поэтому второй экземпляр не узнавал бы о переключении в первом.
+  // Два переключателя на странице сегодня не встречаются, но имя хука общее и приглашает к
+  // повторному использованию (HeroHeader теперь держит ThemeSwitch, а не только SetupHeader).
+  it('два экземпляра переключателя делят одно состояние', async () => {
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider initial="de">
+        <div data-testid="a"><ThemeSwitch /></div>
+        <div data-testid="b"><ThemeSwitch /></div>
+      </LocaleProvider>,
+    );
+    const [firstWarm, secondWarm] = screen.getAllByRole('button', { name: 'Warm' });
+    await user.click(firstWarm);
+    expect(secondWarm).toHaveAttribute('aria-pressed', 'true');
+  });
 });
