@@ -16,11 +16,12 @@ export default tseslint.config(
   },
   {
     // Гейты интерфейса (LKWkalk-y5j). Тесты исключены: фикстуры законно держат литералы.
-    files: ['apps/web/src/**/*.tsx'],
-    ignores: ['apps/web/src/**/*.test.tsx'],
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/**/*.test.{ts,tsx}'],
     plugins: { local },
     rules: {
       'local/no-untranslated-text': 'error',
+      'local/no-off-scale-typography': 'error',
     },
   },
 );

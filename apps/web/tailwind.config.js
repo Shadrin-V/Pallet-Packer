@@ -44,6 +44,9 @@ export default {
         value: ['13px', { lineHeight: '1.4' }],
         formula: ['12.5px', { lineHeight: '1.4' }],
         caption: ['11.5px', { lineHeight: '1.4' }],
+        // Суффикс единицы у числового поля: на полпикселя мельче caption и БЕЗ трекинга —
+        // «mm» рядом с 13px-значением не должно разряжаться (LKWkalk-y5j, решение 5).
+        unit: ['10.5px', { lineHeight: '1.4' }],
       },
     },
   },

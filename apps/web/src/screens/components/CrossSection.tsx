@@ -844,7 +844,7 @@ export function CrossSection({
           cutaways share the x axis (vehicle length), so one set of markers labels the pair — and
           hanging them above the side view read as if only that view had a front and a back. */}
       {view === 'top' && (
-        <div className="mt-0.5 flex justify-between px-0.5 text-[10px] uppercase tracking-wide text-faint">
+        <div className="mt-0.5 flex justify-between px-0.5 text-label uppercase tracking-wide text-faint">
           <span>{tt('ladeplan.front')}</span>
           <span>{tt('ladeplan.back')}</span>
         </div>

@@ -88,6 +88,7 @@ Inter — веса 400/500/600/700 (self-hosted / webfont).
 | Значение / число | 13–14px / 600 / tabular | `text-value font-semibold tabular-nums` |
 | Формула (моно) | 12.5px / mono в плашке `--sub` | `text-formula font-mono` |
 | Микро / caption | 11.5px / 500 / `--muted` | `text-caption font-medium text-muted` |
+| Суффикс единицы у поля | 10.5px / 400 / `--faint` / без трекинга | `text-unit` |
 
 Веса задаются классом (`font-medium/semibold/[650]`), размеры/трекинг — шагами `fontSize` (§2). Шкала
 фиксированная; заголовкам `text-wrap: balance`; ширина текста ~65 символов; `tabular-nums` глобально.
