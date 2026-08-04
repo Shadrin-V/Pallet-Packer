@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import type { CargoType, Layout, Load } from '../model/index';
+import type { CargoType, Layout, Load, Vehicle } from '../model/index';
 import { calculateLayout } from '../api/api';
 import { findGeometryViolations } from '../geometry/geometry';
 import { moveStack, rotateStack, unplaceStack, placeStack, stackBuffer, unplaceStacks, moveStacks } from './edit';
 import type { StackRef } from './edit';
 import { resolveGroupDrop } from './resolveDrop';
+import { packLoad } from './orchestrator';
 
 const cargo = (over: Partial<CargoType> & Pick<CargoType, 'id' | 'name'>): CargoType => ({
   length: 1200,
@@ -637,6 +638,50 @@ describe('moveStacks', () => {
       expect(next).toBe(layout);
       expect({ x: next.placements[goodIndex].x, y: next.placements[goodIndex].y }).toEqual(goodBefore); // good member untouched
     });
+  });
+});
+
+describe('manual edits respect compartment bounds (ADR 026, p3p)', () => {
+  // Two 2400³ bays (tractor + trailer), a 1000 mm gap between them (a: [0,2400), b: [3400,3800)).
+  // A 2400×2400 floor at 2400 mm height holds 2×2 floor positions × 2 tiers = 8 cubes of 1200³ on its
+  // own (the same 2×2×2=8 arithmetic as CLAUDE.md's canonical case, just at bay scale) — so at
+  // quantity 8 the WHOLE load fits in bay `a` alone and bay `b` stays empty. Verified against
+  // orchestrator.test.ts's own (corrected) reading of this fixture before relying on it here.
+  const twoBays: Vehicle = {
+    id: 't', name: 't', length: 5800, width: 2400, height: 2400,
+    compartments: [{ id: 'a', x: 0, length: 2400 }, { id: 'b', x: 3400, length: 2400 }],
+  };
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c', name: 'c', length: 1200, width: 1200, height: 1200, quantity: 8,
+    rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false },
+    state: 'entschachtelt', ...over,
+  });
+
+  it('поставить стопку в разрыв нельзя', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const layout = packLoad(load);
+    const bare = unplaceStacks(load, layout, [{ cargoTypeId: 'c', x: 0, y: 0 }]).layout;
+    const res = placeStack(load, bare, { cargoTypeId: 'c', x: 2500, y: 0, orientation: 'lwh' });
+    expect(res.error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
+    expect(res.layout).toBe(bare); // отказ возвращает ИСХОДНУЮ раскладку
+  });
+
+  it('стопку нельзя посадить верхом на границу машин', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const layout = packLoad(load);
+    const bare = unplaceStacks(load, layout, [{ cargoTypeId: 'c', x: 0, y: 0 }]).layout;
+    expect(placeStack(load, bare, { cargoTypeId: 'c', x: 1800, y: 0, orientation: 'lwh' }).error?.code)
+      .toBe('ERR_EDIT_OUT_OF_BOUNDS');
+  });
+
+  it('перенос группы через разрыв отвергается целиком', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const layout = packLoad(load);
+    const refs = layout.placements.filter((p) => p.tier === 1 && p.x < 2400)
+      .map((p) => ({ cargoTypeId: p.cargoTypeId, x: p.x, y: p.y }));
+    const res = moveStacks(load, layout, refs, 2500, 0);
+    expect(res.error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
+    expect(res.layout).toBe(layout);
   });
 });
 
