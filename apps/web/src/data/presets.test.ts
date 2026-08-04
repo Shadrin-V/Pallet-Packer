@@ -20,11 +20,19 @@ describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)
 
   // LKWkalk-p3p (tasks 1-9) added multi-compartment `Vehicle` support, so variant 5 (road train)
   // now ships as `lkw-gliederzug` (task 10) — but only via two compartments with a physical gap,
-  // never as a single bare hold spanning the full length. That's what this guard now checks.
-  it('any preset spanning >=15000mm models it via compartments, not a single hold (LKWkalk-p3p)', () => {
+  // never as a single bare hold spanning the full length. `toBeDefined()` alone would pass a trap
+  // preset with `compartments: [{ id: 'x', x: 0, length: 16000 }]` — one element covering the whole
+  // span, which the engine treats as exactly the sprawling single hold this guard exists to reject
+  // (code-review finding, task 10). Requiring >=2 elements is the structural signature of "not one
+  // hold": a single compartment spanning the full length is indistinguishable from no compartments
+  // at all as far as the engine's packing behaviour goes.
+  it('any preset spanning >=15000mm models it via at least two compartments, not one sprawling hold (LKWkalk-p3p)', () => {
     for (const p of VEHICLE_PRESETS) {
       if (p.length >= 15000) {
-        expect(p.compartments, `${p.name} spans ${p.length}mm without compartments`).toBeDefined();
+        expect(
+          p.compartments?.length,
+          `${p.name} spans ${p.length}mm as ${p.compartments?.length ?? 'a single (undefined)'} compartment(s)`,
+        ).toBeGreaterThanOrEqual(2);
       }
     }
   });
@@ -98,7 +106,13 @@ describe('пресет автопоезда', () => {
     expect(validateLoad({ vehicle, cargo })).toEqual([]);
   });
 
+  // Раньше проверялось глобальным toHaveLength(1) — падало бы на любом ВТОРОМ будущем
+  // многосоставном пресете, даже правильно реализованном (code-review finding, task 10, Minor).
+  // Проверка по ключам не зависит от их количества: она смотрит, что конкретно `lkw-gliederzug`
+  // отсеки имеет, а все остальные — нет, и не ломается, когда появится ещё один автопоезд.
   it('односоставные пресеты остаются без compartments', () => {
-    expect(VEHICLE_PRESETS.filter((p) => p.compartments !== undefined)).toHaveLength(1);
+    const others = VEHICLE_PRESETS.filter((p) => p.key !== 'lkw-gliederzug');
+    expect(others.every((p) => p.compartments === undefined)).toBe(true);
+    expect(train?.compartments).toBeDefined();
   });
 });
