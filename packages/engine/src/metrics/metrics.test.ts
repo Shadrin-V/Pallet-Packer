@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { CargoType, Load, Vehicle } from '../model/index';
+import type { CargoType, Layout, Load, Vehicle } from '../model/index';
 import { packLoad } from '../packing/orchestrator';
 import { computeFillMetrics } from './metrics';
 
