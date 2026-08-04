@@ -13,6 +13,12 @@
 // но не от глаз — placeholder, title, alt в спрятанном поддереве пользователь по-прежнему видит
 // и читает. Для глифа-иконки этот размен принят сознательно (глиф языконезависим), для атрибутов
 // нет. Декоративной картинке подойдёт alt="", она проходит правило без исключения.
+//
+// insideAriaHidden узнаёт только статически истинный aria-hidden (голый, "true", {true}).
+// Динамический <span aria-hidden={isDecorative}>i</span> правило пометит ошибкой, даже когда
+// isDecorative всегда true в рантайме, — это решение, а не баг: при isDecorative === false глиф
+// озвучивается, а анализ потока данных, который отличал бы эти случаи, сознательно не делаем
+// (см. границу выше).
 
 const HAS_WORD = /[\p{L}\p{N}]/u;
 
@@ -25,6 +31,7 @@ const TEXT_PROPS = new Set([
   'alt',
   'label',
   'unit',
+  'text',
 ]);
 
 /** Спрятан ли узел от скринридера: глиф-иконка внутри aria-hidden текстом не является. */
@@ -73,6 +80,24 @@ export const noUntranslatedText = {
       JSXText(node) {
         if (insideAriaHidden(sourceCode, node)) return;
         report(node, node.value);
+      },
+      // Находка 2: {'Details'} / {`Details: ${n}`} в позиции ребёнка — тот же текст в разметке,
+      // просто в фигурных скобках (так пишут, когда в строке есть кавычки или её переносит
+      // prettier). Родитель JSXElement/JSXFragment отличает эту позицию от значения атрибута —
+      // атрибуты уже обработаны визитёром JSXAttribute ниже, дублировать отчёт нельзя.
+      JSXExpressionContainer(node) {
+        if (node.parent.type !== 'JSXElement' && node.parent.type !== 'JSXFragment') return;
+        if (insideAriaHidden(sourceCode, node)) return;
+        const expression = node.expression;
+        if (expression.type === 'Literal') {
+          report(expression, expression.value);
+          return;
+        }
+        if (expression.type === 'TemplateLiteral') {
+          for (const quasi of expression.quasis) {
+            report(quasi, quasi.value.cooked ?? quasi.value.raw);
+          }
+        }
       },
       JSXAttribute(node) {
         if (!TEXT_PROPS.has(node.name.name)) return;

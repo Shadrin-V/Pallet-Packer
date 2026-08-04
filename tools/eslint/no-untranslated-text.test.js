@@ -31,6 +31,14 @@ ruleTester.run('no-untranslated-text', noUntranslatedText, {
     { code: 'const a = <span aria-hidden>i</span>;' },
     // Ключ локали — не пользовательский текст.
     { code: 'const a = <b>{t("app.title", locale)}</b>;' },
+    // Идиома репозитория: {' '} — разрыв пробела между инлайн-элементами, не текст (HAS_WORD).
+    { code: 'const a = <div>{\' \'}</div>;' },
+    // Принцип «нет букв и цифр» действует и в контейнере-ребёнке, не только в JSXText/атрибутах.
+    { code: 'const a = <div>{\'×\'}</div>;' },
+    // Исключение aria-hidden действует и на контейнер-ребёнок.
+    { code: 'const a = <span aria-hidden="true">{\'i\'}</span>;' },
+    // text — не в TEXT_PROPS до находки 1; переменная/tt(...) остаётся вне видимости правила.
+    { code: 'const a = <InfoHint text={tt("k")} />;' },
   ],
   invalid: [
     {
@@ -73,6 +81,20 @@ ruleTester.run('no-untranslated-text', noUntranslatedText, {
     {
       code: 'const a = <div aria-hidden="true"><input placeholder="Suchen" /></div>;',
       errors: [{ messageId: 'hardcoded' }],
+    },
+    // Находка 2: строка-ребёнок в фигурных скобках — тот же самый текст в разметке.
+    {
+      code: 'const a = <div>{\'Details\'}</div>;',
+      errors: [{ messageId: 'hardcoded', data: { text: 'Details' } }],
+    },
+    {
+      code: 'const a = <div>{`Details: ${n}`}</div>;',
+      errors: [{ messageId: 'hardcoded', data: { text: 'Details:' } }],
+    },
+    // Находка 1: InfoHint.text — самый переводоёмкий проп репозитория, пропущен в TEXT_PROPS.
+    {
+      code: 'const a = <InfoHint text="Hinweis" />;',
+      errors: [{ messageId: 'hardcoded', data: { text: 'Hinweis' } }],
     },
   ],
 });
