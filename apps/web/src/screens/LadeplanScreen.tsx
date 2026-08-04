@@ -660,7 +660,20 @@ export function LadeplanScreen({
 
   const v = load.vehicle;
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
-  const dims = `${grp(v.length)} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
+  // Финальное ревью, находка 3: `v.length` — полный пролёт транспорта, ВКЛЮЧАЯ разрывы между
+  // отсеками (для автопоезда — 1200 мм сцепки, где пола нет). Печатать его как «внутренние размеры
+  // кузова» противоречит соседним цифрам на этом же листе: volumeFillPercent (движок) и
+  // setupSummary.vehicleVolume уже честно суммируют отсеки. Грузовая длина — сумма отсеков, с
+  // разбивкой по составу, чтобы читающий видел структуру, а не одно число без объяснения скачка со
+  // 16 600 на 15 400.
+  const cargoLength =
+    v.compartments === undefined
+      ? grp(v.length)
+      : fillTemplate(tt('ladeplan.vehicleInnerSpan'), {
+          sum: grp(compartmentsOf(v).reduce((sum, c) => sum + c.length, 0)),
+          breakdown: compartmentsOf(v).map((c) => grp(c.length)).join(' + '),
+        });
+  const dims = `${cargoLength} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
   const orderIds = [...orderIndexMap(load).keys()].filter(Boolean);
   const m = edited.metrics;
 

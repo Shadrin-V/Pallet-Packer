@@ -113,6 +113,12 @@ export const TRANSLATION_KEYS = [
   'ladeplan.brandName',
   'ladeplan.brandTagline',
   'ladeplan.vehicleInner',
+  // Грузовая длина автопоезда (финальное ревью p3p, находка 3): для `vehicle.compartments`
+  // подставляется вместо полного пролёта в `ladeplan.vehicleInner` — {sum} и {breakdown} уже
+  // отформатированы вызывающим кодом (formatLength/группировка тысяч), сам шаблон несёт только
+  // структуру фразы. Пример: «15 400 (7 700 + 7 700)» вместо ошибочных «16 600», которые включали
+  // 1200 мм разрыва, где пола нет.
+  'ladeplan.vehicleInnerSpan',
   'ladeplan.orders',
   'ladeplan.loadingMode',
   'ladeplan.loadingModeHint',

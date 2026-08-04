@@ -109,6 +109,9 @@ export const ru: Dictionary = {
   'ladeplan.brandName': 'Schäfer',
   'ladeplan.brandTagline': 'Holz bewegt.',
   'ladeplan.vehicleInner': 'Кузов (внутри)',
+  // {sum}/{breakdown} — уже отформатированные числа (разделители тысяч); шаблон несёт только
+  // структуру фразы, без собственных цифр.
+  'ladeplan.vehicleInnerSpan': '{sum} ({breakdown})',
   'ladeplan.orders': 'Заказы',
   'ladeplan.loadingMode': 'Режим загрузки',
   'ladeplan.loadingModeHint':

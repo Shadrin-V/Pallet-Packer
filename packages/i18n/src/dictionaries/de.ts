@@ -109,6 +109,9 @@ export const de: Dictionary = {
   'ladeplan.brandName': 'Schäfer',
   'ladeplan.brandTagline': 'Holz bewegt.',
   'ladeplan.vehicleInner': 'Fahrzeug (innen)',
+  // {sum}/{breakdown} sind schon formatierte Zahlen (Tausendertrennzeichen) — dieses Template trägt
+  // nur die Phrasenstruktur, keine eigene Zahl.
+  'ladeplan.vehicleInnerSpan': '{sum} ({breakdown})',
   'ladeplan.orders': 'Aufträge',
   'ladeplan.loadingMode': 'Belademodus',
   'ladeplan.loadingModeHint':
