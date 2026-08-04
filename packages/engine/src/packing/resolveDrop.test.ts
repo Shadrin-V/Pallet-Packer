@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { CargoType, Layout, Load } from '../model/index';
+import type { CargoType, Layout, Load, Vehicle } from '../model/index';
 import { calculateLayout } from '../api/api';
 import { placeStack } from './edit';
 import type { StackRef } from './edit';
+import { packLoad } from './orchestrator';
 import { resolveDrop, resolveGroupDrop } from './resolveDrop';
 
 const V = { id: 'v', name: 'LKW', length: 10000, width: 2400, height: 2650 };
@@ -303,5 +304,88 @@ describe('resolveGroupDrop', () => {
 
     expect(r.ok).toBe(false);
     expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
+  });
+});
+
+// LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
+// Стенок по оси длины теперь столько же, сколько отсеков; позиция в разрыве не годна ни при каком
+// раскладе. Числа ниже — независимо пересчитаны по фактической реализации resolveDrop, а НЕ взяты
+// из брифа: кубик 1200×1200×1200, rotation:'none' → dx=dy=1200, tol = min(dx,dy)/2 = 600.
+describe('resolveDrop — стенки каждого отсека (p3p)', () => {
+  const twoBays: Vehicle = {
+    id: 't',
+    name: 't',
+    length: 5800,
+    width: 2400,
+    height: 2400,
+    compartments: [
+      { id: 'a', x: 0, length: 2400 },
+      { id: 'b', x: 3400, length: 2400 },
+    ],
+  };
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c',
+    name: 'c',
+    length: 1200,
+    width: 1200,
+    height: 1200,
+    quantity: 8,
+    rotation: 'none',
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt',
+    ...over,
+  });
+
+  it('прицел, оседлавший стенку тягача, примагничивается к ней', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    // Прицел 1500: footprint [1500, 2700) оседлал стенку отсека a (2400) и сам по себе негоден
+    // (вылезает за a, не дотягивается до b). До кромки a=1200 — 300 мм, в пределах допуска 600.
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 1500, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(true);
+    expect(res.x).toBe(1200); // дальняя кромка вплотную к стенке тягача: 1200 + 1200 = 2400
+  });
+
+  it('прицел глубоко в разрыве — отказ, стопку туда не телепортируют', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    // Прицел 2300: до ближней годной позиции 1200 — 1100 мм, до 3400 — 1100 мм. Оба вне допуска 600.
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 2300, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(false);
+  });
+
+  it('стенка второго отсека — такой же кандидат, как стенка первого', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    // Прицел 3500: сам годен (footprint [3500, 4700) целиком внутри b), но 3400 «впритык» к стенке
+    // отсека — правило «впритык бьёт близкое» отдаёт победу ему, а не самому прицелу.
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 3500, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(true);
+    expect(res.x).toBe(3400); // притянуло к передней стенке прицепа
+  });
+
+  // ADR 020: если resolveDrop сказала ok, placeStack по этой точке не откажет. Сквозной прогон по
+  // разрыву и обеим стенкам — ровно там, где новая логика могла бы соврать.
+  it('never returns ok for a position placeStack would refuse (compartment gap swept)', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    for (let x = -200; x <= 6000; x += 100) {
+      for (const y of [0, 400, 800, 1200]) {
+        const r = resolveDrop(load, empty, { cargoTypeId: 'c', x, y, orientation: 'lwh' });
+        if (!r.ok) continue;
+        const applied = placeStack(load, empty, {
+          cargoTypeId: 'c',
+          x: r.x,
+          y: r.y,
+          orientation: 'lwh',
+          units: 1,
+        });
+        expect(
+          applied.error,
+          `resolveDrop said ok at ${r.x},${r.y} (aim ${x},${y}) but placeStack refused`,
+        ).toBeUndefined();
+      }
+    }
   });
 });
