@@ -1,5 +1,6 @@
 import type { Layout, Load, Placement } from '../model/index';
 import { allowedOrientations, forkPinnedOrientation, orientedDims } from '../model/orientation';
+import { fitsInSomeCompartment } from '../model/compartments';
 
 export interface GeometryViolation {
   kind: 'out-of-bounds' | 'overlap' | 'orientation' | 'fork-access';
@@ -59,11 +60,13 @@ export function findGeometryViolations(load: Load, layout: Layout): GeometryViol
       }
     }
 
+    // Границы — границы ОТСЕКА, а не транспорта (ADR 026). По оси длины проверка спрашивает модель
+    // отсеков: координата в разрыве между машинами лежит внутри пролёта, но пола под ней нет.
     if (
       p.x < 0 ||
       p.y < 0 ||
       p.z < 0 ||
-      p.x + dx > vehicle.length ||
+      !fitsInSomeCompartment(vehicle, p.x, dx) ||
       p.y + dy > vehicle.width ||
       p.z + dz > vehicle.height
     ) {
