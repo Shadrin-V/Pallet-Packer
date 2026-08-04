@@ -61,6 +61,7 @@ export function WarehouseFloor({
   bayOrder,
   onBayOrderChange,
   showTruck = true,
+  dropTarget = false,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -75,6 +76,11 @@ export function WarehouseFloor({
    *  — not a real tile, so it carries no count and takes no pointer at all. Absent/null while nothing
    *  is being carried. */
   phantomAt?: { index: number; tile: BufferTile } | null;
+  /** Стопку сейчас несут, и двор — активная цель броска. Пока это так, пунктир зоны выходит на
+   *  контрастный токен: в покое рамка даёт 1,3:1 к фону, а WCAG 1.4.11 ждёт 3:1 от границы
+   *  управляющего элемента. Усиление только на время переноса — решение владельца (2026-08-04):
+   *  норма соблюдена там, где рамка действительно управляющая, а в покое чертёж не пестрит. */
+  dropTarget?: boolean;
   /** Разбит ли двор на загоны заказов. По умолчанию НЕТ (LKWkalk-77g): владелец после прода —
    *  «без неё удобнее», так что загоны 41e.2 стали режимом, который включают явно. */
   grouped?: boolean;
@@ -256,7 +262,9 @@ export function WarehouseFloor({
           comment first. */}
       <div
         data-testid="warehouse-zone"
-        className="overflow-hidden rounded-card outline outline-1 outline-dashed outline-line-strong -outline-offset-1 bg-paper"
+        className={`overflow-hidden rounded-card outline outline-1 outline-dashed -outline-offset-1 bg-paper transition-colors duration-[var(--dur)] ${
+          dropTarget ? 'outline-brand' : 'outline-line-strong'
+        }`}
       >
 
         <svg

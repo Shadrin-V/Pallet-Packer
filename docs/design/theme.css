@@ -10,9 +10,14 @@
   --sub: #ebf0ec;          /* subtle fill: order header, chips, add-bar */
 
   /* ---- ink ---- */
-  --ink: #14201b;          /* primary text */
-  --muted: #55605b;        /* secondary text */
-  --faint: #93a099;        /* labels, hints, units */
+  /* Ряд сдвинут на ступень темнее исходного forest — той же логикой, что и в тёплой палитре ниже.
+     Причина: прежний --faint #93a099 давал 2.5:1 на --paper при норме 4.5:1 для мелкого текста, а
+     на --faint висят единицы, микро-подписи и метки Vorne/Hinten — носители смысла. Подняв --faint
+     до проходного, мы упёрлись бы в прежний --muted, поэтому прежний --muted стал --faint, а
+     --muted ушёл темнее. Три ступени сохранены, все три проходят (гейт — palette.test.ts). */
+  --ink: #14201b;          /* 15.7:1 — primary text */
+  --muted: #37423d;        /* 9.8:1 — secondary text */
+  --faint: #55605b;        /* 6.1:1 — labels, hints, units (прежний --muted) */
 
   /* ---- lines ---- */
   --line: #e5ebe7;         /* hairlines, inner dividers */
@@ -26,6 +31,10 @@
   --mint-tint: rgba(113, 191, 135, 0.16);
   --mint-ring: rgba(113, 191, 135, 0.35);
   --sage: #c3d1c7;         /* pale sage — neutral bias, accent dividers */
+  /* Хвост градиента шапки — отдельный токен, а не тинт мяты. Тот держит активные состояния (чип,
+     success-подсветка) и остаётся зелёным в обеих палитрах, а хвост шапки обязан следовать
+     температуре палитры — иначе бежевое тело живёт под холодной шапкой (владелец, 2026-08-04). */
+  --hero-tint: rgba(113, 191, 135, 0.16);
 
   /* ---- semantic (separate from brand accent) ---- */
   --success: #1f7a4c;  --success-ink: #ffffff;
@@ -94,6 +103,7 @@
   --mint-tint: rgba(132, 196, 143, 0.16);
   --mint-ring: rgba(132, 196, 143, 0.35);
   --sage: #d8d1c4;          /* бледная нейтраль-разделитель; в тёплом ряду она бежевая, не sage */
+  --hero-tint: rgba(198, 176, 140, 0.18); /* пшеничный хвост шапки — см. forest выше */
 
   /* ---- semantic — КОПИИ forest, не меняются ---- */
   --success: #1f7a4c;  --success-ink: #ffffff;

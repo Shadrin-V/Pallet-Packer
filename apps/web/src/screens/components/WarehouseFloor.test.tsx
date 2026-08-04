@@ -43,7 +43,7 @@ const load: Load = {
 };
 const tiles: BufferTile[] = [{ cargoTypeId: 'p', units: 18, orientation: 'lwh' }];
 
-function renderFloor(t: BufferTile[] = tiles, onRotate = vi.fn()) {
+function renderFloor(t: BufferTile[] = tiles, onRotate = vi.fn(), dropTarget = false) {
   render(
     <LocaleProvider initial="de">
       <WarehouseFloor
@@ -52,6 +52,7 @@ function renderFloor(t: BufferTile[] = tiles, onRotate = vi.fn()) {
         onRotate={onRotate}
         onPickUp={vi.fn()}
         dragging={null}
+        dropTarget={dropTarget}
       />
     </LocaleProvider>,
   );
@@ -88,6 +89,23 @@ describe('WarehouseFloor', () => {
     const classes = zone.className.split(/\s+/);
     expect(classes).not.toContain('border');
     expect(classes).not.toContain('border-dashed');
+  });
+
+  // Контраст рамки зоны к фону — 1.3:1 в forest и 1.5:1 в warm, а WCAG 1.4.11 ждёт 3:1 от границы
+  // УПРАВЛЯЮЩЕГО элемента. Двор — зона броска, то есть управляющий элемент, но лишь в тот момент,
+  // когда стопку несут: владелец (2026-08-04) выбрал усиливать рамку на время переноса, а не
+  // всегда, чтобы в покое чертёж не пестрил. В покое рамка остаётся тихой --line-strong.
+  it('в покое рамка тихая, а на время переноса зона броска выходит на контрастный токен', () => {
+    renderFloor();
+    expect(screen.getByTestId('warehouse-zone').className).toContain('outline-line-strong');
+
+    document.body.innerHTML = '';
+    renderFloor(tiles, vi.fn(), true);
+    const zone = screen.getByTestId('warehouse-zone');
+    expect(zone.className).toContain('outline-brand');
+    expect(zone.className).not.toContain('outline-line-strong');
+    // Пунктир остаётся пунктиром: меняется цвет, а не природа рамки.
+    expect(zone.className).toContain('outline-dashed');
   });
 
   // Review round 1, finding 2: the previous version of this test called `warehouseFloor` directly

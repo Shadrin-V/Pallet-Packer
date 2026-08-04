@@ -820,6 +820,10 @@ export function LadeplanScreen({
               bayOrder={bayOrder}
               onBayOrderChange={(next) => setBayOrder((prev) => mergeBayOrder(next, prev))}
               showTruck={showTruck}
+              // Активная цель броска — пока стопку несут ИЗ КУЗОВА: только тогда двор принимает груз
+              // извне, и его граница работает как управляющий элемент. Перестановка внутри двора
+              // (`dragTile`) сюда не входит — там цель не зона, а место в ряду.
+              dropTarget={!!carry}
             />
             {editError && (
               <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">

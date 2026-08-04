@@ -737,6 +737,25 @@ describe('LadeplanScreen — drop lands at the release point (bufferOrder, B)', 
     });
   });
 
+  // Проводка `carry → dropTarget`: рамка зоны броска усиливается на время переноса, и это свойство
+  // экрана, а не компонента — `WarehouseFloor` про перенос ничего не знает, ему передают готовый
+  // флаг. Без этого теста достаточно уронить один проп, чтобы усиление стало мёртвым, а оба
+  // компонентных теста остались зелёными (находка кросс-модельного ревью, 2026-08-04).
+  it('пока стопку несут из кузова, зона броска выходит на контрастную рамку и гаснет после броска', () => {
+    withDropRig((container) => {
+      const zone = screen.getByTestId('warehouse-zone');
+      expect(zone.className).toContain('outline-line-strong');
+
+      const svg = container.querySelector('svg[data-hold="top"]')!;
+      fireEvent.pointerDown(svg.querySelector('[data-stack-ref="c@0,0"]')!, { clientX: 500, clientY: 500 });
+      fireEvent.pointerMove(svg, { clientX: 700, clientY: 400 });
+      expect(screen.getByTestId('warehouse-zone').className).toContain('outline-brand');
+
+      fireEvent.pointerUp(svg, { clientX: 700, clientY: 400 });
+      expect(screen.getByTestId('warehouse-zone').className).toContain('outline-line-strong');
+    });
+  });
+
   it('drop before the first tile lands the stack there, not last (the stale-order default)', () => {
     withDropRig((container) => {
       // y=100 is above A's row (which opens at y=200) — insertionIndexAt's row-not-started-yet rule
