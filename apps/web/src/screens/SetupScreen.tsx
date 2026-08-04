@@ -10,7 +10,7 @@ import { fillTemplate } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
-import { VEHICLE_PRESETS } from '../data/presets';
+import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
 import type { Article } from '@shadrin-v/contracts';
@@ -101,8 +101,9 @@ export function SetupScreen({
   children,
 }: SetupScreenProps) {
   const tt = useT();
-  const preset0 = VEHICLE_PRESETS[0];
-  const defaultVehicle = (): Vehicle => ({ id: preset0.key, name: preset0.name, length: preset0.length, width: preset0.width, height: preset0.height });
+  // Через vehicleFromPreset (финальное ревью, находка 1): собранный вручную объект молча терял бы
+  // `compartments`, если бы дефолтный пресет когда-нибудь стал многосоставным.
+  const defaultVehicle = (): Vehicle => vehicleFromPreset(VEHICLE_PRESETS[0]);
   const [vehicle, setVehicle] = useState<Vehicle>(() => initialVehicle ?? loadSetup()?.vehicle ?? defaultVehicle());
   const [orders, setOrders] = useState<OrderState[]>(() => initialOrders ?? loadSetup()?.orders ?? [emptyOrder(1)]);
   // Article catalogue (Task 8): saving a row's article goes through the DataProvider seam, so it

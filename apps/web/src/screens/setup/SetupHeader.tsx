@@ -9,7 +9,7 @@ import { fillTemplate } from '../components/stackFormula';
 import { Button, InfoHint, Measure, Select } from '../../ui/primitives';
 import { LoadingModeSwitch } from '../../ui/LoadingModeSwitch';
 import { OrderGroupingToggle } from '../../ui/OrderGroupingToggle';
-import { VEHICLE_PRESETS } from '../../data/presets';
+import { VEHICLE_PRESETS, vehicleFromPreset } from '../../data/presets';
 import { numOr0, type Num } from './setupState';
 import { setCompartmentLength } from './vehicleCompartments';
 import type { SetupSummary } from './setupValidation';
@@ -75,15 +75,12 @@ export function SetupHeader({
                 value={vehicle.name}
                 onChange={(name) => {
                   const p = VEHICLE_PRESETS.find((v) => v.name === name);
+                  // vehicleFromPreset (финальное ревью, находка 1): без него автопоезд молча
+                  // выродился бы в один отсек длиной 16,6 м — ровно та поломка, ради которой
+                  // заведена модель отсеков. Заодно копирует `compartments`, а не расшаривает их
+                  // массив по ссылке с модульной константой VEHICLE_PRESETS (Minor).
                   onVehicleChange(
-                    p
-                      ? {
-                          id: p.key, name: p.name, length: p.length, width: p.width, height: p.height,
-                          // Без этого автопоезд молча выродился бы в один отсек длиной 16,6 м —
-                          // ровно та поломка, ради которой заведена модель отсеков.
-                          ...(p.compartments ? { compartments: p.compartments } : {}),
-                        }
-                      : { ...vehicle, name: tt('setup.vehiclePreset.custom') },
+                    p ? vehicleFromPreset(p) : { ...vehicle, name: tt('setup.vehiclePreset.custom') },
                   );
                 }}
                 options={[

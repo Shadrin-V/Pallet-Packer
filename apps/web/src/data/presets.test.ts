@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VEHICLE_PRESETS, PALLET_PRESETS } from './presets';
+import { VEHICLE_PRESETS, PALLET_PRESETS, vehicleFromPreset } from './presets';
 import { validateLoad } from '@shadrin-v/engine';
 
 describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)', () => {
@@ -114,5 +114,33 @@ describe('пресет автопоезда', () => {
     const others = VEHICLE_PRESETS.filter((p) => p.key !== 'lkw-gliederzug');
     expect(others.every((p) => p.compartments === undefined)).toBe(true);
     expect(train?.compartments).toBeDefined();
+  });
+});
+
+// Финальное ревью ветки p3p, находка 1: три конструктора Vehicle (demo.ts × 2, SetupScreen.tsx)
+// собирали объект перечислением полей и молча теряли `compartments` — ровно тот баг, от которого
+// уже был починен SetupHeader.tsx:84 (с тестом ниже). Единая функция закрывает все четыре места разом.
+describe('vehicleFromPreset (финальное ревью, находка 1)', () => {
+  it('переносит отсеки автопоезда в Vehicle', () => {
+    const preset = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug')!;
+    const v = vehicleFromPreset(preset);
+    expect(v.compartments).toEqual(preset.compartments);
+    expect(v).toMatchObject({ id: preset.key, name: preset.name, length: preset.length, width: preset.width, height: preset.height });
+  });
+
+  // Minor (SetupHeader.tsx:84): `p.compartments` не должен попадать в состояние по ссылке на
+  // модульную константу VEHICLE_PRESETS — общая изменяемая константа в состоянии приложения есть
+  // приглашение к беде, даже если сегодня никто её не мутирует.
+  it('не расшаривает массив/элементы отсеков по ссылке с VEHICLE_PRESETS', () => {
+    const preset = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug')!;
+    const v = vehicleFromPreset(preset);
+    expect(v.compartments).not.toBe(preset.compartments);
+    expect(v.compartments![0]).not.toBe(preset.compartments![0]);
+  });
+
+  it('у односоставного пресета поле compartments отсутствует вовсе (не undefined-значением)', () => {
+    const preset = VEHICLE_PRESETS.find((p) => p.key === 'lkw-standard')!;
+    const v = vehicleFromPreset(preset);
+    expect('compartments' in v).toBe(false);
   });
 });

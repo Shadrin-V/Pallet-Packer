@@ -3,7 +3,7 @@
 // qrd-17-preset-data.md placeholder for vehicles). Integer mm.
 // On divergence, update spec.md Appendix A too.
 
-import type { Compartment } from '@shadrin-v/engine';
+import type { Compartment, Vehicle } from '@shadrin-v/engine';
 
 export interface DimPreset {
   key: string;
@@ -57,6 +57,26 @@ export const VEHICLE_PRESETS: DimPreset[] = [
     ],
   },
 ];
+
+/** Build a `Vehicle` from a preset — the ONE place allowed to do it (финальное ревью ветки p3p,
+ *  находка 1). Three call sites (`data/demo.ts` × 2, `SetupScreen.tsx`) built `Vehicle` by
+ *  enumerating fields and silently dropped `compartments`; `SetupHeader.tsx:84` had already been
+ *  fixed the same way, with the same comment: without this, an autotrain preset silently degrades
+ *  to a single 16.6 m compartment — exactly the bug the compartment model exists to prevent.
+ *  `compartments` is deep-copied, never carried over by reference: a shared mutable array/element
+ *  from the module-level `VEHICLE_PRESETS` constant sitting inside app state is an invitation to a
+ *  bug even with no mutation today (Minor, SetupHeader.tsx review). Single-hold presets get the
+ *  field OMITTED entirely, not set to `undefined` — one representation of "no compartments", not two. */
+export function vehicleFromPreset(p: DimPreset): Vehicle {
+  return {
+    id: p.key,
+    name: p.name,
+    length: p.length,
+    width: p.width,
+    height: p.height,
+    ...(p.compartments ? { compartments: p.compartments.map((c) => ({ ...c })) } : {}),
+  };
+}
 
 /** Euro-pallet presets (mm), placed entschachtelt by default. */
 export const PALLET_PRESETS: DimPreset[] = [
