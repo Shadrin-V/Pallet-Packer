@@ -1,5 +1,6 @@
 import type { Layout, Load, Placement } from '../model/index';
 import { orientedDims } from '../model/orientation';
+import { compartmentsOf } from '../model/compartments';
 
 export interface FillMetrics {
   /** Occupied floor area / hold floor area, 0..100. */
@@ -21,7 +22,9 @@ export interface FillMetrics {
  */
 export function computeFillMetrics(load: Load, layout: Layout): FillMetrics {
   const { vehicle } = load;
-  const floorArea = vehicle.length * vehicle.width;
+  // Пол и объём — СУММА отсеков, а не пролёт × ширина: пролёт включает разрыв между машинами,
+  // где пола нет вовсе. Считать по нему значило бы занижать заполнение на пустоту (ADR 026).
+  const floorArea = compartmentsOf(vehicle).reduce((a, c) => a + c.length * vehicle.width, 0);
   const holdVolume = floorArea * vehicle.height;
   if (floorArea <= 0 || holdVolume <= 0) {
     return { floorFillPercent: 0, volumeFillPercent: 0 };
