@@ -222,6 +222,8 @@ export const de: Dictionary = {
   ERR_INVALID_ROTATION: 'Ungültiger Drehmodus.',
   ERR_EMPTY_LOAD: 'Die Ladeliste ist leer.',
   ERR_UNKNOWN_VEHICLE: 'Fahrzeug wurde im Bestand nicht gefunden.',
+  ERR_INVALID_COMPARTMENTS:
+    'Die Laderaumabschnitte sind ungültig: Positionen und Längen müssen positive ganze Zahlen sein, aufsteigend liegen, dürfen sich nicht überschneiden (eine Kupplungslücke zwischen ihnen ist erlaubt), und der letzte Abschnitt muss genau am Fahrzeugende enden.',
 
   ERR_EDIT_NO_STACK: 'Dieser Stapel wurde nicht gefunden.',
   ERR_EDIT_OVERLAP: 'Dort steht bereits ein Stapel.',

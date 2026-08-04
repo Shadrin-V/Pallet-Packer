@@ -230,6 +230,9 @@ export const TRANSLATION_KEYS = [
   'ERR_INVALID_ROTATION',
   'ERR_EMPTY_LOAD',
   'ERR_UNKNOWN_VEHICLE',
+  // Многосоставный транспорт (ADR 026, contract 0.16.0) — движок уже эмитирует этот код
+  // (packages/engine/src/validation/codes.ts), словари его не несли (финальное ревью p3p, находка 4).
+  'ERR_INVALID_COMPARTMENTS',
 
   // Manual layout edits (contract 0.12.0, ADR 019)
   'ERR_EDIT_NO_STACK',

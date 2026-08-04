@@ -33,6 +33,8 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
       'ERR_INVALID_ROTATION',
       'ERR_EMPTY_LOAD',
       'ERR_UNKNOWN_VEHICLE',
+      // multi-compartment vehicles (ADR 026, contract 0.16.0) — already emitted by the engine
+      'ERR_INVALID_COMPARTMENTS',
       // manual layout edits (contract 0.12.0, ADR 019) — the UI must be able to say why an edit
       // was refused, so these need a translation just as much as the validation codes
       'ERR_EDIT_NO_STACK',
