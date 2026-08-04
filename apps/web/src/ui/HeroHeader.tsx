@@ -9,7 +9,7 @@ import { ThemeSwitch } from '../theme/ThemeSwitch';
 export function HeroHeader() {
   const tt = useT();
   return (
-    <header className="relative isolate overflow-hidden border-b border-line bg-gradient-to-br from-[color:var(--sub)] via-[color:var(--paper)] to-[color:var(--mint-tint)] print:hidden">
+    <header className="relative isolate overflow-hidden border-b border-line bg-gradient-to-br from-[color:var(--sub)] via-[color:var(--paper)] to-[color:var(--hero-tint)] print:hidden">
       {/* Thematic placeholder: faint repeating pallet footprints (evokes the loading plan). */}
       <svg aria-hidden className="pointer-events-none absolute inset-0 -z-10 h-full w-full opacity-[0.07]" preserveAspectRatio="xMidYMid slice">
         <defs>
