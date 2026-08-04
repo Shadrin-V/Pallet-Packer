@@ -34,6 +34,7 @@ import { StackShape } from './components/StackShape';
 import { WarehouseFloor, CLICK_SLOP_PX, sameOrder } from './components/WarehouseFloor';
 import type { DropPreview } from './components/CrossSection';
 import { warehouseFloor, insertionIndexAt, type BufferTile } from './components/warehouseLayout';
+import { reconcileYardOrder, yardOrderKey } from './components/yardOrder';
 
 /** Ключ режима двора (LKWkalk-77g) — свой, а не поле в `ladungsplaner.load`: это настройка вида, и
  *  класть её в сохранённый план значило бы протащить её в контракт и в экспорт JSON. */
@@ -242,36 +243,14 @@ export function LadeplanScreen({
     orientation: tileOrientation[tileKeys[i]] ?? 'lwh',
   }));
 
-  // ---- bufferOrder (B): an explicit, user-steered display order for the warehouse strip, layered
-  // OVER `tiles`' own order rather than replacing it — `stackBuffer` is re-derived from `edited` on
-  // every render (full stacks before the remainder, per Load.cargo), so there is no stable array to
-  // just splice into. Holds cargo TYPE ids, not tile keys: an occurrence key would go stale the
-  // instant a tile of that type is added or removed, and staleness has to be harmless here, since a
-  // recompute or an unrelated edit can shuffle `tiles`' composition without the user touching the
-  // strip at all.
-  // `orderedTiles` reconciles the two by FIFO dequeue: group `tiles` into one queue per cargo type
-  // (preserving `tiles`' own order within each), then walk `bufferOrder` and, for each type mentioned,
-  // dequeue one tile of it. A repeated id in `bufferOrder` (several dropped stacks of the same type)
-  // dequeues that many; an id with an empty queue (the type left the buffer) or past the end of
-  // `bufferOrder` (never mentioned) simply falls through. Whatever remains in every queue once
-  // `bufferOrder` is exhausted is appended in `tiles`' own order — so a type `bufferOrder` never
-  // mentions keeps its default position, and the strip degrades gracefully rather than dropping tiles.
+  // ---- bufferOrder (B, 72g): явный пользовательский порядок двора, слой ПОВЕРХ собственного
+  // порядка `tiles`, а не замена ему — `stackBuffer` пересобирается на каждом рендере (полные
+  // стопки, затем остаток, по `Load.cargo`), и стабильного массива, в который можно было бы просто
+  // вставить элемент, не существует. Хранит ключи «количество : тип» (`yardOrderKey`): этого
+  // хватает, чтобы отличить остаток от полной стопки, и ровно этого не хватало прежней модели
+  // «список cargoTypeId». Разбор — `reconcileYardOrder`, там же описаны обе его фазы.
   const [bufferOrder, setBufferOrder] = useState<string[]>([]);
-  const orderedTiles: (BufferTile & { key: string })[] = (() => {
-    const queues = new Map<string, (BufferTile & { key: string })[]>();
-    for (const t of tiles) {
-      const q = queues.get(t.cargoTypeId);
-      if (q) q.push(t);
-      else queues.set(t.cargoTypeId, [t]);
-    }
-    const out: (BufferTile & { key: string })[] = [];
-    for (const id of bufferOrder) {
-      const q = queues.get(id);
-      if (q && q.length > 0) out.push(q.shift()!);
-    }
-    for (const q of queues.values()) out.push(...q);
-    return out;
-  })();
+  const orderedTiles = reconcileYardOrder(tiles, bufferOrder);
 
   // ---- bayOrder (41e.6): пользовательский порядок ЗАГОНОВ, слой поверх порядка по умолчанию
   // (заявка, 8z2) — как `bufferOrder` для стопок, но без FIFO-очередей: `orderId` уникален, и
@@ -483,11 +462,10 @@ export function LadeplanScreen({
    *  Landing on its own slot is a no-op: a gesture that changed nothing should not be recorded, the
    *  same reasoning the bay-tag carry in `WarehouseFloor` already follows.
    *
-   *  The order is stored as `cargoTypeId` strings, not tile identities (see "Известное ограничение" in
-   *  the task brief): two tiles of the SAME type are interchangeable in `bufferOrder`, so a reorder
-   *  aimed between or past tiles of one's own type can produce the identical string list and read as a
-   *  no-op even though the gesture itself was real. This is the existing buffer-order model — the
-   *  hold→yard drop path (`onDropOutside`) already has the same property — not a regression here.
+   *  Порядок хранится ключами «количество : тип» (`yardOrderKey`, 72g), а не идентичностями плиток:
+   *  идентичности у плитки нет вовсе. Две плитки одного типа И одного количества по-прежнему
+   *  взаимозаменяемы, поэтому их перестановка даёт тот же список и читается как пустой жест — так и
+   *  задумано: на экране они пиксель-в-пиксель одинаковы.
    *
    *  Fix round 1: two more guards. `from` must be a real index into the CURRENT `orderedTiles` — the
    *  tile can have vanished mid-drag (a fresh `layout` prop resets the buffer), and an out-of-range
@@ -500,7 +478,7 @@ export function LadeplanScreen({
     if (from < 0 || from >= orderedTiles.length) return;
     const target = to > from ? to - 1 : to;
     if (target === from) return;
-    const before = orderedTiles.map((t) => t.cargoTypeId);
+    const before = orderedTiles.map(yardOrderKey);
     const next = [...before];
     const [moved] = next.splice(from, 1);
     next.splice(target, 0, moved);
