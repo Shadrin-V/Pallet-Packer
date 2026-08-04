@@ -535,9 +535,16 @@ describe('packLoad — гейт аддитивности (ADR 026, p3p)', () => 
     // Гейт аддитивности (ADR 026): отсутствие поля обязано быть неотличимо от прежнего движка.
     // Эталон — кузов, ЯВНО описанный одним отсеком во всю длину: если пути разошлись, они дадут
     // разные раскладки, и разойдутся молча.
+    // stacking: false — принципиально: со stackable:true груз 1200×800×144 при quantity:40
+    // штабелируется в 3 напольных места по 18 ярусов и вообще не задействует ось длины (весь груз
+    // у x=0), из-за чего гейт вырождается — см. fix-отчёт (Critical 1, ревью). Без штабелирования
+    // каждая единица — своя напольная позиция, груз растягивается по длине почти на весь пролёт, и
+    // укорочение отсека меняет именно `placements`, а не только знаменатель метрик.
     const plain: Vehicle = { id: 'v', name: 'v', length: 13600, width: 2450, height: 2650 };
     const explicit: Vehicle = { ...plain, compartments: [{ id: 'only', x: 0, length: 13600 }] };
-    const cargo = [cube({ id: 'a', length: 1200, width: 800, height: 144, quantity: 40 })];
+    const cargo = [
+      cube({ id: 'a', length: 1200, width: 800, height: 144, quantity: 40, stacking: { stackable: false } }),
+    ];
     expect(packLoad({ vehicle: plain, cargo })).toEqual(packLoad({ vehicle: explicit, cargo }));
   });
 });

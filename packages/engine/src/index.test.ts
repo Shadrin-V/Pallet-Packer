@@ -6,10 +6,6 @@ describe('@shadrin-v/engine bootstrap', () => {
     expect(engine.ENGINE_CONTRACT_VERSION).toBe('0.16.0');
   });
 
-  it('версия контракта', () => {
-    expect(engine.ENGINE_CONTRACT_VERSION).toBe('0.16.0');
-  });
-
   it('exposes the fork-access constants (ADR 018)', () => {
     expect(engine.FORK_ACCESS).toEqual(['all4', 'twoSides']);
     expect(engine.FORK_AXES).toEqual(['length', 'width']);

@@ -49,7 +49,7 @@ const layoutOf = (placements: Layout['placements']): Layout => ({
     floorFillPercent: 0,
     volumeFillPercent: 0,
   },
-  contractVersion: '0.15.0',
+  contractVersion: '0.16.0',
 });
 
 const ref = (x: number, y: number) => ({ cargoTypeId: 'p', x, y });
