@@ -10,6 +10,7 @@
 // outlines on whatever is in the way if it may not. The release then applies exactly what was shown;
 // anything else would make the preview a lie.
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -17,6 +18,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
+  compartmentsOf,
   resolveDrop,
   resolveGroupDrop,
   resolveSlide,
@@ -26,6 +28,7 @@ import {
   type SlideDir,
   type StackRef,
 } from '@shadrin-v/engine';
+import type { TranslationKey } from '@shadrin-v/i18n';
 import { StackShape } from './StackShape';
 import { RotateHandle } from './RotateHandle';
 import { useT } from '../../i18n/LocaleContext';
@@ -501,18 +504,46 @@ export function CrossSection({
             svg paints nothing (visiblePainted → not hittable), and the outer svg's background is a sibling
             these handlers never see — without this rect a bare-floor press reaches neither and no band is
             ever drawn (86v). Paper fill over the paper background is invisible; stacks paint on top, so a
-            press on one still targets the stack. Top view only — the side view has no marquee. */}
-        {draggable && (
-          <rect data-hold-bg x={0} y={0} width={length} height={spanY} fill="var(--paper)" />
-        )}
+            press on one still targets the stack. Top view only — the side view has no marquee.
+            Пол — по прямоугольнику на отсек (ADR 026). Разрыв между машинами полом НЕ заливается:
+            там нет пола физически, и залитая полоса врала бы, что туда можно ставить. Атрибут
+            data-hold-bg остаётся на каждом: он и есть цель нажатия по пустому полу (86v).
+            Рисуется по `view === 'top'`, а не по `draggable`: даже статичный (не редактируемый)
+            план обязан показать, где кузова, а где разрыв — это геометрия чертежа, а не только
+            цель нажатия, которая нужна лишь в режиме правки. */}
+        {view === 'top' && compartmentsOf(load.vehicle).map((c) => (
+          <rect key={c.id} data-hold-bg data-compartment={c.id}
+            x={c.x} y={0} width={c.length} height={spanY} fill="var(--paper)" />
+        ))}
         {/* The grid is decoration, and must not be a hit target: a press landing on a stroke would
             otherwise reach neither the svg nor a stack, and start no band at all — a dead stripe
-            every 1000 mm. Same pointerEvents="none" every other overlay here carries. */}
-        {gridLines(length).map((x) => (
-          <line key={`vx${x}`} x1={x} y1={0} x2={x} y2={spanY} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            every 1000 mm. Same pointerEvents="none" every other overlay here carries.
+            A `<Fragment>` per compartment, NOT a `<g>`: a wrapping `<g>` would land as the first
+            `<g>` in DOM ahead of the stack groups below, and "side view dimming (D2)" picks the rear
+            stack by `svg.querySelectorAll('g')[0]` — position, not content. A fragment leaves every
+            `<line>` a direct sibling, exactly as before the split, so that positional pick still
+            lands on the first STACK's group. */}
+        {compartmentsOf(load.vehicle).map((c) => (
+          <Fragment key={`grid-${c.id}`}>
+            {/* Сетка внутри отсека: шаг тот же 1000 мм, но отсчёт от кромки СВОЕГО отсека — иначе у
+                второго кузова линии поехали бы относительно его собственной стенки. */}
+            {gridLines(c.length).map((gx) => (
+              <line key={`vx${c.id}${gx}`} x1={c.x + gx} y1={0} x2={c.x + gx} y2={spanY}
+                stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            ))}
+            {gridLines(spanY).map((gy) => (
+              <line key={`hy${c.id}${gy}`} x1={c.x} y1={gy} x2={c.x + c.length} y2={gy}
+                stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            ))}
+          </Fragment>
         ))}
-        {gridLines(spanY).map((y) => (
-          <line key={`hy${y}`} x1={0} y1={y} x2={length} y2={y} stroke="var(--grid)" strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        {/* Подпись отсека — над его кромкой, тем же кеглем, что линейка длины, только для
+            многосоставного кузова: у односоставного подписывать нечего. */}
+        {load.vehicle.compartments !== undefined && compartmentsOf(load.vehicle).map((c) => (
+          <text key={`cap-${c.id}`} x={c.x} y={-spanY * 0.02} pointerEvents="none"
+            fontSize={length * RULER_FONT} fill="var(--faint)" fontWeight={600}>
+            {c.name ? tt(c.name as TranslationKey) : c.id}
+          </text>
         ))}
         {sortedRects.map((r, i) => {
           const ref: StackRef = { cargoTypeId: r.cargoTypeId, x: r.x, y: r.y };
@@ -703,8 +734,18 @@ export function CrossSection({
         })()}
         {/* The cargo box = the trailer body: framed in the truck line-art colour (--truck) so it reads
             as one vehicle with the cab, a touch thinner than the cab's own strokes (d2d). Stays in the
-            nested viewport (the load boundary; kept 1:1 by the nested-svg invariant test). */}
-        <rect x={0} y={0} width={length} height={spanY} fill="none" stroke="var(--truck)" strokeWidth={1.75} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            nested viewport (the load boundary; kept 1:1 by the nested-svg invariant test).
+            One outline PER COMPARTMENT (ADR 026), not one for the whole span: a single rect across
+            the whole 16.6 m would draw the coupling gap as if it were cargo hold — the box's own top
+            and bottom edges would run straight through a stretch that is not a body at all, and
+            neither side of the gap would show a wall. Splitting this rect is what actually puts a
+            wall at each compartment edge; the floor/grid split above only stops PAINTING the gap.
+            Single-compartment vehicles keep exactly the one rect drawn before (compartmentsOf is
+            total), so this is a no-op for every load this task must not change. */}
+        {compartmentsOf(load.vehicle).map((c) => (
+          <rect key={`wall-${c.id}`} x={c.x} y={0} width={c.length} height={spanY}
+            fill="none" stroke="var(--truck)" strokeWidth={1.75} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        ))}
         </svg>
         {/* chrome: front cab gutter (both views), wheels+ground (side), ruler lane (both). Drawn AFTER
             the nested cargo svg so chrome — which lives only in the outer gutters — paints on top
@@ -724,6 +765,42 @@ export function CrossSection({
                   <TrailerUnder length={length} height={spanY} />
                 </g>
                 <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
+                {/* Обвес (только вид сбоку). `TrailerUnder` привязывает колёса к КОРМЕ кузова
+                    длиной `length` и не знает о сдвиге по x — поэтому второй и любой следующий
+                    кузов получает свой собственный экземпляр в группе со сдвигом на СВОЙ `frontGutter
+                    + c.x` (не просто `c.x`: нулевая точка TrailerUnder — это перёд отсека в мм
+                    ВНЕШНЕГО svg, а он начинается не с 0, а с переднего поля под кабину). Кабина
+                    (`FrontCap`) остаётся только у первого отсека — кабина у состава одна. */}
+                {view === 'side' && showTruck && compartmentsOf(load.vehicle).slice(1).map((c) => (
+                  <g key={`under-${c.id}`} transform={`translate(${frontGutter + c.x}, 0)`}>
+                    <TrailerUnder length={c.length} height={spanY} />
+                  </g>
+                ))}
+                {/* Дышло автопоезда — одной линией на высоте оси, через сам разрыв: между кузовами
+                    физически нет ни пола, ни обвеса, только сцепка. Полноценная иллюстрация прицепа
+                    остаётся признанным хвостом (design-эпик LKWkalk-41e); здесь — скупо и
+                    геометрически честно. Высота оси — приближённо середина пояса под колёсами
+                    (`wheelGutter`), не пиксель в пиксель с ходовой частью `TrailerUnder`: для линии
+                    в один штрих точнее не нужно. */}
+                {compartmentsOf(load.vehicle).slice(1).map((c, i) => {
+                  // `i` indexes the SLICED array (from the second compartment on), so the full-array
+                  // predecessor of `c` sits at the same index `i` in the unsliced list.
+                  const prev = compartmentsOf(load.vehicle)[i];
+                  const axleY = spanY + wheelGutter / 2;
+                  return (
+                    <line
+                      key={`draw-${c.id}`}
+                      x1={frontGutter + prev.x + prev.length}
+                      y1={axleY}
+                      x2={frontGutter + c.x}
+                      y2={axleY}
+                      stroke="var(--truck)"
+                      strokeWidth={2}
+                      vectorEffect="non-scaling-stroke"
+                      aria-hidden="true"
+                    />
+                  );
+                })}
               </>
             )}
             {view === 'top' && <TopChrome length={length} width={spanY} frontGutter={frontGutter} />}
