@@ -642,11 +642,10 @@ describe('moveStacks', () => {
 });
 
 describe('manual edits respect compartment bounds (ADR 026, p3p)', () => {
-  // Two 2400³ bays (tractor + trailer), a 1000 mm gap between them (a: [0,2400), b: [3400,3800)).
+  // Two 2400³ bays (tractor + trailer), a 1000 mm gap between them (a: [0,2400), b: [3400,5800) —
+  // `x: 3400, length: 2400` puts b's far end at 5800, the full vehicle length, not at 3800).
   // A 2400×2400 floor at 2400 mm height holds 2×2 floor positions × 2 tiers = 8 cubes of 1200³ on its
-  // own (the same 2×2×2=8 arithmetic as CLAUDE.md's canonical case, just at bay scale) — so at
-  // quantity 8 the WHOLE load fits in bay `a` alone and bay `b` stays empty. Verified against
-  // orchestrator.test.ts's own (corrected) reading of this fixture before relying on it here.
+  // own (the same 2×2×2=8 arithmetic as CLAUDE.md's canonical case, just at bay scale).
   const twoBays: Vehicle = {
     id: 't', name: 't', length: 5800, width: 2400, height: 2400,
     compartments: [{ id: 'a', x: 0, length: 2400 }, { id: 'b', x: 3400, length: 2400 }],
@@ -657,29 +656,57 @@ describe('manual edits respect compartment bounds (ADR 026, p3p)', () => {
     state: 'entschachtelt', ...over,
   });
 
+  // Review finding (task 7, Important 1): at quantity 8 the whole load fits bay `a` alone (bay `b`
+  // stays empty), so a footprint reaching into the gap never overlaps anything — the OLD (pre-p3p.7)
+  // `outOfBounds`, which only checked `x + dx <= vehicle.length`, would let it through, fall out of
+  // `placeStack`/`moveStacks` with no overlap either, and land on the compartment-aware
+  // `findGeometryViolations` fallback (added by an EARLIER task) for the correct verdict anyway — so
+  // that quantity could not tell the old `edit.ts` from the new one. Quantity 12 fixes that: the
+  // tractor takes its max (8), the remaining 4 spill into the trailer at x = 3400 (2 floor spots × 2
+  // tiers) — see orchestrator.test.ts's own "заказ, не влезший в первый отсек" case for the same
+  // arithmetic. With the trailer occupied, a footprint that leans into the gap from the tractor side
+  // now ALSO overlaps the trailer's leftmost column under the OLD, non-compartment-aware bounds
+  // check — so the old code answers with the wrong reason (ERR_EDIT_OVERLAP, blamed on whichever
+  // neighbour happened to be there) INSTEAD of falling through to the fallback. That is the actual
+  // difference this task's fix makes, and what the two tests below are built to expose.
+  const spilloverLoad = { vehicle: twoBays, cargo: [cube({ quantity: 12 })] };
+
   it('поставить стопку в разрыв нельзя', () => {
-    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
-    const layout = packLoad(load);
-    const bare = unplaceStacks(load, layout, [{ cargoTypeId: 'c', x: 0, y: 0 }]).layout;
-    const res = placeStack(load, bare, { cargoTypeId: 'c', x: 2500, y: 0, orientation: 'lwh' });
+    const layout = packLoad(spilloverLoad);
+    const bare = unplaceStacks(spilloverLoad, layout, [{ cargoTypeId: 'c', x: 0, y: 0 }]).layout;
+    // x = 3200, footprint [3200, 4400): fits neither bay whole (misses a's end at 2400, starts
+    // before b's start at 3400) — genuinely out of bounds by the compartment model. Under the OLD
+    // length-only check it was in bounds (4400 <= 5800), so the OLD code fell through to
+    // `overlapsOtherStack`, which — now that the trailer is occupied — collides with the trailer's
+    // own column at (3400, 0) ([3400, 4600)) and answers ERR_EDIT_OVERLAP instead.
+    const res = placeStack(spilloverLoad, bare, { cargoTypeId: 'c', x: 3200, y: 0, orientation: 'lwh' });
     expect(res.error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
     expect(res.layout).toBe(bare); // отказ возвращает ИСХОДНУЮ раскладку
   });
 
   it('стопку нельзя посадить верхом на границу машин', () => {
-    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
-    const layout = packLoad(load);
-    const bare = unplaceStacks(load, layout, [{ cargoTypeId: 'c', x: 0, y: 0 }]).layout;
-    expect(placeStack(load, bare, { cargoTypeId: 'c', x: 1800, y: 0, orientation: 'lwh' }).error?.code)
+    const layout = packLoad(spilloverLoad);
+    const bare = unplaceStacks(spilloverLoad, layout, [{ cargoTypeId: 'c', x: 0, y: 0 }]).layout;
+    // x = 1800 straddles the tractor's OWN far wall (bay a ends at 2400) and lands on the tractor's
+    // own remaining column at (1200, 0) — this is the case reviewed and accepted in task 7: the OLD
+    // code already tripped its (naive) overlap check here and answered ERR_EDIT_OVERLAP, which is
+    // exactly the wrong-reason bug this task's fix corrects.
+    expect(placeStack(spilloverLoad, bare, { cargoTypeId: 'c', x: 1800, y: 0, orientation: 'lwh' }).error?.code)
       .toBe('ERR_EDIT_OUT_OF_BOUNDS');
   });
 
   it('перенос группы через разрыв отвергается целиком', () => {
-    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
-    const layout = packLoad(load);
+    const layout = packLoad(spilloverLoad);
     const refs = layout.placements.filter((p) => p.tier === 1 && p.x < 2400)
       .map((p) => ({ cargoTypeId: p.cargoTypeId, x: p.x, y: p.y }));
-    const res = moveStacks(load, layout, refs, 2500, 0);
+    // dx = 2000: the (1200, ·) members land at x = 3200, footprint [3200, 4400) — out of bounds by
+    // the compartment model, same reasoning as the single-stack test above. The OLD bounds check
+    // (length-only) let every member through, so OLD `moveStacks` fell into its overlap loop and hit
+    // the trailer's occupied column at (3400, ·) — again the wrong reason (ERR_EDIT_OVERLAP), and
+    // only on the THIRD member checked, not the first. The (0, ·) members land at x = 2000
+    // ([2000, 3200)), which already fails the new compartment check on its own — no trailer cargo
+    // needed for THAT member — so the whole-group refusal fires on the very first ref checked.
+    const res = moveStacks(spilloverLoad, layout, refs, 2000, 0);
     expect(res.error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
     expect(res.layout).toBe(layout);
   });
