@@ -7,6 +7,7 @@ import type {
   NestingMode,
   NestingState,
   RotationRule,
+  Vehicle,
 } from '../model/index';
 import { findGeometryViolations } from '../geometry/geometry';
 import { columnPlacements, packLoad } from './orchestrator';
@@ -410,5 +411,89 @@ describe('packLoad — property: geometry-clean, bounded, deterministic', () => 
         expect(layout1.metrics.totalPlaced).toBeLessThanOrEqual(totalQuantity);
       }),
     );
+  });
+});
+
+describe('packLoad — multi-compartment (ADR 026, p3p)', () => {
+  const twoBays: Vehicle = {
+    id: 't', name: 't', length: 5800, width: 2400, height: 2400,
+    compartments: [{ id: 'a', x: 0, length: 2400 }, { id: 'b', x: 3400, length: 2400 }],
+  };
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c', name: 'c', length: 1200, width: 1200, height: 1200, quantity: 8,
+    rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false },
+    state: 'entschachtelt', ...over,
+  });
+
+  it('точный ответ: два отсека 2400³ и куб 1200 → ровно 8 единиц, по 4 в отсеке', () => {
+    const layout = packLoad({ vehicle: twoBays, cargo: [cube()] });
+    expect(layout.metrics.totalPlaced).toBe(8);
+    expect(layout.metrics.usedFloorPositions).toBe(4); // по 2 напольных места в каждом отсеке
+    expect(layout.unplaced).toEqual([]);
+  });
+
+  it('ни одна единица не встаёт в разрыв — на случайных заявках', () => {
+    // Property-тест, а не один кейс: разрыв ловится только тогда, когда габариты груза и отсеков
+    // подобраны неудачно, и подбирать их вручную — значит проверять ровно те случаи, о которых уже
+    // подумал. `fast-check` здесь уже используется (floor.test.ts, edit.test.ts).
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1000, max: 4000 }),   // длина отсека
+        fc.integer({ min: 200, max: 2000 }),    // длина разрыва
+        fc.integer({ min: 300, max: 1500 }),    // длина единицы
+        fc.integer({ min: 300, max: 1200 }),    // ширина единицы
+        fc.integer({ min: 1, max: 30 }),        // количество
+        (bay, gap, cl, cw, qty) => {
+          const vehicle: Vehicle = {
+            id: 't', name: 't', length: bay * 2 + gap, width: 2450, height: 2400,
+            compartments: [{ id: 'a', x: 0, length: bay }, { id: 'b', x: bay + gap, length: bay }],
+          };
+          const cargo = [cube({ length: cl, width: cw, height: 1200, quantity: qty })];
+          const load = { vehicle, cargo };
+          expect(findGeometryViolations(load, packLoad(load))).toEqual([]);
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it('densityFirst не ломается об отсеки', () => {
+    // ADR 016: «плотность бьёт группировку» — densityFirst обязан размещать НЕ МЕНЬШЕ strict.
+    // С отсеками сравниваются два многоотсековых прохода, а не один с другим.
+    const cargo = [cube({ id: 'a', orderId: 'SO-1', quantity: 5 }), cube({ id: 'b', orderId: 'SO-2', quantity: 5 })];
+    const strict = packLoad({ vehicle: twoBays, cargo, orderGrouping: 'strict' });
+    const dense = packLoad({ vehicle: twoBays, cargo, orderGrouping: 'densityFirst' });
+    expect(dense.metrics.totalPlaced).toBeGreaterThanOrEqual(strict.metrics.totalPlaced);
+  });
+
+  it('заказ, не влезший в первый отсек, продолжается во втором', () => {
+    // Один orderId, 8 единиц: в тягач влезает 4, остальные обязаны уехать в прицеп, а не в unplaced.
+    // Примечание (отклонение от брифа, см. отчёт задачи 6): один отсек 2400³ вмещает 2×2 напольных
+    // места × 2 яруса = 8 кубов 1200³ целиком сам по себе (тот же 2×2×2 расчёт, что и в CLAUDE.md,
+    // просто в масштабе отсека) — при quantity=8 переполнения в прицеп никогда не случится. Взято
+    // quantity=12: тягач берёт максимум (8), остаток (4) обязан уйти в прицеп.
+    const layout = packLoad({ vehicle: twoBays, cargo: [cube({ orderId: 'SO-1', quantity: 12 })] });
+    const inTrailer = layout.placements.filter((p) => p.x >= 3400);
+    expect(inTrailer.length).toBeGreaterThan(0);
+    expect(layout.unplaced).toEqual([]);
+  });
+
+  it('fill заполняет оба отсека', () => {
+    // Примечание (отклонение от брифа, см. отчёт задачи 6): один отсек 2400³ сам по себе вмещает 8
+    // кубов 1200³ (2×2 места × 2 яруса), поэтому ожидаемое число для ДВУХ отсеков — 16, а не 8;
+    // 8 означало бы, что fill заполнил только первый отсек, а второй остался пуст.
+    const layout = packLoad({ vehicle: twoBays, cargo: [cube({ quantity: 0, fill: true })] });
+    expect(layout.metrics.totalPlaced).toBe(16);
+  });
+
+  it('приоритет заявки: хвост списка уходит в unplaced, а не мелочь', () => {
+    // Примечание (отклонение от брифа, см. отчёт задачи 6): суммарная ёмкость транспорта — 16 (по 8
+    // на отсек), а не 8. head quantity=16 забирает оба отсека целиком, так что хвосту не остаётся
+    // места ни в одном из них.
+    const layout = packLoad({
+      vehicle: twoBays,
+      cargo: [cube({ id: 'head', quantity: 16 }), cube({ id: 'tail', quantity: 4 })],
+    });
+    expect(layout.unplaced.map((u) => u.cargoTypeId)).toEqual(['tail']);
   });
 });
