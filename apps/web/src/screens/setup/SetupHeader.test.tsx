@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -132,5 +133,62 @@ describe('SetupHeader', () => {
     expect(h.onVehicleChange).toHaveBeenCalledWith(
       expect.not.objectContaining({ compartments: expect.anything() }),
     );
+  });
+
+  // Task 11: у автопоезда правится длина каждого отсека своим полем, а не общая `vehicle.length`
+  // (она — полный пролёт вместе с разрывом). Два поля «Длина» подряд без уточнения, какое из них
+  // тягач, а какое прицеп, — дефект доступности (см. бриф задачи 11), не косметика: метки обязаны
+  // различаться.
+  describe('многосоставный кузов (p3p)', () => {
+    const trainVehicle: Vehicle = {
+      id: 'lkw-gliederzug', name: 'LKW Gliederzug (Jumbo)', length: 16600, width: 2450, height: 3050,
+      compartments: [
+        { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 7700 },
+        { id: 'trailer', name: 'vehicle.compartment.trailer', x: 8900, length: 7700 },
+      ],
+    };
+
+    it('показывает поле длины на каждый отсек с различимыми метками, без общего поля «Länge»', () => {
+      renderHeader({ vehicle: trainVehicle });
+      expect(screen.getByLabelText('Länge · Motorwagen')).toHaveValue(7700);
+      expect(screen.getByLabelText('Länge · Anhänger')).toHaveValue(7700);
+      // Общего поля «Länge» без уточнения отсека быть не должно — иначе назад дефект доступности.
+      expect(screen.queryByLabelText('Länge')).toBeNull();
+    });
+
+    it('правка отсека сдвигает соседа и полный пролёт, сохраняя разрыв', async () => {
+      // Стенд-обёртка держит `vehicle` в реальном useState (а не в статичном пропе, как
+      // `renderHeader`): controlled-поле Measure сбрасывает недоверенный ввод к пропу между
+      // нажатиями, если проп не обновляется — без реального стейта typing по одному символу
+      // терял бы предыдущие нажатые цифры.
+      function Wrapper({ onChange }: { onChange: (v: Vehicle) => void }) {
+        const [v, setV] = useState(trainVehicle);
+        return (
+          <LocaleProvider initial="de">
+            <SetupHeader
+              vehicle={v} summary={summary} errorCount={0} compact={false}
+              loadingMode="combined" orderGrouping="strict"
+              onLoadingModeChange={() => {}} onOrderGroupingChange={() => {}}
+              onVehicleChange={(next) => { setV(next); onChange(next); }}
+              onDemo={() => {}} onReset={() => {}} onCalculate={() => {}}
+            />
+          </LocaleProvider>
+        );
+      }
+      const onChange = vi.fn();
+      render(<Wrapper onChange={onChange} />);
+      const tractorField = screen.getByLabelText('Länge · Motorwagen');
+      await userEvent.clear(tractorField);
+      await userEvent.type(tractorField, '8000');
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          length: 16900,
+          compartments: [
+            { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 8000 },
+            { id: 'trailer', name: 'vehicle.compartment.trailer', x: 9200, length: 7700 },
+          ],
+        }),
+      );
+    });
   });
 });

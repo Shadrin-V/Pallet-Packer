@@ -3,7 +3,7 @@
 // В ужатом виде остаётся одна строка «кузов · сводка · Рассчитать»; за переключение отвечает
 // useStickyCompact, шапка только рисует то, что ей сказали.
 import type { LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
-import { formatVolume } from '@shadrin-v/i18n';
+import { formatVolume, type TranslationKey } from '@shadrin-v/i18n';
 import { useT, useLocale } from '../../i18n/LocaleContext';
 import { fillTemplate } from '../components/stackFormula';
 import { Button, InfoHint, Measure, Select } from '../../ui/primitives';
@@ -11,6 +11,7 @@ import { LoadingModeSwitch } from '../../ui/LoadingModeSwitch';
 import { OrderGroupingToggle } from '../../ui/OrderGroupingToggle';
 import { VEHICLE_PRESETS } from '../../data/presets';
 import { numOr0, type Num } from './setupState';
+import { setCompartmentLength } from './vehicleCompartments';
 import type { SetupSummary } from './setupValidation';
 
 export interface SetupHeaderProps {
@@ -91,7 +92,19 @@ export function SetupHeader({
                 ]}
               />
             </div>
-            <MeasureField label={tt('field.length')} value={vehicle.length} onChange={(v) => onVehicleChange({ ...vehicle, length: numOr0(v) })} />
+            {vehicle.compartments === undefined ? (
+              <MeasureField label={tt('field.length')} value={vehicle.length}
+                onChange={(v) => onVehicleChange({ ...vehicle, length: numOr0(v) })} />
+            ) : (
+              vehicle.compartments.map((c, i) => (
+                <MeasureField
+                  key={c.id}
+                  label={`${tt('field.length')} · ${c.name ? tt(c.name as TranslationKey) : c.id}`}
+                  value={c.length}
+                  onChange={(v) => onVehicleChange(setCompartmentLength(vehicle, i, numOr0(v)))}
+                />
+              ))
+            )}
             <MeasureField label={tt('field.width')} value={vehicle.width} onChange={(v) => onVehicleChange({ ...vehicle, width: numOr0(v) })} />
             <MeasureField label={tt('field.height')} value={vehicle.height} onChange={(v) => onVehicleChange({ ...vehicle, height: numOr0(v) })} />
           </>

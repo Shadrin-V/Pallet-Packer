@@ -1,7 +1,7 @@
 // Сводка загрузки и сообщения экрана «Настройка» (LKWkalk-5nb, спека §6). Чистый модуль: ни DOM,
 // ни перевода — коды и адреса строк, текст подставляет компонент (та же граница, что у
 // positionRules и stackFormula).
-import type { Vehicle } from '@shadrin-v/engine';
+import { compartmentsOf, type Vehicle } from '@shadrin-v/engine';
 import { stepInvalid } from '../components/stackFormula';
 import { activeStep, dimsComplete, numOr0, type OrderState } from './setupState';
 
@@ -56,7 +56,10 @@ export function setupSummary(orders: OrderState[], vehicle: Vehicle): SetupSumma
     positions,
     units,
     cargoVolume,
-    vehicleVolume: vehicle.length * vehicle.width * vehicle.height,
+    // Автопоезд (p3p): `length` — полный пролёт, включая разрыв между отсеками, а не грузовой
+    // объём. `compartmentsOf` тотальна (нет `compartments` → один неявный отсек), так что для
+    // односоставного кузова сумма равна прежнему `l × w × h`.
+    vehicleVolume: compartmentsOf(vehicle).reduce((a, c) => a + c.length * vehicle.width * vehicle.height, 0),
   };
 }
 

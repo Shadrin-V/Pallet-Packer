@@ -31,6 +31,21 @@ describe('setupSummary', () => {
     expect(s.units).toBe(0);
     expect(s.cargoVolume).toBe(0);
   });
+
+  // Автопоезд (p3p): разрыв между тягачом и прицепом — не грузовой объём. `l × w × h` завышает
+  // кузов на разрыв; правильный объём — сумма по отсекам (compartmentsOf).
+  it('автопоезд: объём кузова — сумма по отсекам, разрыв не считается', () => {
+    const train: Vehicle = {
+      id: 't', name: 't', length: 16600, width: 2450, height: 3050,
+      compartments: [
+        { id: 'tractor', x: 0, length: 7700 },
+        { id: 'trailer', x: 8900, length: 7700 },
+      ],
+    };
+    const s = setupSummary([order([pos()])], train);
+    expect(s.vehicleVolume).toBe((7700 + 7700) * 2450 * 3050);
+    expect(s.vehicleVolume).not.toBe(train.length * train.width * train.height);
+  });
 });
 
 describe('setupMessages', () => {
