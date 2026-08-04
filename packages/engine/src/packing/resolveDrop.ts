@@ -330,10 +330,11 @@ export function resolveGroupDrop(
   // its most sensitive participant would be.
   const tol = opts.tolerance ?? Math.min(...members.map((m) => Math.min(m.dx, m.dy) / 2));
 
-  // Candidate deltas per axis. Each member offers: stay at the aim, sit at either wall, or sit flush
-  // against a neighbour's near/far edge — all expressed as a delta by subtracting the member's own
-  // current coordinate. Filtered to what is within reach of the aimed delta.
-  const axisDeltas = (
+  // Candidate deltas, ось ШИРИНЫ — как была: each member offers stay at the aim, sit at either
+  // wall, or sit flush against a neighbour's near/far edge — all expressed as a delta by
+  // subtracting the member's own current coordinate. Filtered to what is within reach of the aimed
+  // delta.
+  const axisYDeltas = (
     aimD: number,
     pick: (m: Box) => { pos: number; size: number },
     max: (m: Box) => number,
@@ -361,26 +362,59 @@ export function resolveGroupDrop(
     return [...out];
   };
 
-  const dxs = axisDeltas(
+  // Ось ДЛИНЫ: то же обобщение на отсеки, что и для одиночной стопки (resolveDrop:axisX) — цель
+  // каждого участника (`m.x + d`) обязана целиком лежать в одном отсеке, а не просто внутри
+  // `[0, vehicle.length]`. Кандидаты — стенки КАЖДОГО отсека для КАЖДОГО участника (переведённые в
+  // дельту вычитанием его текущей позиции), плюс кромки соседей, как и раньше. Прицел (`aimD`)
+  // по-прежнему сеется безусловно (см. комментарий выше) — это дельта группы, а не какого-то
+  // участника, и ни один пер-участник-фильтр не вправе её отсеять.
+  const axisXDeltas = (
+    aimD: number,
+    pick: (m: Box) => { pos: number; size: number },
+    edges: (b: Box) => { start: number; extent: number },
+  ): number[] => {
+    const out = new Set<number>([aimD]);
+    for (const m of members) {
+      const { pos, size } = pick(m);
+      const push = (target: number) => {
+        const d = target - pos;
+        if (fitsInSomeCompartment(load.vehicle, target, size) && Math.abs(d - aimD) <= tol) {
+          out.add(d);
+        }
+      };
+      for (const c of compartmentsOf(load.vehicle)) {
+        push(c.x);
+        push(c.x + c.length - size);
+      }
+      for (const b of boxes) {
+        const { start, extent } = edges(b);
+        push(start + extent); // our near edge against their far edge
+        push(start - size); // our far edge against their near edge
+      }
+    }
+    return [...out];
+  };
+
+  const dxs = axisXDeltas(
     aim.dx,
     (m) => ({ pos: m.x, size: m.dx }),
-    (m) => load.vehicle.length - m.dx,
     (b) => ({ start: b.x, extent: b.dx }),
   );
-  const dys = axisDeltas(
+  const dys = axisYDeltas(
     aim.dy,
     (m) => ({ pos: m.y, size: m.dy }),
     (m) => load.vehicle.width - m.dy,
     (b) => ({ start: b.y, extent: b.dy }),
   );
 
-  // Flush = at least one member ends against a wall or a neighbour's edge on that axis.
+  // Flush = at least one member ends against a wall (any compartment's, on X) or a neighbour's edge
+  // on that axis.
   const flushX = (d: number) =>
     members.some(
       (m) =>
-        m.x + d === 0 ||
-        m.x + d === load.vehicle.length - m.dx ||
-        boxes.some((b) => m.x + d === b.x + b.dx || m.x + d + m.dx === b.x),
+        compartmentsOf(load.vehicle).some(
+          (c) => m.x + d === c.x || m.x + d + m.dx === c.x + c.length,
+        ) || boxes.some((b) => m.x + d === b.x + b.dx || m.x + d + m.dx === b.x),
     );
   const flushY = (d: number) =>
     members.some(
@@ -398,12 +432,14 @@ export function resolveGroupDrop(
           overlaps1d(m.y + ddy, m.y + ddy + m.dy, b.y, b.y + b.dy),
       ),
     );
+  // Ось ДЛИНЫ у inBounds — «целиком в каком-то отсеке» (fitsInSomeCompartment), не просто внутри
+  // [0, vehicle.length]: разрыв между машинами не имеет пола, и группа не может там стоять, даже
+  // если формально не вылезает за общую длину транспорта.
   const inBounds = (ddx: number, ddy: number): boolean =>
     members.every(
       (m) =>
-        m.x + ddx >= 0 &&
+        fitsInSomeCompartment(load.vehicle, m.x + ddx, m.dx) &&
         m.y + ddy >= 0 &&
-        m.x + ddx + m.dx <= load.vehicle.length &&
         m.y + ddy + m.dy <= load.vehicle.width,
     );
 
