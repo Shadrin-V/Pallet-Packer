@@ -148,6 +148,8 @@ export const de: Dictionary = {
 
   'vehicle.label': 'Fahrzeug',
   'vehicle.cargoHold': 'Laderaum',
+  'vehicle.compartment.tractor': 'Motorwagen',
+  'vehicle.compartment.trailer': 'Anhänger',
 
   'cargoType.label': 'Ladungsart',
   'cargoType.rotation.label': 'Drehung',

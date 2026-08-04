@@ -76,7 +76,12 @@ export function SetupHeader({
                   const p = VEHICLE_PRESETS.find((v) => v.name === name);
                   onVehicleChange(
                     p
-                      ? { id: p.key, name: p.name, length: p.length, width: p.width, height: p.height }
+                      ? {
+                          id: p.key, name: p.name, length: p.length, width: p.width, height: p.height,
+                          // Без этого автопоезд молча выродился бы в один отсек длиной 16,6 м —
+                          // ровно та поломка, ради которой заведена модель отсеков.
+                          ...(p.compartments ? { compartments: p.compartments } : {}),
+                        }
                       : { ...vehicle, name: tt('setup.vehiclePreset.custom') },
                   );
                 }}

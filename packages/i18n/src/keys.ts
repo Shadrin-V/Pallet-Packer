@@ -148,6 +148,8 @@ export const TRANSLATION_KEYS = [
   // Vehicle selection screen
   'vehicle.label',
   'vehicle.cargoHold',
+  'vehicle.compartment.tractor',
+  'vehicle.compartment.trailer',
 
   // Cargo/order editor screen
   'cargoType.label',

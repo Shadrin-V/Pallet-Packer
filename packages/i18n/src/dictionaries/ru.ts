@@ -145,6 +145,8 @@ export const ru: Dictionary = {
 
   'vehicle.label': 'Транспортное средство',
   'vehicle.cargoHold': 'Грузовой отсек',
+  'vehicle.compartment.tractor': 'Тягач',
+  'vehicle.compartment.trailer': 'Прицеп',
 
   'cargoType.label': 'Тип груза',
   'cargoType.rotation.label': 'Вращение',

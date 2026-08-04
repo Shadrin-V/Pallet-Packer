@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { VEHICLE_PRESETS, PALLET_PRESETS } from './presets';
+import { validateLoad } from '@shadrin-v/engine';
 
 describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)', () => {
   it('default vehicle is LKW Standard 13600×2450×2450 (logist variant 1)', () => {
@@ -17,8 +18,15 @@ describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)
     expect(VEHICLE_PRESETS.some((p) => p.height === 2800)).toBe(false);
   });
 
-  it('does not offer variant 5 (road train) — it is two compartments, the engine models one (LKWkalk-p3p)', () => {
-    expect(VEHICLE_PRESETS.some((p) => p.length >= 15000)).toBe(false);
+  // LKWkalk-p3p (tasks 1-9) added multi-compartment `Vehicle` support, so variant 5 (road train)
+  // now ships as `lkw-gliederzug` (task 10) — but only via two compartments with a physical gap,
+  // never as a single bare hold spanning the full length. That's what this guard now checks.
+  it('any preset spanning >=15000mm models it via compartments, not a single hold (LKWkalk-p3p)', () => {
+    for (const p of VEHICLE_PRESETS) {
+      if (p.length >= 15000) {
+        expect(p.compartments, `${p.name} spans ${p.length}mm without compartments`).toBeDefined();
+      }
+    }
   });
 
   it('is 2450mm wide on every vehicle preset (the logist scheme figure, not the old 2430/2440/2480)', () => {
@@ -71,5 +79,26 @@ describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)
       'EPAL 6',
       'Viertelpalette',
     ]);
+  });
+});
+
+describe('пресет автопоезда', () => {
+  const train = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug');
+
+  it('существует и описан двумя отсеками', () => {
+    expect(train?.compartments?.map((c) => [c.x, c.length])).toEqual([[0, 7700], [8900, 7700]]);
+  });
+
+  it('проходит валидацию движка: конец последнего отсека = длине', () => {
+    const vehicle = { id: train!.key, name: train!.name, length: train!.length,
+      width: train!.width, height: train!.height, compartments: train!.compartments };
+    const cargo = [{ id: 'c', name: 'c', length: 1200, width: 800, height: 144, quantity: 1,
+      rotation: 'yawOnly' as const, stacking: { stackable: true }, nesting: { nestable: false },
+      state: 'entschachtelt' as const }];
+    expect(validateLoad({ vehicle, cargo })).toEqual([]);
+  });
+
+  it('односоставные пресеты остаются без compartments', () => {
+    expect(VEHICLE_PRESETS.filter((p) => p.compartments !== undefined)).toHaveLength(1);
   });
 });

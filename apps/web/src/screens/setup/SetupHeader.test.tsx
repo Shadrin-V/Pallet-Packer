@@ -99,4 +99,38 @@ describe('SetupHeader', () => {
     expect(h.onCalculate).toHaveBeenCalledOnce();
     expect(h.onDemo).toHaveBeenCalledOnce();
   });
+
+  // LKWkalk-p3p (task 10): выбор автопоезда обязан протянуть отсеки — без этого преcет молча
+  // выродился бы в один сплошной кузов длиной 16,6 м (та самая поломка, ради которой заведена
+  // модель отсеков).
+  it('выбор автопоезда передаёт compartments в onVehicleChange', async () => {
+    const h = renderHeader();
+    await userEvent.selectOptions(screen.getByLabelText('Fahrzeug'), 'LKW Gliederzug (Jumbo)');
+    expect(h.onVehicleChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'LKW Gliederzug (Jumbo)',
+        compartments: [
+          { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 7700 },
+          { id: 'trailer', name: 'vehicle.compartment.trailer', x: 8900, length: 7700 },
+        ],
+      }),
+    );
+  });
+
+  // Легко упустить: если бы объект собирался через `{ ...vehicle, ... }`, отсеки предыдущего
+  // выбора (автопоезда) утекли бы в следующий, односоставный кузов.
+  it('выбор односоставного кузова после автопоезда не тащит его compartments', async () => {
+    const trainVehicle: Vehicle = {
+      id: 'lkw-gliederzug', name: 'LKW Gliederzug (Jumbo)', length: 16600, width: 2450, height: 3050,
+      compartments: [
+        { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 7700 },
+        { id: 'trailer', name: 'vehicle.compartment.trailer', x: 8900, length: 7700 },
+      ],
+    };
+    const h = renderHeader({ vehicle: trainVehicle });
+    await userEvent.selectOptions(screen.getByLabelText('Fahrzeug'), 'LKW Standard');
+    expect(h.onVehicleChange).toHaveBeenCalledWith(
+      expect.not.objectContaining({ compartments: expect.anything() }),
+    );
+  });
 });
