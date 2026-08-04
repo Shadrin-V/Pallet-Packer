@@ -523,3 +523,21 @@ describe('packLoad — multi-compartment (ADR 026, p3p)', () => {
     expect(layout.unplaced.map((u) => u.cargoTypeId)).toEqual(['tail']);
   });
 });
+
+describe('packLoad — гейт аддитивности (ADR 026, p3p)', () => {
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c', name: 'c', length: 1200, width: 1200, height: 1200, quantity: 8,
+    rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false },
+    state: 'entschachtelt', ...over,
+  });
+
+  it('односоставный кузов без compartments даёт ту же раскладку, что и раньше', () => {
+    // Гейт аддитивности (ADR 026): отсутствие поля обязано быть неотличимо от прежнего движка.
+    // Эталон — кузов, ЯВНО описанный одним отсеком во всю длину: если пути разошлись, они дадут
+    // разные раскладки, и разойдутся молча.
+    const plain: Vehicle = { id: 'v', name: 'v', length: 13600, width: 2450, height: 2650 };
+    const explicit: Vehicle = { ...plain, compartments: [{ id: 'only', x: 0, length: 13600 }] };
+    const cargo = [cube({ id: 'a', length: 1200, width: 800, height: 144, quantity: 40 })];
+    expect(packLoad({ vehicle: plain, cargo })).toEqual(packLoad({ vehicle: explicit, cargo }));
+  });
+});
