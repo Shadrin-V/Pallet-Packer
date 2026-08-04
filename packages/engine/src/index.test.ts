@@ -58,4 +58,10 @@ describe('@shadrin-v/engine bootstrap', () => {
     expect(engine.orientedDims(1200, 800, 144, 'wlh')).toEqual([800, 1200, 144]);
     expect(engine.orientedDims(1200, 800, 144, 'hlw')).toEqual([144, 1200, 800]);
   });
+
+  it('exposes the compartment model (p3p, ADR 026)', () => {
+    expect(typeof engine.compartmentsOf).toBe('function');
+    expect(typeof engine.compartmentSpanning).toBe('function');
+    expect(typeof engine.fitsInSomeCompartment).toBe('function');
+  });
 });

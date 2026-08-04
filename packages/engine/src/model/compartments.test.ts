@@ -19,6 +19,11 @@ describe('compartmentsOf', () => {
   it('многосоставный отдаёт свои отсеки', () => {
     expect(compartmentsOf(train).map((c) => [c.x, c.length])).toEqual([[0, 7700], [8900, 7700]]);
   });
+
+  it('пустой массив compartments тоже читается как односоставный кузов', () => {
+    const empty: Vehicle = { ...single, compartments: [] };
+    expect(compartmentsOf(empty)).toEqual([{ id: 'v', x: 0, length: 13600, name: undefined }]);
+  });
 });
 
 describe('compartmentSpanning', () => {
@@ -39,6 +44,10 @@ describe('compartmentSpanning', () => {
   it('за бортом — ничей', () => {
     expect(compartmentSpanning(train, 16000, 1200)).toBeNull();
     expect(compartmentSpanning(train, -1, 100)).toBeNull();
+  });
+
+  it('интервал длиннее любого отсека — ничей, даже если укладывается в машину целиком по x', () => {
+    expect(compartmentSpanning(train, 0, 10000)).toBeNull();
   });
 });
 
