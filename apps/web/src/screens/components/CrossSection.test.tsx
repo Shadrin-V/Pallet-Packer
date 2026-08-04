@@ -1392,13 +1392,35 @@ describe('compartment floors and the coupling gap (p3p.12)', () => {
       </LocaleProvider>,
     );
     // Тридем: 3 колеса + 3 ступицы = 6 circle на один TrailerUnder — второй экземпляр добавляет
-    // ровно это к тому, что уже даёт один кузов (кабина+ходовая), не больше и не меньше.
+    // ровно это к тому, что уже даёт один кузов (кабина+ходовая), не больше и не меньше. Само по
+    // себе это НЕ доказывает, что тележки не наложены друг на друга (ревью Task 12, Important 2) —
+    // числом ниже проверяем именно это.
     expect(container.querySelectorAll('circle')).toHaveLength(baselineCircles + 6);
-    // Вторая ходовая сдвинута на frontGutter + x второго отсека (8900), а не просто на 8900 — ноль
-    // TrailerUnder это перёд ЕГО отсека в мм ВНЕШНЕГО svg, который начинается не с 0.
-    const groups = [...container.querySelectorAll('g[transform]')];
-    const expectedX = frontGutter + 8900;
-    expect(groups.some((g) => g.getAttribute('transform') === `translate(${expectedX}, 0)`)).toBe(true);
+
+    // Абсолютная позиция круга = cx самого круга + x-сдвиг ближайшего предка с transform. У
+    // TrailerUnder ровно один такой предок — обёртка `<g transform="translate(...)">`, которую
+    // ставит CrossSection на каждый отсек; у circle из FrontCap-ассета такого предка на своём пути
+    // нет (первый transform выше — уже translate(0, topGutter), y-сдвиг, x=0), так что их
+    // локальные cx (десятки-сотни, координаты исходного вектора) не путаются с мм кузова (тысячи).
+    const absoluteCx = (circle: Element): number => {
+      const g = circle.closest('g[transform]');
+      const m = g?.getAttribute('transform')?.match(/translate\(([-\d.]+)[,\s]+([-\d.]+)\)/);
+      return (m ? Number(m[1]) : 0) + Number(circle.getAttribute('cx'));
+    };
+    const circleXs = [...container.querySelectorAll('circle')].map(absoluteCx);
+
+    // Решающая проверка находки: ходовая тягача обязана стоять у СВОЕЙ кормы (frontGutter+7700),
+    // а не у кормы всего состава (frontGutter+16600, где раньше "уезжала" тележка первого
+    // TrailerUnder, получавшего length=vehicle.length целиком). Тридем не сидит ровно НА кромке:
+    // передняя ось тройки уходит от кормы вглубь кузова — по константам `truckChrome.tsx`
+    // (REAR/BOX_H, файл вне зоны правки этой задачи, но константы публичные) это до ≈3096 мм при
+    // высоте 3050. Допуск 3500 мм даёт этому небольшой запас и всё ещё меньше половины расстояния
+    // между двумя кормами (8900 мм), так что кластеры двух ходовых не путаются между собой.
+    const near = (target: number) => circleXs.filter((x) => Math.abs(x - target) < 3500);
+    expect(near(frontGutter + 7700)).toHaveLength(6); // тягач: тридем реально под ЕГО кормой
+    expect(near(frontGutter + 16600)).toHaveLength(6); // прицеп: тридем под СВОЕЙ кормой
+    // ...и это не один и тот же наложенный тридем, посчитанный дважды под разными фильтрами.
+    expect(Math.max(...near(frontGutter + 7700))).toBeLessThan(Math.min(...near(frontGutter + 16600)));
 
     // Дышло — одна линия через сам разрыв [7700, 8900], на высоте оси (середина wheelGutter).
     const axleY = trainLoad.vehicle.height + wheelGutter / 2; // spanY == height в виде сбоку

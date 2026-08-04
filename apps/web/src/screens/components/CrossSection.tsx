@@ -157,6 +157,11 @@ export function CrossSection({
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
 
+  // Отсеки транспорта (ADR 026): один неявный [0, length) для односоставного кузова. Считаем ОДИН
+  // раз за рендер — держится в шести местах ниже (пол, сетка, подписи, стенки, ходовая, дышло), и
+  // `compartmentsOf` создаёт новый массив на каждый вызов (ревью Task 12, Minor).
+  const comps = compartmentsOf(load.vehicle);
+
   // Поля рамки и внешние габариты — из truckFrame: этими числами владеет не только разрез, но и двор
   // склада, который обещает груз в том же масштабе (LKWkalk-6n4).
   const { frontGutter, topGutter, wheelGutter, outerW, outerH } = truckFrame(load.vehicle, view, showTruck);
@@ -511,7 +516,7 @@ export function CrossSection({
             Рисуется по `view === 'top'`, а не по `draggable`: даже статичный (не редактируемый)
             план обязан показать, где кузова, а где разрыв — это геометрия чертежа, а не только
             цель нажатия, которая нужна лишь в режиме правки. */}
-        {view === 'top' && compartmentsOf(load.vehicle).map((c) => (
+        {view === 'top' && comps.map((c) => (
           <rect key={c.id} data-hold-bg data-compartment={c.id}
             x={c.x} y={0} width={c.length} height={spanY} fill="var(--paper)" />
         ))}
@@ -523,7 +528,7 @@ export function CrossSection({
             stack by `svg.querySelectorAll('g')[0]` — position, not content. A fragment leaves every
             `<line>` a direct sibling, exactly as before the split, so that positional pick still
             lands on the first STACK's group. */}
-        {compartmentsOf(load.vehicle).map((c) => (
+        {comps.map((c) => (
           <Fragment key={`grid-${c.id}`}>
             {/* Сетка внутри отсека: шаг тот же 1000 мм, но отсчёт от кромки СВОЕГО отсека — иначе у
                 второго кузова линии поехали бы относительно его собственной стенки. */}
@@ -538,11 +543,16 @@ export function CrossSection({
           </Fragment>
         ))}
         {/* Подпись отсека — над его кромкой, тем же кеглем, что линейка длины, только для
-            многосоставного кузова: у односоставного подписывать нечего. */}
-        {load.vehicle.compartments !== undefined && compartmentsOf(load.vehicle).map((c) => (
+            многосоставного кузова: у односоставного подписывать нечего. Рисуем ТОЛЬКО когда есть
+            `c.name` (ключ локали) — иначе пришлось бы вывести на чертёж `c.id`, машинный
+            идентификатор, а не пользовательский текст (принцип 3, CLAUDE.md: ни одной
+            нелокализуемой строки в UI). Для нынешних пресетов недостижимо (оба отсека `Gliederzug`
+            именованы), но точка входа для будущих кузовов без имени останется честной — молчание,
+            а не сырой id (ревью Task 12, Minor). */}
+        {load.vehicle.compartments !== undefined && comps.map((c) => c.name && (
           <text key={`cap-${c.id}`} x={c.x} y={-spanY * 0.02} pointerEvents="none"
             fontSize={length * RULER_FONT} fill="var(--faint)" fontWeight={600}>
-            {c.name ? tt(c.name as TranslationKey) : c.id}
+            {tt(c.name as TranslationKey)}
           </text>
         ))}
         {sortedRects.map((r, i) => {
@@ -740,11 +750,16 @@ export function CrossSection({
             and bottom edges would run straight through a stretch that is not a body at all, and
             neither side of the gap would show a wall. Splitting this rect is what actually puts a
             wall at each compartment edge; the floor/grid split above only stops PAINTING the gap.
-            Single-compartment vehicles keep exactly the one rect drawn before (compartmentsOf is
-            total), so this is a no-op for every load this task must not change. */}
-        {compartmentsOf(load.vehicle).map((c) => (
+            Single-compartment vehicles keep exactly the one rect drawn before — same strokeWidth
+            1.75 (compartmentsOf is total) — so this is a no-op for every load this task must not
+            change. A MULTI-compartment vehicle draws each wall a touch thicker (3, not 1.75): the
+            brief asked for "a thick edge at each wall", and until this fix the gap was legible only
+            by the ABSENCE of floor/grid, not by an actual visible edge (review Task 12, Minor). */}
+        {comps.map((c) => (
           <rect key={`wall-${c.id}`} x={c.x} y={0} width={c.length} height={spanY}
-            fill="none" stroke="var(--truck)" strokeWidth={1.75} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            fill="none" stroke="var(--truck)"
+            strokeWidth={load.vehicle.compartments !== undefined ? 3 : 1.75}
+            vectorEffect="non-scaling-stroke" pointerEvents="none" />
         ))}
         </svg>
         {/* chrome: front cab gutter (both views), wheels+ground (side), ruler lane (both). Drawn AFTER
@@ -761,31 +776,33 @@ export function CrossSection({
             {view === 'side' && (
               <>
                 <FrontCap height={spanY} />
-                <g transform={`translate(${frontGutter} 0)`}>
-                  <TrailerUnder length={length} height={spanY} />
-                </g>
-                <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
-                {/* Обвес (только вид сбоку). `TrailerUnder` привязывает колёса к КОРМЕ кузова
-                    длиной `length` и не знает о сдвиге по x — поэтому второй и любой следующий
-                    кузов получает свой собственный экземпляр в группе со сдвигом на СВОЙ `frontGutter
-                    + c.x` (не просто `c.x`: нулевая точка TrailerUnder — это перёд отсека в мм
-                    ВНЕШНЕГО svg, а он начинается не с 0, а с переднего поля под кабину). Кабина
-                    (`FrontCap`) остаётся только у первого отсека — кабина у состава одна. */}
-                {view === 'side' && showTruck && compartmentsOf(load.vehicle).slice(1).map((c) => (
-                  <g key={`under-${c.id}`} transform={`translate(${frontGutter + c.x}, 0)`}>
+                {/* Ходовая — по `comps` ЦЕЛИКОМ, один экземпляр на КАЖДЫЙ отсек своей длиной, а не
+                    «первый как раньше на всю length плюс цикл для остальных» (ревью Task 12,
+                    Important 1 — моя ошибка в брифе). `TrailerUnder` привязывает тридем и мудфлап
+                    к КОРМЕ через сам параметр `length` (`rear(rx) = length - (REAR-rx)*s`,
+                    `<rect x={length}>`): при length = vehicle.length (весь пролёт) тележка съезжает
+                    под конец ВСЕГО СОСТАВА, а не под конец тягача — на автопоезде тягач оставался
+                    без ходовой вовсе, а у прицепа выходило два наложенных подрамника (тот же конец
+                    считали дважды). Каждый вызов получает СВОЮ длину `c.length` и сдвиг на СВОЙ
+                    `frontGutter + c.x` (не просто `c.x`: нулевая точка TrailerUnder — это перёд
+                    отсека в мм ВНЕШНЕГО svg, а он начинается не с 0, а с переднего поля под кабину).
+                    `FrontCap` остаётся один — кабина у состава одна. */}
+                {comps.map((c) => (
+                  <g key={`under-${c.id}`} data-under={c.id} transform={`translate(${frontGutter + c.x}, 0)`}>
                     <TrailerUnder length={c.length} height={spanY} />
                   </g>
                 ))}
+                <GroundLine x1={0} x2={frontGutter + length} y={spanY + wheelGutter} />
                 {/* Дышло автопоезда — одной линией на высоте оси, через сам разрыв: между кузовами
                     физически нет ни пола, ни обвеса, только сцепка. Полноценная иллюстрация прицепа
                     остаётся признанным хвостом (design-эпик LKWkalk-41e); здесь — скупо и
                     геометрически честно. Высота оси — приближённо середина пояса под колёсами
                     (`wheelGutter`), не пиксель в пиксель с ходовой частью `TrailerUnder`: для линии
                     в один штрих точнее не нужно. */}
-                {compartmentsOf(load.vehicle).slice(1).map((c, i) => {
+                {comps.slice(1).map((c, i) => {
                   // `i` indexes the SLICED array (from the second compartment on), so the full-array
                   // predecessor of `c` sits at the same index `i` in the unsliced list.
-                  const prev = compartmentsOf(load.vehicle)[i];
+                  const prev = comps[i];
                   const axleY = spanY + wheelGutter / 2;
                   return (
                     <line
