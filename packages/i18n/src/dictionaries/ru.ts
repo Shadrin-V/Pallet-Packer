@@ -134,6 +134,7 @@ export const ru: Dictionary = {
     'Ручные изменения раскладки будут потеряны при смене стратегии. Продолжить?',
   'ladeplan.emptyHint': 'Заполните заказы и нажмите «Рассчитать» — план загрузки появится здесь.',
   'ladeplan.unplacedFig': 'Не размещено',
+  'ladeplan.compartments': 'По отсекам',
   'action.print': 'Печать',
 
   'field.name': 'Название',

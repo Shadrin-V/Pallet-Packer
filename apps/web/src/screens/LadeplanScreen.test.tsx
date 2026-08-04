@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, type Layout, type Load, type Vehicle } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { LadeplanScreen, mergeBayOrder } from './LadeplanScreen';
 import { installSvgGeometry } from './components/svgTestGeometry';
@@ -1669,6 +1669,66 @@ describe('LadeplanScreen — figures (D1 + D3)', () => {
     renderLadeplan(); // 8 cubes fill the hold exactly
     expect(screen.queryByText('Nicht platziert')).not.toBeInTheDocument();
     expect(screen.getByText('Volumenauslastung')).toBeInTheDocument();
+  });
+});
+
+// Per-compartment placed counts (p3p Task 13). The counter is a pure readout of `layout.placements`
+// via `compartmentsOf` — no new contract field. Fixture: two 1000×1000×1000 compartments 1200mm
+// apart (a miniature Gliederzug), each holding exactly one non-stacking 1000³ box, quantity 2 total —
+// the orchestrator fills compartments in x order (packCompartments), so this must land ONE box per
+// compartment, not both in the first.
+describe('LadeplanScreen — размещённое по отсекам (p3p Task 13)', () => {
+  const trainVehicle: Vehicle = {
+    id: 'train-v',
+    name: 'Gliederzug (test)',
+    length: 2200,
+    width: 1000,
+    height: 1000,
+    compartments: [
+      { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 1000 },
+      { id: 'trailer', name: 'vehicle.compartment.trailer', x: 1200, length: 1000 },
+    ],
+  };
+  const trainLoad: Load = {
+    vehicle: trainVehicle,
+    cargo: [
+      {
+        id: 'box',
+        name: 'Box',
+        length: 1000,
+        width: 1000,
+        height: 1000,
+        quantity: 2,
+        rotation: 'none',
+        stacking: { stackable: false },
+        nesting: { nestable: false },
+        state: 'entschachtelt',
+      },
+    ],
+  };
+  const trainLayout = calculateLayout(trainLoad);
+  const plainLoad = load;
+  const plainLayout = layout;
+
+  it('показывает размещённое по отсекам', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={trainLoad} layout={trainLayout} />
+      </LocaleProvider>,
+    );
+    const counts = screen.getAllByTestId('compartment-count').map((n) => n.textContent);
+    expect(counts).toHaveLength(2);
+    // Both compartments got exactly one of the two boxes — a genuine split, not [total, 0].
+    expect(counts).toEqual(['1', '1']);
+  });
+
+  it('односоставный кузов счётчиков по отсекам не показывает', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={plainLoad} layout={plainLayout} />
+      </LocaleProvider>,
+    );
+    expect(screen.queryAllByTestId('compartment-count')).toHaveLength(0);
   });
 });
 

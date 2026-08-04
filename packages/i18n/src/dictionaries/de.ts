@@ -137,6 +137,7 @@ export const de: Dictionary = {
     'Manuelle Änderungen an der Anordnung gehen beim Strategiewechsel verloren. Fortfahren?',
   'ladeplan.emptyHint': 'Aufträge ausfüllen und «Berechnen» drücken — der Ladeplan erscheint hier.',
   'ladeplan.unplacedFig': 'Nicht platziert',
+  'ladeplan.compartments': 'Nach Abschnitt',
   'action.print': 'Drucken',
 
   'field.name': 'Name',

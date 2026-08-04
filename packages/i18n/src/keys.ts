@@ -135,6 +135,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.discardEditsConfirm',
   'ladeplan.emptyHint',
   'ladeplan.unplacedFig',
+  'ladeplan.compartments',
   'action.print',
 
   // Shared field labels (vehicle + cargo-type forms)
