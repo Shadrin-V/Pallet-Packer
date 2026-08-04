@@ -44,6 +44,23 @@ interface Compartment {
 кузова и занизил `volumeFillPercent`. Отсутствие `compartments` = один отсек `[0, length)` =
 сегодняшнее поведение, побайтово.
 
+**Хелперы отсеков** — единственное место, знающее, что такое отсек (`packages/engine/src/model/compartments.ts`).
+Они экспортированы из пакета и потребляются `apps/web` (разрез, шапка настройки, лист загрузки), но
+это не отдельные MCP-операции раздела 2 — это стабильные утилиты для UI, построенные над `Vehicle`,
+а не новые входы/выходы движка:
+```ts
+interface CompartmentSpan { id: string; name?: string; x: number; length: number }
+
+/** Отсеки транспорта; отсутствие `compartments` = один неявный отсек [0, length). Тотальна —
+ *  вызывается и из путей, где вход ещё не проверен validateLoad (ручные правки, магнит). */
+function compartmentsOf(vehicle: Vehicle): CompartmentSpan[];
+
+/** Отсек, вмещающий интервал [x, x + dx) ЦЕЛИКОМ; null — интервал в разрыве, за бортом или на границе. */
+function compartmentSpanning(vehicle: Vehicle, x: number, dx: number): CompartmentSpan | null;
+
+const fitsInSomeCompartment: (vehicle: Vehicle, x: number, dx: number) => boolean;
+```
+
 ### CargoType
 ```ts
 type RotationRule = 'none' | 'yawOnly' | 'full';
@@ -366,7 +383,7 @@ function resolveSlide(load: Load, layout: Layout, refs: StackRef[], dir: SlideDi
 | `ERR_INVALID_ROTATION`      | Неизвестный режим вращения                             |
 | `ERR_EMPTY_LOAD`            | `cargo` пуст                                           |
 | `ERR_UNKNOWN_VEHICLE`       | Кузов не найден в хранилище (для list/upsert-сценариев)|
-| `ERR_INVALID_COMPARTMENTS`  | `compartments` присутствует, но: пуст; `x` или `length` не целые, `length ≤ 0`, `x < 0`; отсеки не по возрастанию `x` или пересекаются; конец последнего ≠ `vehicle.length` ([ADR 026](adr/026-multi-compartment-vehicle.md)) |
+| `ERR_INVALID_COMPARTMENTS`  | `compartments` присутствует, но: пуст; `x` или `length` не целые, `length ≤ 0`, `x < 0`; отсеки не по возрастанию `x` или пересекаются; два отсека делят один `id`; конец последнего ≠ `vehicle.length` ([ADR 026](adr/026-multi-compartment-vehicle.md)) |
 | `ERR_EDIT_NO_STACK`         | Правка: по `StackRef` нет колонки                      |
 | `ERR_EDIT_OVERLAP`          | Правка: футпринт пересекает другую стопку               |
 | `ERR_EDIT_OUT_OF_BOUNDS`    | Правка: стопка выходит за габарит своего отсека (не помещается целиком в один отсек) |

@@ -33,11 +33,17 @@ function compartmentErrors(vehicle: Vehicle): EngineError[] {
     { code: 'ERR_INVALID_COMPARTMENTS', details: { reason, ...details } },
   ];
   if (cs.length === 0) return bad('empty');
+  const seenIds = new Set<string>();
   let prevEnd = 0;
   for (const c of cs) {
     if (!Number.isInteger(c.x) || c.x < 0) return bad('x', { id: c.id, x: c.x });
     if (!isPositiveInt(c.length)) return bad('length', { id: c.id, length: c.length });
     if (c.x < prevEnd) return bad('overlap', { id: c.id, x: c.x, prevEnd });
+    // Отсеки с одинаковым id геометрически могут не пересекаться (разные x/length) и пройти обе
+    // проверки выше, но одинаковый id даёт коллизию React-ключей в CrossSection.tsx/SetupHeader.tsx
+    // и склеенные строки в счётчиках по отсекам (LadeplanScreen.placedPerCompartment группирует по id).
+    if (seenIds.has(c.id)) return bad('duplicateId', { id: c.id });
+    seenIds.add(c.id);
     prevEnd = c.x + c.length;
   }
   if (prevEnd !== vehicle.length) return bad('span', { end: prevEnd, length: vehicle.length });

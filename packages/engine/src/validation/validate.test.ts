@@ -152,4 +152,14 @@ describe('валидация отсеков', () => {
     const v = trainVehicle([{ id: 'a', x: 0, length: 7700 }, { id: 'b', x: 8900, length: 7700 }]);
     expect(validateLoad({ vehicle: v, cargo: [longCargo], clearance: 0, objective: 'maxUnits' }).map((e) => e.code)).toContain('ERR_CARGO_EXCEEDS_VEHICLE');
   });
+
+  // Minor находка финального ревью: два отсека с одинаковым `id` не пересекаются по x/length, так
+  // что ветки выше их пропускают — но одинаковый id даёт коллизию React-ключей в CrossSection.tsx
+  // и SetupHeader.tsx и склеенные строки в счётчиках по отсекам (LadeplanScreen.placedPerCompartment
+  // группирует по id).
+  it('отсеки с одинаковым id отвергаются, даже если геометрически не пересекаются', () => {
+    expect(
+      codesWithTrain(trainVehicle([{ id: 'a', x: 0, length: 7700 }, { id: 'a', x: 8900, length: 7700 }])),
+    ).toContain('ERR_INVALID_COMPARTMENTS');
+  });
 });
