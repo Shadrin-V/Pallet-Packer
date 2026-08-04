@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Load, CargoType } from '../model/index';
+import type { Load, CargoType, Vehicle, Compartment } from '../model/index';
 import { validateLoad } from './validate';
 
 function baseCargo(overrides: Partial<CargoType> = {}): CargoType {
@@ -107,5 +107,49 @@ describe('validateLoad (api-contract 0.1.0)', () => {
       },
     });
     expect(codes(baseLoad([bad]))).toContain('ERR_INVALID_NESTING');
+  });
+});
+
+const trainVehicle = (compartments: Compartment[], length = 16600): Vehicle => ({
+  id: 't', name: 't', length, width: 2450, height: 3050, compartments,
+});
+const okCargo: CargoType = {
+  id: 'c', name: 'c', length: 1200, width: 800, height: 144, quantity: 1,
+  rotation: 'yawOnly', stacking: { stackable: true }, nesting: { nestable: false },
+  state: 'entschachtelt',
+};
+const codesWithTrain = (v: Vehicle) => validateLoad({ vehicle: v, cargo: [okCargo], clearance: 0, objective: 'maxUnits' }).map((e) => e.code);
+
+describe('валидация отсеков', () => {
+  it('корректные отсеки проходят', () => {
+    expect(codesWithTrain(trainVehicle([{ id: 'a', x: 0, length: 7700 }, { id: 'b', x: 8900, length: 7700 }]))).toEqual([]);
+  });
+
+  it('пустой массив отвергается: односоставный кузов выражается ОТСУТСТВИЕМ поля', () => {
+    expect(codesWithTrain(trainVehicle([]))).toContain('ERR_INVALID_COMPARTMENTS');
+  });
+
+  it('отсеки не по возрастанию x', () => {
+    expect(codesWithTrain(trainVehicle([{ id: 'b', x: 8900, length: 7700 }, { id: 'a', x: 0, length: 7700 }]))).toContain('ERR_INVALID_COMPARTMENTS');
+  });
+
+  it('пересекающиеся отсеки', () => {
+    expect(codesWithTrain(trainVehicle([{ id: 'a', x: 0, length: 7700 }, { id: 'b', x: 7000, length: 7700 }]))).toContain('ERR_INVALID_COMPARTMENTS');
+  });
+
+  it('нецелая или неположительная длина', () => {
+    expect(codesWithTrain(trainVehicle([{ id: 'a', x: 0, length: 7700.5 }, { id: 'b', x: 8900, length: 7700 }]))).toContain('ERR_INVALID_COMPARTMENTS');
+    expect(codesWithTrain(trainVehicle([{ id: 'a', x: 0, length: 0 }, { id: 'b', x: 8900, length: 7700 }]))).toContain('ERR_INVALID_COMPARTMENTS');
+  });
+
+  it('конец последнего отсека обязан совпасть с длиной транспорта', () => {
+    // Иначе в хвосте заводится молчаливая мёртвая зона, а `length` перестаёт быть производным.
+    expect(codesWithTrain(trainVehicle([{ id: 'a', x: 0, length: 7700 }, { id: 'b', x: 8900, length: 7700 }], 17000))).toContain('ERR_INVALID_COMPARTMENTS');
+  });
+
+  it('груз длиннее отсека отвергается, хотя короче полного пролёта', () => {
+    const longCargo: CargoType = { ...okCargo, id: 'long', length: 8000, rotation: 'none' };
+    const v = trainVehicle([{ id: 'a', x: 0, length: 7700 }, { id: 'b', x: 8900, length: 7700 }]);
+    expect(validateLoad({ vehicle: v, cargo: [longCargo], clearance: 0, objective: 'maxUnits' }).map((e) => e.code)).toContain('ERR_CARGO_EXCEEDS_VEHICLE');
   });
 });
