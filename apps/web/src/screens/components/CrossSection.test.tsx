@@ -6,6 +6,8 @@ import { calculateLayout, moveStacks, type Layout, type Load } from '@shadrin-v/
 import { LocaleProvider } from '../../i18n/LocaleContext';
 import { CrossSection } from './CrossSection';
 import { installSvgGeometry } from './svgTestGeometry';
+import { VEHICLE_PRESETS } from '../../data/presets';
+import { truckFrame } from './truckFrame';
 
 const V = { id: 'v1', name: 'LKW', length: 2000, width: 2000, height: 2000 };
 const load: Load = {
@@ -1251,5 +1253,182 @@ describe('article name on stacks', () => {
     const outer = container.querySelector('svg[data-cutaway="side"]')!;
     const texts = [...outer.querySelectorAll('text')].map((t) => t.textContent);
     expect(texts).not.toContain('Box');
+  });
+});
+
+// LKWkalk-p3p.12: the road-train preset splits the cargo hold into two bodies with a physical
+// coupling gap between them (ADR 026). The blueprint must show that gap — not paint one solid
+// floor across the whole 16.6 m span, which would lie about cargo fitting into the coupling.
+// The fixture is the REAL `lkw-gliederzug` preset, not invented numbers (task 12 brief warns past
+// tasks got hand-written numbers wrong): tractor [0, 7700), trailer [8900, 16600), gap 1200 wide.
+describe('compartment floors and the coupling gap (p3p.12)', () => {
+  const gliederzug = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug')!;
+  const trainLoad: Load = {
+    vehicle: {
+      id: gliederzug.key,
+      name: gliederzug.name,
+      length: gliederzug.length,
+      width: gliederzug.width,
+      height: gliederzug.height,
+      compartments: gliederzug.compartments,
+    },
+    cargo: [],
+  };
+  const trainLayout = calculateLayout(trainLoad);
+  // Single-compartment vehicle — the existing top-of-file fixture already has no `compartments`.
+  const plainLoad = load;
+  const plainLayout = layout;
+
+  it('рисует по прямоугольнику пола на отсек, а не один на весь пролёт', () => {
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={trainLoad} layout={trainLayout} view="top" label="top" />
+      </LocaleProvider>,
+    );
+    const bays = container.querySelectorAll('[data-compartment]');
+    expect(bays).toHaveLength(2);
+    expect(bays[0].getAttribute('x')).toBe('0');
+    expect(bays[1].getAttribute('x')).toBe('8900');
+  });
+
+  it('разрыв между машинами не залит полом', () => {
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={trainLoad} layout={trainLayout} view="top" label="top" />
+      </LocaleProvider>,
+    );
+    const widths = [...container.querySelectorAll('[data-compartment]')].map((n) => Number(n.getAttribute('width')));
+    expect(widths.reduce((a, b) => a + b, 0)).toBe(15400); // 16600 пролёта минус 1200 сцепки
+  });
+
+  it('односоставный кузов остаётся одним прямоугольником пола', () => {
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={plainLoad} layout={plainLayout} view="top" label="top" />
+      </LocaleProvider>,
+    );
+    expect(container.querySelectorAll('[data-compartment]')).toHaveLength(1);
+  });
+
+  // Дальше — своя добавка сверх трёх буквальных тестов брифа: закрывает пункты из чек-листа
+  // самопроверки задачи, для которых бриф не дал готового кода (нажатие по полу ВТОРОГО отсека,
+  // подписи, стенки-обводки, ходовая и дышло под вторым кузовом).
+
+  it('нажатие по полу ВТОРОГО отсека тоже начинает рамку выделения — data-hold-bg есть на каждом', () => {
+    const restore = installSvgGeometry();
+    try {
+      const { container } = render(
+        <LocaleProvider initial="de">
+          <CrossSection load={trainLoad} layout={trainLayout} view="top" label="top" onMoveStack={() => {}} />
+        </LocaleProvider>,
+      );
+      const bgRects = container.querySelectorAll('[data-hold-bg]');
+      expect(bgRects).toHaveLength(2);
+      const trailerFloor = bgRects[1]; // x=8900 — второй отсек
+      fireEvent.pointerDown(trailerFloor, { clientX: 9000, clientY: 100 });
+      fireEvent.pointerMove(trailerFloor, { clientX: 9500, clientY: 500 });
+      expect(container.querySelector('[data-testid="marquee"]')).not.toBeNull();
+      fireEvent.pointerUp(trailerFloor, { clientX: 9500, clientY: 500 });
+    } finally {
+      restore();
+    }
+  });
+
+  it('подписывает отсеки локализованными именами (de) на многосоставном кузове', () => {
+    render(
+      <LocaleProvider initial="de">
+        <CrossSection load={trainLoad} layout={trainLayout} view="top" label="top" />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('Motorwagen')).toBeInTheDocument();
+    expect(screen.getByText('Anhänger')).toBeInTheDocument();
+  });
+
+  it('не подписывает односоставный кузов — подписывать нечего', () => {
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={plainLoad} layout={plainLayout} view="top" label="top" />
+      </LocaleProvider>,
+    );
+    // Не "нет ни одного <text>": линейки рисуют числа тем же тегом, а на полу этого груза есть
+    // ещё и подпись артикула («Box»), у которой тоже fontWeight=600. Подпись отсека узнаётся по
+    // ЭТОЙ КОНКРЕТНОЙ паре атрибутов: fontWeight=600 (как линейка длины) И fill=var(--faint) —
+    // артикул красится в var(--muted), счётчик ×N в var(--ink), у линеек fill стоит на group, а
+    // не на самом <text>, так что оба вида текста этот составной селектор не ловят.
+    expect(container.querySelector('text[font-weight="600"][fill="var(--faint)"]')).toBeNull();
+  });
+
+  it('обводит каждый отсек своей рамкой-стенкой, а не одним прямоугольником на весь пролёт', () => {
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={trainLoad} layout={trainLayout} view="top" label="top" />
+      </LocaleProvider>,
+    );
+    const walls = [...container.querySelectorAll('rect[stroke="var(--truck)"]')];
+    expect(walls).toHaveLength(2);
+    expect(walls.map((w) => w.getAttribute('x'))).toEqual(['0', '8900']);
+    expect(walls.map((w) => w.getAttribute('width'))).toEqual(['7700', '7700']);
+  });
+
+  it('рисует ходовую под ВТОРЫМ кузовом на правильном месте, и дышло через разрыв', () => {
+    const { frontGutter, wheelGutter } = truckFrame(trainLoad.vehicle, 'side');
+
+    // Опорное число вместо магической константы: сколько <circle> даёт РОВНО ОДНА ходовая (плюс
+    // фиксированные circle кабины из FrontCap-ассета — их у состава одна). Считаем на кузове с
+    // тем же самым Vehicle, но без поля compartments, чтобы сравнение было честным «плюс одна
+    // ходовая», а не подогнанным числом.
+    const { compartments: _drop, ...vehicleWithoutCompartments } = trainLoad.vehicle;
+    const singleBodyLoad: Load = { vehicle: vehicleWithoutCompartments, cargo: [] };
+    const { container: baselineContainer } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={singleBodyLoad} layout={calculateLayout(singleBodyLoad)} view="side" label="side" />
+      </LocaleProvider>,
+    );
+    const baselineCircles = baselineContainer.querySelectorAll('circle').length;
+
+    const { container } = render(
+      <LocaleProvider initial="de">
+        <CrossSection load={trainLoad} layout={trainLayout} view="side" label="side" />
+      </LocaleProvider>,
+    );
+    // Тридем: 3 колеса + 3 ступицы = 6 circle на один TrailerUnder — второй экземпляр добавляет
+    // ровно это к тому, что уже даёт один кузов (кабина+ходовая), не больше и не меньше. Само по
+    // себе это НЕ доказывает, что тележки не наложены друг на друга (ревью Task 12, Important 2) —
+    // числом ниже проверяем именно это.
+    expect(container.querySelectorAll('circle')).toHaveLength(baselineCircles + 6);
+
+    // Абсолютная позиция круга = cx самого круга + x-сдвиг ближайшего предка с transform. У
+    // TrailerUnder ровно один такой предок — обёртка `<g transform="translate(...)">`, которую
+    // ставит CrossSection на каждый отсек; у circle из FrontCap-ассета такого предка на своём пути
+    // нет (первый transform выше — уже translate(0, topGutter), y-сдвиг, x=0), так что их
+    // локальные cx (десятки-сотни, координаты исходного вектора) не путаются с мм кузова (тысячи).
+    const absoluteCx = (circle: Element): number => {
+      const g = circle.closest('g[transform]');
+      const m = g?.getAttribute('transform')?.match(/translate\(([-\d.]+)[,\s]+([-\d.]+)\)/);
+      return (m ? Number(m[1]) : 0) + Number(circle.getAttribute('cx'));
+    };
+    const circleXs = [...container.querySelectorAll('circle')].map(absoluteCx);
+
+    // Решающая проверка находки: ходовая тягача обязана стоять у СВОЕЙ кормы (frontGutter+7700),
+    // а не у кормы всего состава (frontGutter+16600, где раньше "уезжала" тележка первого
+    // TrailerUnder, получавшего length=vehicle.length целиком). Тридем не сидит ровно НА кромке:
+    // передняя ось тройки уходит от кормы вглубь кузова — по константам `truckChrome.tsx`
+    // (REAR/BOX_H, файл вне зоны правки этой задачи, но константы публичные) это до ≈3096 мм при
+    // высоте 3050. Допуск 3500 мм даёт этому небольшой запас и всё ещё меньше половины расстояния
+    // между двумя кормами (8900 мм), так что кластеры двух ходовых не путаются между собой.
+    const near = (target: number) => circleXs.filter((x) => Math.abs(x - target) < 3500);
+    expect(near(frontGutter + 7700)).toHaveLength(6); // тягач: тридем реально под ЕГО кормой
+    expect(near(frontGutter + 16600)).toHaveLength(6); // прицеп: тридем под СВОЕЙ кормой
+    // ...и это не один и тот же наложенный тридем, посчитанный дважды под разными фильтрами.
+    expect(Math.max(...near(frontGutter + 7700))).toBeLessThan(Math.min(...near(frontGutter + 16600)));
+
+    // Дышло — одна линия через сам разрыв [7700, 8900], на высоте оси (середина wheelGutter).
+    const axleY = trainLoad.vehicle.height + wheelGutter / 2; // spanY == height в виде сбоку
+    const drawbar = [...container.querySelectorAll('line')].find(
+      (l) => l.getAttribute('x1') === String(frontGutter + 7700) && l.getAttribute('x2') === String(frontGutter + 8900),
+    );
+    expect(drawbar).toBeTruthy();
+    expect(Number(drawbar!.getAttribute('y1'))).toBeCloseTo(axleY);
+    expect(Number(drawbar!.getAttribute('y2'))).toBeCloseTo(axleY);
   });
 });

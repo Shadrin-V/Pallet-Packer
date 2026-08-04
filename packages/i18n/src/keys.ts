@@ -113,6 +113,12 @@ export const TRANSLATION_KEYS = [
   'ladeplan.brandName',
   'ladeplan.brandTagline',
   'ladeplan.vehicleInner',
+  // Грузовая длина автопоезда (финальное ревью p3p, находка 3): для `vehicle.compartments`
+  // подставляется вместо полного пролёта в `ladeplan.vehicleInner` — {sum} и {breakdown} уже
+  // отформатированы вызывающим кодом (formatLength/группировка тысяч), сам шаблон несёт только
+  // структуру фразы. Пример: «15 400 (7 700 + 7 700)» вместо ошибочных «16 600», которые включали
+  // 1200 мм разрыва, где пола нет.
+  'ladeplan.vehicleInnerSpan',
   'ladeplan.orders',
   'ladeplan.loadingMode',
   'ladeplan.loadingModeHint',
@@ -135,6 +141,7 @@ export const TRANSLATION_KEYS = [
   'ladeplan.discardEditsConfirm',
   'ladeplan.emptyHint',
   'ladeplan.unplacedFig',
+  'ladeplan.compartments',
   'action.print',
 
   // Shared field labels (vehicle + cargo-type forms)
@@ -148,6 +155,8 @@ export const TRANSLATION_KEYS = [
   // Vehicle selection screen
   'vehicle.label',
   'vehicle.cargoHold',
+  'vehicle.compartment.tractor',
+  'vehicle.compartment.trailer',
 
   // Cargo/order editor screen
   'cargoType.label',
@@ -221,6 +230,9 @@ export const TRANSLATION_KEYS = [
   'ERR_INVALID_ROTATION',
   'ERR_EMPTY_LOAD',
   'ERR_UNKNOWN_VEHICLE',
+  // Многосоставный транспорт (ADR 026, contract 0.16.0) — движок уже эмитирует этот код
+  // (packages/engine/src/validation/codes.ts), словари его не несли (финальное ревью p3p, находка 4).
+  'ERR_INVALID_COMPARTMENTS',
 
   // Manual layout edits (contract 0.12.0, ADR 019)
   'ERR_EDIT_NO_STACK',

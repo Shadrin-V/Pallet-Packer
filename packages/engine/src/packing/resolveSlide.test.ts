@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Layout, Load } from '../model/index';
+import type { CargoType, Layout, Load, Vehicle } from '../model/index';
 import { findGeometryViolations } from '../geometry/geometry';
 import { moveStacks } from './edit';
 import { resolveSlide } from './resolveSlide';
@@ -49,7 +49,7 @@ const layoutOf = (placements: Layout['placements']): Layout => ({
     floorFillPercent: 0,
     volumeFillPercent: 0,
   },
-  contractVersion: '0.15.0',
+  contractVersion: '0.16.0',
 });
 
 const ref = (x: number, y: number) => ({ cargoTypeId: 'p', x, y });
@@ -149,5 +149,68 @@ describe('resolveSlide', () => {
     const layout = layoutOf([atOriented(0, 0, 'lwh'), atOriented(500, 1000, 'wlh')]);
     const d = resolveSlide(load, layout, [ref(0, 0), ref(500, 1000)], '+x');
     expect(d).toEqual({ dx: 8700, dy: 0 });
+  });
+});
+
+describe('resolveSlide — стенка своего отсека (ADR 026, p3p)', () => {
+  // Тягач [0,2400) + разрыв [2400,3400) + прицеп [3400,5800), кузов 2400×2400 в сечении — тот же
+  // масштаб, что и в orchestrator.test.ts (twoBays), куб 1200³ ради согласованных чисел по эпику.
+  const twoBays: Vehicle = {
+    id: 't',
+    name: 't',
+    length: 5800,
+    width: 2400,
+    height: 2400,
+    compartments: [
+      { id: 'a', x: 0, length: 2400 },
+      { id: 'b', x: 3400, length: 2400 },
+    ],
+  };
+  const cube: CargoType = {
+    id: 'c',
+    name: 'c',
+    length: 1200,
+    width: 1200,
+    height: 1200,
+    quantity: 8,
+    rotation: 'none',
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt',
+  };
+  const twoBaysLoad: Load = { vehicle: twoBays, cargo: [cube] };
+  const bayAt = (x: number, y: number) => ({
+    cargoTypeId: 'c',
+    x,
+    y,
+    z: 0,
+    orientation: 'lwh' as const,
+    tier: 1,
+    state: 'entschachtelt' as const,
+  });
+  const bayRef = (x: number, y: number) => ({ cargoTypeId: 'c', x, y });
+
+  it('стопка упирается в стенку СВОЕГО отсека, а не в конец пролёта', () => {
+    // Тягач [0,2400): стопка 1200 в x=0, ход +x. Свободно до стенки отсека a: 2400 − 1200 = 1200 —
+    // а не до конца всего пролёта (5800 − 1200 = 4600), как было бы при старой «одна стенка на весь
+    // кузов» логике.
+    const layout = layoutOf([bayAt(0, 0)]);
+    const d = resolveSlide(twoBaysLoad, layout, [bayRef(0, 0)], '+x');
+    expect(d).toEqual({ dx: 1200, dy: 0 });
+  });
+
+  it('выделение по обе стороны разрыва не переезжает через него', () => {
+    // Участница A стоит в тягаче на x=300: свободный ход до СВОЕЙ стенки — 2400−(300+1200) = 900.
+    // Участница B стоит в прицепе впритык к его ближней стенке, x=3400: свободный ход до ДАЛЬНЕЙ
+    // стенки прицепа — 5800−(3400+1200) = 1200 (число совпадает со старой «стенка на весь кузов»,
+    // потому что прицеп — последний отсек, и его дальняя стенка и есть конец всего пролёта).
+    // Блок едет минимумом ходов участниц (ADR 021) — 900, а не 1200: старая логика посчитала бы A
+    // ход до конца ВСЕГО пролёта (5800−1500 = 4300), не заметила бы, что A ближе к СВОЕЙ стенке, и
+    // отдала бы блоку 1200 (ход B) — а на деле A после такого хода оказалась бы в разрыве
+    // [2400,3400), где груза быть не может.
+    const layout = layoutOf([bayAt(300, 0), bayAt(3400, 0)]);
+    const refs = [bayRef(300, 0), bayRef(3400, 0)];
+    const d = resolveSlide(twoBaysLoad, layout, refs, '+x');
+    expect(d).toEqual({ dx: 900, dy: 0 });
   });
 });

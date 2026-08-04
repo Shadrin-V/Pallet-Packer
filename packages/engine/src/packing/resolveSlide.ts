@@ -1,5 +1,6 @@
-// Прижать к упору (ADR 024, api-contract 0.15.0). Отвечает на ОДИН вопрос: насколько выделенное
-// может проехать по оси до первого упора — стенки кузова или чужой напольной стопки.
+// Прижать к упору (ADR 024, api-contract 0.16.0 — упор по длине стал стенкой СВОЕГО отсека, ADR
+// 026). Отвечает на ОДИН вопрос: насколько выделенное может проехать по оси до первого упора —
+// стенки отсека (или кузова, если он не поделён) или чужой напольной стопки.
 //
 // Почему в ядре: «куда стопка может доехать» — доменное правило, а не деталь клавиатуры. UI,
 // который считал бы ход сам, стал бы вторым местом, знающим правила размещения (ADR 019).
@@ -7,6 +8,7 @@
 // Почему запрос, а не операция: мутации здесь нет вовсе — дельту применяет `moveStacks`, он же и
 // валидирует результат. Тот же раздел труда, что у `resolveDrop` с `placeStack`.
 import type { Layout, Load } from '../model/index';
+import { compartmentSpanning } from '../model/compartments';
 import { orientedDims } from '../model/orientation';
 import { refKey } from './edit';
 import type { StackRef } from './edit';
@@ -51,7 +53,6 @@ export function resolveSlide(
 
   const horizontal = dir === '-x' || dir === '+x';
   const forward = dir === '+x' || dir === '+y';
-  const wall = horizontal ? load.vehicle.length : load.vehicle.width;
 
   // Блок едет общей дельтой (ADR 021): её задаёт самая стеснённая участница, иначе ведущая
   // въехала бы в препятствие, а взаимная расстановка блока разъехалась бы.
@@ -59,7 +60,14 @@ export function resolveSlide(
   for (const m of members) {
     const pos = horizontal ? m.x : m.y;
     const size = horizontal ? m.dx : m.dy;
-    let free = forward ? wall - (pos + size) : pos;
+    // Упор по длине — стенка СВОЕГО отсека (ADR 026): за разрывом стоит стена, а не свободный пол.
+    // Отсюда же само собой берётся «внутри отсека» для блока: групповой ход — минимум ходов
+    // участниц, поэтому выделение по обе стороны сцепки упрётся в первую же стенку.
+    const comp = horizontal ? compartmentSpanning(load.vehicle, m.x, m.dx) : null;
+    if (horizontal && comp === null) return ZERO; // стопка стоит невесть где — ехать нечему
+    const near = horizontal ? comp!.x : 0;
+    const far = horizontal ? comp!.x + comp!.length : load.vehicle.width;
+    let free = forward ? far - (pos + size) : pos - near;
     for (const b of boxes) {
       // Мешает только то, что стоит в той же полосе. Полуоткрытое пересечение: стопка, лежащая
       // впритык БОКОМ, полосу не занимает и проехать мимо не мешает.

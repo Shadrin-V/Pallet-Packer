@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { VEHICLE_PRESETS, PALLET_PRESETS } from './presets';
+import { VEHICLE_PRESETS, PALLET_PRESETS, vehicleFromPreset } from './presets';
+import { validateLoad } from '@shadrin-v/engine';
 
 describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)', () => {
   it('default vehicle is LKW Standard 13600×2450×2450 (logist variant 1)', () => {
@@ -17,8 +18,23 @@ describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)
     expect(VEHICLE_PRESETS.some((p) => p.height === 2800)).toBe(false);
   });
 
-  it('does not offer variant 5 (road train) — it is two compartments, the engine models one (LKWkalk-p3p)', () => {
-    expect(VEHICLE_PRESETS.some((p) => p.length >= 15000)).toBe(false);
+  // LKWkalk-p3p (tasks 1-9) added multi-compartment `Vehicle` support, so variant 5 (road train)
+  // now ships as `lkw-gliederzug` (task 10) — but only via two compartments with a physical gap,
+  // never as a single bare hold spanning the full length. `toBeDefined()` alone would pass a trap
+  // preset with `compartments: [{ id: 'x', x: 0, length: 16000 }]` — one element covering the whole
+  // span, which the engine treats as exactly the sprawling single hold this guard exists to reject
+  // (code-review finding, task 10). Requiring >=2 elements is the structural signature of "not one
+  // hold": a single compartment spanning the full length is indistinguishable from no compartments
+  // at all as far as the engine's packing behaviour goes.
+  it('any preset spanning >=15000mm models it via at least two compartments, not one sprawling hold (LKWkalk-p3p)', () => {
+    for (const p of VEHICLE_PRESETS) {
+      if (p.length >= 15000) {
+        expect(
+          p.compartments?.length,
+          `${p.name} spans ${p.length}mm as ${p.compartments?.length ?? 'a single (undefined)'} compartment(s)`,
+        ).toBeGreaterThanOrEqual(2);
+      }
+    }
   });
 
   it('is 2450mm wide on every vehicle preset (the logist scheme figure, not the old 2430/2440/2480)', () => {
@@ -71,5 +87,60 @@ describe('presets (logist-confirmed data, docs/lkw-presets-logist-2026-07-20.md)
       'EPAL 6',
       'Viertelpalette',
     ]);
+  });
+});
+
+describe('пресет автопоезда', () => {
+  const train = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug');
+
+  it('существует и описан двумя отсеками', () => {
+    expect(train?.compartments?.map((c) => [c.x, c.length])).toEqual([[0, 7700], [8900, 7700]]);
+  });
+
+  it('проходит валидацию движка: конец последнего отсека = длине', () => {
+    const vehicle = { id: train!.key, name: train!.name, length: train!.length,
+      width: train!.width, height: train!.height, compartments: train!.compartments };
+    const cargo = [{ id: 'c', name: 'c', length: 1200, width: 800, height: 144, quantity: 1,
+      rotation: 'yawOnly' as const, stacking: { stackable: true }, nesting: { nestable: false },
+      state: 'entschachtelt' as const }];
+    expect(validateLoad({ vehicle, cargo })).toEqual([]);
+  });
+
+  // Раньше проверялось глобальным toHaveLength(1) — падало бы на любом ВТОРОМ будущем
+  // многосоставном пресете, даже правильно реализованном (code-review finding, task 10, Minor).
+  // Проверка по ключам не зависит от их количества: она смотрит, что конкретно `lkw-gliederzug`
+  // отсеки имеет, а все остальные — нет, и не ломается, когда появится ещё один автопоезд.
+  it('односоставные пресеты остаются без compartments', () => {
+    const others = VEHICLE_PRESETS.filter((p) => p.key !== 'lkw-gliederzug');
+    expect(others.every((p) => p.compartments === undefined)).toBe(true);
+    expect(train?.compartments).toBeDefined();
+  });
+});
+
+// Финальное ревью ветки p3p, находка 1: три конструктора Vehicle (demo.ts × 2, SetupScreen.tsx)
+// собирали объект перечислением полей и молча теряли `compartments` — ровно тот баг, от которого
+// уже был починен SetupHeader.tsx:84 (с тестом ниже). Единая функция закрывает все четыре места разом.
+describe('vehicleFromPreset (финальное ревью, находка 1)', () => {
+  it('переносит отсеки автопоезда в Vehicle', () => {
+    const preset = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug')!;
+    const v = vehicleFromPreset(preset);
+    expect(v.compartments).toEqual(preset.compartments);
+    expect(v).toMatchObject({ id: preset.key, name: preset.name, length: preset.length, width: preset.width, height: preset.height });
+  });
+
+  // Minor (SetupHeader.tsx:84): `p.compartments` не должен попадать в состояние по ссылке на
+  // модульную константу VEHICLE_PRESETS — общая изменяемая константа в состоянии приложения есть
+  // приглашение к беде, даже если сегодня никто её не мутирует.
+  it('не расшаривает массив/элементы отсеков по ссылке с VEHICLE_PRESETS', () => {
+    const preset = VEHICLE_PRESETS.find((p) => p.key === 'lkw-gliederzug')!;
+    const v = vehicleFromPreset(preset);
+    expect(v.compartments).not.toBe(preset.compartments);
+    expect(v.compartments![0]).not.toBe(preset.compartments![0]);
+  });
+
+  it('у односоставного пресета поле compartments отсутствует вовсе (не undefined-значением)', () => {
+    const preset = VEHICLE_PRESETS.find((p) => p.key === 'lkw-standard')!;
+    const v = vehicleFromPreset(preset);
+    expect('compartments' in v).toBe(false);
   });
 });

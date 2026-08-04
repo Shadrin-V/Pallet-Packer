@@ -15,6 +15,17 @@ import type {
 /** Optimisation objective. MVP supports only `maxUnits`. */
 export type Objective = 'maxUnits';
 
+/** Грузовой отсек — интервал [x, x + length) на оси длины транспорта (ADR 026, контракт 0.16.0). */
+export interface Compartment {
+  id: string;
+  /** Ключ метки; локализация — на стороне UI. */
+  name?: string;
+  /** мм, начало отсека по оси длины; целое, >= 0. */
+  x: number;
+  /** мм, > 0, целое. */
+  length: number;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
@@ -23,6 +34,9 @@ export interface Vehicle {
   height: number;
   /** kg; optional, not enforced in the MVP. */
   maxPayload?: number;
+  /** Отсеки по возрастанию `x`. Отсутствует = один отсек [0, length). Разрывы между отсеками —
+   *  физические промежутки между машинами: координаты там есть, груз туда не встаёт (ADR 026). */
+  compartments?: Compartment[];
 }
 
 export interface CargoStacking {

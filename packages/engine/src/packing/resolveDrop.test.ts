@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { CargoType, Layout, Load } from '../model/index';
+import type { CargoType, Layout, Load, Vehicle } from '../model/index';
 import { calculateLayout } from '../api/api';
-import { placeStack } from './edit';
+import { moveStacks, placeStack } from './edit';
 import type { StackRef } from './edit';
+import { packLoad } from './orchestrator';
 import { resolveDrop, resolveGroupDrop } from './resolveDrop';
 
 const V = { id: 'v', name: 'LKW', length: 10000, width: 2400, height: 2650 };
@@ -303,5 +304,175 @@ describe('resolveGroupDrop', () => {
 
     expect(r.ok).toBe(false);
     expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
+  });
+});
+
+// LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
+// Стенок по оси длины теперь столько же, сколько отсеков; позиция в разрыве не годна ни при каком
+// раскладе. Числа ниже — независимо пересчитаны по фактической реализации resolveDrop, а НЕ взяты
+// из брифа: кубик 1200×1200×1200, rotation:'none' → dx=dy=1200, tol = min(dx,dy)/2 = 600.
+describe('resolveDrop — стенки каждого отсека (p3p)', () => {
+  const twoBays: Vehicle = {
+    id: 't',
+    name: 't',
+    length: 5800,
+    width: 2400,
+    height: 2400,
+    compartments: [
+      { id: 'a', x: 0, length: 2400 },
+      { id: 'b', x: 3400, length: 2400 },
+    ],
+  };
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c',
+    name: 'c',
+    length: 1200,
+    width: 1200,
+    height: 1200,
+    quantity: 8,
+    rotation: 'none',
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt',
+    ...over,
+  });
+
+  it('прицел, оседлавший стенку тягача, примагничивается к ней', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    // Прицел 1500: footprint [1500, 2700) оседлал стенку отсека a (2400) и сам по себе негоден
+    // (вылезает за a, не дотягивается до b). До кромки a=1200 — 300 мм, в пределах допуска 600.
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 1500, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(true);
+    expect(res.x).toBe(1200); // дальняя кромка вплотную к стенке тягача: 1200 + 1200 = 2400
+  });
+
+  it('прицел глубоко в разрыве — отказ, стопку туда не телепортируют', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    // Прицел 2300: до ближней годной позиции 1200 — 1100 мм, до 3400 — 1100 мм. Оба вне допуска 600.
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 2300, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(false);
+  });
+
+  it('стенка второго отсека — такой же кандидат, как стенка первого', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    // Прицел 3500: сам годен (footprint [3500, 4700) целиком внутри b), но 3400 «впритык» к стенке
+    // отсека — правило «впритык бьёт близкое» отдаёт победу ему, а не самому прицелу.
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 3500, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(true);
+    expect(res.x).toBe(3400); // притянуло к передней стенке прицепа
+  });
+
+  // Восстановленный головной сценарий брифа (Minor 3, review round 2): прицел 2900 сам по себе
+  // в разрыве (2900 не укладывается ни в a, ни в b), но лежит в пределах допуска (500 ≤ 600) от
+  // ближней стенки прицепа — «магнит вытягивает прицел из сцепки», а не просто отказывает.
+  it('прицел в разрыве, но в пределах допуска от стенки соседнего отсека — магнит вытягивает наружу', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    const res = resolveDrop(load, empty, { cargoTypeId: 'c', x: 2900, y: 0, orientation: 'lwh' });
+    expect(res.ok).toBe(true);
+    expect(res.x).toBe(3400); // до 3400 — 500 мм, в пределах допуска 600
+  });
+
+  // ADR 020: если resolveDrop сказала ok, placeStack по этой точке не откажет. Сквозной прогон по
+  // разрыву и обеим стенкам — ровно там, где новая логика могла бы соврать.
+  it('never returns ok for a position placeStack would refuse (compartment gap swept)', () => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const empty: Layout = { ...packLoad(load), placements: [], unplaced: [{ cargoTypeId: 'c', count: 8 }] };
+    for (let x = -200; x <= 6000; x += 100) {
+      for (const y of [0, 400, 800, 1200]) {
+        const r = resolveDrop(load, empty, { cargoTypeId: 'c', x, y, orientation: 'lwh' });
+        if (!r.ok) continue;
+        const applied = placeStack(load, empty, {
+          cargoTypeId: 'c',
+          x: r.x,
+          y: r.y,
+          orientation: 'lwh',
+          units: 1,
+        });
+        expect(
+          applied.error,
+          `resolveDrop said ok at ${r.x},${r.y} (aim ${x},${y}) but placeStack refused`,
+        ).toBeUndefined();
+      }
+    }
+  });
+});
+
+// Critical 1 (review round 2): resolveGroupDrop не знал про отсеки — тот же прицел, что и одиночный
+// путь, но по цепочке дельты, а не абсолютной цели. Числа пересчитаны самостоятельно тем же
+// способом, что и для resolveDrop: кубик 1200×1200×1200 в отсеке a, стоит впритык к его дальней
+// стенке (x=1200), tol по умолчанию для одного участника = min(dx,dy)/2 = 600.
+describe('resolveGroupDrop — стенки каждого отсека (p3p)', () => {
+  const twoBays: Vehicle = {
+    id: 't',
+    name: 't',
+    length: 5800,
+    width: 2400,
+    height: 2400,
+    compartments: [
+      { id: 'a', x: 0, length: 2400 },
+      { id: 'b', x: 3400, length: 2400 },
+    ],
+  };
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c',
+    name: 'c',
+    length: 1200,
+    width: 1200,
+    height: 1200,
+    quantity: 8,
+    rotation: 'none',
+    stacking: { stackable: true },
+    nesting: { nestable: false },
+    state: 'entschachtelt',
+    ...over,
+  });
+  const atC = (x: number, y: number) => ({
+    cargoTypeId: 'c',
+    x,
+    y,
+    z: 0,
+    orientation: 'lwh' as const,
+    tier: 1,
+    state: 'entschachtelt' as const,
+  });
+  const singleAtWall = (): { load: Load; layout: Layout; refs: StackRef[] } => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const layout: Layout = {
+      ...packLoad(load),
+      placements: [atC(1200, 0)], // впритык к дальней стенке отсека a — та же позиция, что тест выше
+      unplaced: [{ cargoTypeId: 'c', count: 7 }],
+    };
+    return { load, layout, refs: [{ cargoTypeId: 'c', x: 1200, y: 0 }] };
+  };
+
+  it('группу не телепортирует в разрыв — прицел вглубь разрыва снапится к ближней стенке прицепа', () => {
+    const { load, layout, refs } = singleAtWall();
+    // Дельта 2000: наивная цель x=1200+2000=3200 — внутри разрыва (2400,3400), туда нельзя. До
+    // ближней стенки прицепа (target x=3400, дельта 2200) — 200 мм от наивной цели, в пределах
+    // допуска 600 от прицела (|2200-2000|=200≤600) — магнит обязан вытянуть группу туда же, куда и
+    // одиночную стопку.
+    const res = resolveGroupDrop(load, layout, refs, { dx: 2000, dy: 0 });
+    expect(res.ok).toBe(true);
+    expect(res.dx).toBe(2200); // 1200 + 2200 = 3400 — впритык к передней стенке прицепа
+  });
+
+  // ADR 020 для группы: если resolveGroupDrop сказала ok, moveStacks по этой дельте не откажет.
+  it('never returns ok for a group delta moveStacks would refuse (compartment gap swept)', () => {
+    const { load, layout, refs } = singleAtWall();
+    for (let dx = -1600; dx <= 4600; dx += 100) {
+      for (const dy of [0, 400, 800, 1200]) {
+        const r = resolveGroupDrop(load, layout, refs, { dx, dy });
+        if (!r.ok) continue;
+        const moved = moveStacks(load, layout, refs, r.dx, r.dy);
+        expect(
+          moved.error,
+          `resolveGroupDrop said ok at dx=${r.dx},dy=${r.dy} (aim ${dx},${dy}) but moveStacks refused`,
+        ).toBeUndefined();
+      }
+    }
   });
 });

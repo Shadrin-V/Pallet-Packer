@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, findGeometryViolations, type Layout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, type Layout, type Load, type Vehicle } from '@shadrin-v/engine';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { LadeplanScreen, mergeBayOrder } from './LadeplanScreen';
 import { installSvgGeometry } from './components/svgTestGeometry';
@@ -1669,6 +1669,123 @@ describe('LadeplanScreen — figures (D1 + D3)', () => {
     renderLadeplan(); // 8 cubes fill the hold exactly
     expect(screen.queryByText('Nicht platziert')).not.toBeInTheDocument();
     expect(screen.getByText('Volumenauslastung')).toBeInTheDocument();
+  });
+});
+
+// Per-compartment placed counts (p3p Task 13). The counter is a pure readout of `layout.placements`
+// via `compartmentsOf` — no new contract field. Fixture: two 1000×1000×1000 compartments 1200mm
+// apart (a miniature Gliederzug), each holding exactly one non-stacking 1000³ box, quantity 2 total —
+// the orchestrator fills compartments in x order (packCompartments), so this must land ONE box per
+// compartment, not both in the first.
+describe('LadeplanScreen — размещённое по отсекам (p3p Task 13)', () => {
+  const trainVehicle: Vehicle = {
+    id: 'train-v',
+    name: 'Gliederzug (test)',
+    length: 2200,
+    width: 1000,
+    height: 1000,
+    compartments: [
+      { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 1000 },
+      { id: 'trailer', name: 'vehicle.compartment.trailer', x: 1200, length: 1000 },
+    ],
+  };
+  const trainLoad: Load = {
+    vehicle: trainVehicle,
+    cargo: [
+      {
+        id: 'box',
+        name: 'Box',
+        length: 1000,
+        width: 1000,
+        height: 1000,
+        quantity: 2,
+        rotation: 'none',
+        stacking: { stackable: false },
+        nesting: { nestable: false },
+        state: 'entschachtelt',
+      },
+    ],
+  };
+  const trainLayout = calculateLayout(trainLoad);
+  const plainLoad = load;
+  const plainLayout = layout;
+
+  it('показывает размещённое по отсекам', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={trainLoad} layout={trainLayout} />
+      </LocaleProvider>,
+    );
+    const counts = screen.getAllByTestId('compartment-count').map((n) => n.textContent);
+    expect(counts).toHaveLength(2);
+    // Both compartments got exactly one of the two boxes — a genuine split, not [total, 0].
+    expect(counts).toEqual(['1', '1']);
+  });
+
+  it('односоставный кузов счётчиков по отсекам не показывает', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={plainLoad} layout={plainLayout} />
+      </LocaleProvider>,
+    );
+    expect(screen.queryAllByTestId('compartment-count')).toHaveLength(0);
+  });
+});
+
+// Финальное ревью ветки p3p, находка 3: `dims` печатала `v.length` — ПОЛНЫЙ пролёт с разрывом
+// (16 600 для автопоезда), а не грузовую длину (сумму отсеков, 15 400). Разрыв не несёт пола, и
+// эта же строка уезжала и в PNG-экспорт (meta), и в «Innenmaße Fahrzeug» на самом листе — вместе с
+// setupSummary.vehicleVolume и volumeFillPercent, оба уже честно посчитанные по отсекам.
+describe('LadeplanScreen — грузовая длина автопоезда в шапке листа (финальное ревью p3p, находка 3)', () => {
+  const trainVehicle: Vehicle = {
+    id: 'train-v',
+    name: 'Gliederzug (test)',
+    length: 2200,
+    width: 1000,
+    height: 1000,
+    compartments: [
+      { id: 'tractor', name: 'vehicle.compartment.tractor', x: 0, length: 1000 },
+      { id: 'trailer', name: 'vehicle.compartment.trailer', x: 1200, length: 1000 },
+    ],
+  };
+  const trainLoad: Load = {
+    vehicle: trainVehicle,
+    cargo: [
+      {
+        id: 'box',
+        name: 'Box',
+        length: 1000,
+        width: 1000,
+        height: 1000,
+        quantity: 1,
+        rotation: 'none',
+        stacking: { stackable: false },
+        nesting: { nestable: false },
+        state: 'entschachtelt',
+      },
+    ],
+  };
+  const trainLayout = calculateLayout(trainLoad);
+
+  it('показывает сумму отсеков со структурой состава, а не полный пролёт с разрывом', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={trainLoad} layout={trainLayout} />
+      </LocaleProvider>,
+    );
+    // trainVehicle: два отсека по 1000 мм, разрыв 200 мм (0..1000 и 1200..2200) → length = 2200
+    // включает разрыв. Грузовая длина = 1000 + 1000 = 2000 — это и должно быть показано.
+    expect(screen.getByText('2.000 (1.000 + 1.000) × 1.000 × 1.000 mm')).toBeInTheDocument();
+    expect(screen.queryByText(/2\.200/)).not.toBeInTheDocument();
+  });
+
+  it('односоставный кузов печатает длину как раньше — без скобок и разбивки', () => {
+    render(
+      <LocaleProvider initial="de">
+        <LadeplanScreen load={load} layout={layout} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('2.000 × 2.000 × 2.000 mm')).toBeInTheDocument();
   });
 });
 

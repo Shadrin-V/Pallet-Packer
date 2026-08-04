@@ -17,6 +17,7 @@ import { findGeometryViolations } from '../geometry/geometry';
 import { computeFillMetrics } from '../metrics/metrics';
 import { computeVerticalStack } from './vertical';
 import { columnPlacements } from './orchestrator';
+import { fitsInSomeCompartment } from '../model/compartments';
 
 /** A floor column: every placement sharing this cargo type and (x, y). */
 export interface StackRef {
@@ -63,9 +64,13 @@ const overlaps1d = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 &
  * Does this footprint leave the hold? Checked BEFORE overlap, on purpose: a spot outside the hold is
  * usually also on top of something, and "does not fit in the truck" is the more fundamental answer —
  * it keeps the reported reason stable instead of depending on which neighbour happens to be there.
+ *
+ * По длине граница — граница ОТСЕКА (ADR 026): позиция в разрыве между машинами или верхом на их
+ * границе лежит внутри пролёта, но пола под ней нет. Для пользователя это тот же ответ «сюда
+ * нельзя», поэтому кода ошибки не добавляется.
  */
 const outOfBounds = (load: Load, x: number, y: number, dx: number, dy: number): boolean =>
-  x < 0 || y < 0 || x + dx > load.vehicle.length || y + dy > load.vehicle.width;
+  x < 0 || y < 0 || !fitsInSomeCompartment(load.vehicle, x, dx) || y + dy > load.vehicle.width;
 
 /**
  * Does the footprint at (x, y) hit any column other than `exclude`?

@@ -4,7 +4,7 @@
 // rules, and more cargo than fits (so the "nicht platziert" path is visible too).
 import type { Vehicle } from '@shadrin-v/engine';
 import type { OrderState, PositionState } from '../screens/SetupScreen';
-import { VEHICLE_PRESETS } from './presets';
+import { VEHICLE_PRESETS, vehicleFromPreset } from './presets';
 
 const uid = () => crypto.randomUUID();
 
@@ -24,10 +24,9 @@ const pos = (p: PosSeed): PositionState => ({
   ...p,
 });
 
-const vehicleOf = (index: number): Vehicle => {
-  const v = VEHICLE_PRESETS[index];
-  return { id: v.key, name: v.name, length: v.length, width: v.width, height: v.height };
-};
+// Goes through `vehicleFromPreset` (финальное ревью, находка 1) — a hand-built object here would
+// silently drop `compartments` the moment a demo variant picks a multi-compartment preset.
+const vehicleOf = (index: number): Vehicle => vehicleFromPreset(VEHICLE_PRESETS[index]);
 
 /** Colour slots follow list position — stable palette per demo (4bj QA #2). */
 const withColors = (orders: Omit<OrderState, 'colorIndex'>[]): OrderState[] =>
@@ -35,8 +34,7 @@ const withColors = (orders: Omit<OrderState, 'colorIndex'>[]): OrderState[] =>
 
 /** A fresh demo setup (new ids on every call). */
 export function demoSetup(): { vehicle: Vehicle; orders: OrderState[] } {
-  const v = VEHICLE_PRESETS[0]; // LKW Standard
-  const vehicle: Vehicle = { id: v.key, name: v.name, length: v.length, width: v.width, height: v.height };
+  const vehicle: Vehicle = vehicleFromPreset(VEHICLE_PRESETS[0]); // LKW Standard
 
   // colorIndex assigned by position here (stable palette slots for the demo, 4bj QA #2).
   const orders: OrderState[] = [

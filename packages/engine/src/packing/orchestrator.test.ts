@@ -7,6 +7,7 @@ import type {
   NestingMode,
   NestingState,
   RotationRule,
+  Vehicle,
 } from '../model/index';
 import { findGeometryViolations } from '../geometry/geometry';
 import { columnPlacements, packLoad } from './orchestrator';
@@ -410,5 +411,140 @@ describe('packLoad — property: geometry-clean, bounded, deterministic', () => 
         expect(layout1.metrics.totalPlaced).toBeLessThanOrEqual(totalQuantity);
       }),
     );
+  });
+});
+
+describe('packLoad — multi-compartment (ADR 026, p3p)', () => {
+  const twoBays: Vehicle = {
+    id: 't', name: 't', length: 5800, width: 2400, height: 2400,
+    compartments: [{ id: 'a', x: 0, length: 2400 }, { id: 'b', x: 3400, length: 2400 }],
+  };
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c', name: 'c', length: 1200, width: 1200, height: 1200, quantity: 8,
+    rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false },
+    state: 'entschachtelt', ...over,
+  });
+
+  it('точный ответ: два отсека 2400³ и куб 1200 → ровно 8 единиц, весь груз в первом отсеке', () => {
+    // Один отсек 2400³ сам по себе вмещает 2×2 напольных места × 2 яруса = 8 кубов 1200³ (тот же
+    // расчёт, что и канонический 2×2×2=8 из CLAUDE.md, просто в масштабе отсека) — при quantity=8
+    // весь груз умещается в отсек `a`, отсек `b` заведомо остаётся пустым. Проверяем это явно
+    // (а не только суммарные числа): иначе тест не отличил бы «уместилось в первом» от «поровну в
+    // обоих» — обе картины дают одинаковые totalPlaced/usedFloorPositions/unplaced.
+    const layout = packLoad({ vehicle: twoBays, cargo: [cube()] });
+    expect(layout.metrics.totalPlaced).toBe(8);
+    expect(layout.metrics.usedFloorPositions).toBe(4); // 4 напольных места, все в отсеке a
+    expect(layout.unplaced).toEqual([]);
+    expect(layout.placements.every((p) => p.x < 2400)).toBe(true); // ничего не ушло в отсек b
+  });
+
+  it('ни одна единица не встаёт в разрыв — на случайных заявках', () => {
+    // Property-тест, а не один кейс: разрыв ловится только тогда, когда габариты груза и отсеков
+    // подобраны неудачно, и подбирать их вручную — значит проверять ровно те случаи, о которых уже
+    // подумал. `fast-check` здесь уже используется (floor.test.ts, edit.test.ts).
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1000, max: 4000 }),   // длина отсека
+        fc.integer({ min: 200, max: 2000 }),    // длина разрыва
+        fc.integer({ min: 300, max: 1500 }),    // длина единицы
+        fc.integer({ min: 300, max: 1200 }),    // ширина единицы
+        fc.integer({ min: 1, max: 30 }),        // количество
+        (bay, gap, cl, cw, qty) => {
+          const vehicle: Vehicle = {
+            id: 't', name: 't', length: bay * 2 + gap, width: 2450, height: 2400,
+            compartments: [{ id: 'a', x: 0, length: bay }, { id: 'b', x: bay + gap, length: bay }],
+          };
+          const cargo = [cube({ length: cl, width: cw, height: 1200, quantity: qty })];
+          const load = { vehicle, cargo };
+          const layout = packLoad(load);
+          expect(findGeometryViolations(load, layout)).toEqual([]);
+          // Геометрическая чистота одна не отличает работающий упаковщик от вырожденного, который
+          // всегда возвращает пустую раскладку (пустая раскладка тоже "не встаёт в разрыв"). Добавляем
+          // границы: размещено не больше запрошенного, и если футпринт заведомо влезает вдоль отсека
+          // (rotation:'none' у cube — ориентация не крутится, cw <= 1200 всегда <= ширины региона
+          // 2450), то что-то обязано разместиться.
+          expect(layout.metrics.totalPlaced).toBeLessThanOrEqual(qty);
+          if (cl <= bay) expect(layout.metrics.totalPlaced).toBeGreaterThan(0);
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it('densityFirst не ломается об отсеки', () => {
+    // ADR 016: «плотность бьёт группировку» — densityFirst обязан размещать НЕ МЕНЬШЕ strict.
+    // С отсеками сравниваются два многоотсековых прохода, а не один с другим.
+    const cargo = [cube({ id: 'a', orderId: 'SO-1', quantity: 5 }), cube({ id: 'b', orderId: 'SO-2', quantity: 5 })];
+    const strict = packLoad({ vehicle: twoBays, cargo, orderGrouping: 'strict' });
+    const dense = packLoad({ vehicle: twoBays, cargo, orderGrouping: 'densityFirst' });
+    expect(dense.metrics.totalPlaced).toBeGreaterThanOrEqual(strict.metrics.totalPlaced);
+  });
+
+  it('заказ, не влезший в первый отсек, продолжается во втором', () => {
+    // Один orderId, 12 единиц: в тягач влезает максимум (8), остаток (4) обязан уехать в прицеп, а
+    // не в unplaced. Примечание (отклонение от брифа, см. отчёт задачи 6): один отсек 2400³ вмещает
+    // 2×2 напольных места × 2 яруса = 8 кубов 1200³ целиком сам по себе (тот же 2×2×2 расчёт, что и
+    // в CLAUDE.md, просто в масштабе отсека) — при quantity=8 (как в брифе) переполнения в прицеп
+    // никогда не случится. Взято quantity=12: тягач берёт максимум (8), остаток (4) обязан уйти в
+    // прицеп.
+    const layout = packLoad({ vehicle: twoBays, cargo: [cube({ orderId: 'SO-1', quantity: 12 })] });
+    const inTrailer = layout.placements.filter((p) => p.x >= 3400);
+    expect(inTrailer.length).toBeGreaterThan(0);
+    expect(layout.unplaced).toEqual([]);
+  });
+
+  it('fill заполняет оба отсека', () => {
+    // Примечание (отклонение от брифа, см. отчёт задачи 6): один отсек 2400³ сам по себе вмещает 8
+    // кубов 1200³ (2×2 места × 2 яруса), поэтому ожидаемое число для ДВУХ отсеков — 16, а не 8;
+    // 8 означало бы, что fill заполнил только первый отсек, а второй остался пуст.
+    // totalPlaced=16 один по себе не отличает «залил оба отсека» от «залил единый регион длиной 5800,
+    // встав в разрыв» (сплошной регион 5800×2400 вмещает те же 4 полки×2 в ширину×2 яруса = 16 — числа
+    // совпадают случайно). Проверяем распределение: ровно 8 единиц обязаны лежать в отсеке b (x>=3400).
+    const layout = packLoad({ vehicle: twoBays, cargo: [cube({ quantity: 0, fill: true })] });
+    expect(layout.metrics.totalPlaced).toBe(16);
+    const inTrailer = layout.placements.filter((p) => p.x >= 3400);
+    expect(inTrailer.length).toBe(8);
+  });
+
+  it('приоритет заявки: хвост списка уходит в unplaced, а не мелочь', () => {
+    // head 12 (влезает максимум 8 в тягач + 4 в прицеп = 12, целиком) + tail длиной 1500 ×4: в
+    // отсеке a после head не остаётся места вовсе (head там же просит 6 напольных мест при ёмкости
+    // 4 — забирает все); в отсеке b после head (2 места из 4) остаётся геометрический остаток, в
+    // который tail с длиной 1500 (> половины отсека 2400) уже не входит вторым рядом — значит tail
+    // обязан уйти в unplaced целиком или частично, а head размещается полностью.
+    // Числа подобраны заново относительно брифа (см. отчёт задачи 6): при исходных head=8/tail=4 из
+    // брифа единый регион длиной 5800 и раздельные отсеки дают ОДИНАКОВЫЙ unplaced=[] — сценарий не
+    // отличает старое (без отсеков) поведение от нового. Эти числа — отличают (проверено прогоном на
+    // кузове без `compartments`, см. отчёт).
+    const layout = packLoad({
+      vehicle: twoBays,
+      cargo: [cube({ id: 'head', quantity: 12 }), cube({ id: 'tail', length: 1500, quantity: 4 })],
+    });
+    expect(layout.unplaced.map((u) => u.cargoTypeId)).toEqual(['tail']);
+  });
+});
+
+describe('packLoad — гейт аддитивности (ADR 026, p3p)', () => {
+  const cube = (over: Partial<CargoType> = {}): CargoType => ({
+    id: 'c', name: 'c', length: 1200, width: 1200, height: 1200, quantity: 8,
+    rotation: 'none', stacking: { stackable: true }, nesting: { nestable: false },
+    state: 'entschachtelt', ...over,
+  });
+
+  it('односоставный кузов без compartments даёт ту же раскладку, что и раньше', () => {
+    // Гейт аддитивности (ADR 026): отсутствие поля обязано быть неотличимо от прежнего движка.
+    // Эталон — кузов, ЯВНО описанный одним отсеком во всю длину: если пути разошлись, они дадут
+    // разные раскладки, и разойдутся молча.
+    // stacking: false — принципиально: со stackable:true груз 1200×800×144 при quantity:40
+    // штабелируется в 3 напольных места по 18 ярусов и вообще не задействует ось длины (весь груз
+    // у x=0), из-за чего гейт вырождается — см. fix-отчёт (Critical 1, ревью). Без штабелирования
+    // каждая единица — своя напольная позиция, груз растягивается по длине почти на весь пролёт, и
+    // укорочение отсека меняет именно `placements`, а не только знаменатель метрик.
+    const plain: Vehicle = { id: 'v', name: 'v', length: 13600, width: 2450, height: 2650 };
+    const explicit: Vehicle = { ...plain, compartments: [{ id: 'only', x: 0, length: 13600 }] };
+    const cargo = [
+      cube({ id: 'a', length: 1200, width: 800, height: 144, quantity: 40, stacking: { stackable: false } }),
+    ];
+    expect(packLoad({ vehicle: plain, cargo })).toEqual(packLoad({ vehicle: explicit, cargo }));
   });
 });

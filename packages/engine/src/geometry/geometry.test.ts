@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { CargoType, Layout, Load, Placement } from '../model/index';
+import type { CargoType, Layout, Load, Placement, Vehicle } from '../model/index';
 import { findGeometryViolations } from './geometry';
 
 function cargo(over: Partial<CargoType> = {}): CargoType {
@@ -125,5 +125,34 @@ describe('findGeometryViolations — fork access (ADR 018)', () => {
   it('does not constrain all4 access', () => {
     const l = withMode('rear', [twoSided({ forkAccess: 'all4' })]);
     expect(kinds(l, layout([place({ orientation: 'wlh' })]))).not.toContain('fork-access');
+  });
+});
+
+describe('findGeometryViolations — compartment bounds (ADR 026)', () => {
+  const train: Vehicle = {
+    id: 't', name: 't', length: 5800, width: 1200, height: 1000,
+    compartments: [{ id: 'a', x: 0, length: 2400 }, { id: 'b', x: 3400, length: 2400 }],
+  };
+  const unit: CargoType = {
+    id: 'c', name: 'c', length: 1200, width: 1200, height: 1000, quantity: 3,
+    rotation: 'none', stacking: { stackable: false }, nesting: { nestable: false },
+    state: 'entschachtelt',
+  };
+  const at = (x: number): Layout => ({
+    placements: [{ cargoTypeId: 'c', x, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' }],
+    unplaced: [], metrics: { totalPlaced: 1, usedFloorPositions: 1, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.16.0',
+  });
+
+  it('единица в разрыве между машинами — вне габаритов', () => {
+    expect(findGeometryViolations({ vehicle: train, cargo: [unit] }, at(2500)).map((v) => v.kind)).toEqual(['out-of-bounds']);
+  });
+
+  it('единица, оседлавшая границу машин, — вне габаритов', () => {
+    expect(findGeometryViolations({ vehicle: train, cargo: [unit] }, at(1800)).map((v) => v.kind)).toEqual(['out-of-bounds']);
+  });
+
+  it('единица внутри второго отсека законна', () => {
+    expect(findGeometryViolations({ vehicle: train, cargo: [unit] }, at(3400))).toEqual([]);
   });
 });

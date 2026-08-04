@@ -15,6 +15,7 @@
 // It is cheap enough to run on every pointermove, which is what makes a live drop preview honest:
 // only bounds and overlap depend on x/y, and both cost one pass over the floor columns.
 import type { EngineError, Layout, Load } from '../model/index';
+import { compartmentsOf, fitsInSomeCompartment } from '../model/compartments';
 import { allowedOrientations, forkPinnedOrientation, orientedDims } from '../model/orientation';
 import { refKey } from './edit';
 import type { PlaceStackSpec, StackRef } from './edit';
@@ -121,19 +122,18 @@ export function resolveDrop(
   }
 
   const [dx, dy] = orientedDims(cargo.length, cargo.width, cargo.height, spec.orientation);
-  const maxX = load.vehicle.length - dx;
   const maxY = load.vehicle.width - dy;
-  if (maxX < 0 || maxY < 0) {
+  // Стопка не влезает ни в один отсек — искать позицию незачем.
+  const fitsAnywhere = compartmentsOf(load.vehicle).some((c) => c.length >= dx);
+  if (!fitsAnywhere || maxY < 0) {
     return refuse(err('ERR_EDIT_OUT_OF_BOUNDS', { cargoTypeId: cargo.id, dx, dy }));
   }
 
   const tol = opts.tolerance ?? Math.min(dx, dy) / 2;
   const boxes = floorBoxes(load, layout, opts.exclude ? (r) => sameRef(r, opts.exclude!) : undefined);
 
-  // Candidates per axis: the aim itself, both walls, and flush against every neighbour's edges.
-  // Filtered to what is inside the hold and within reach of the aim — so the magnet can tidy a near
-  // miss but never teleport the stack somewhere the user was not pointing.
-  const axis = (aimV: number, size: number, max: number, edges: [number, number][]): number[] => {
+  // Ось ШИРИНЫ — как была: одна пара стенок на весь транспорт.
+  const axisY = (aimV: number, size: number, max: number, edges: [number, number][]): number[] => {
     const out = new Set<number>();
     const push = (v: number) => {
       if (v >= 0 && v <= max && Math.abs(v - aimV) <= tol) out.add(v);
@@ -147,13 +147,30 @@ export function resolveDrop(
     }
     return [...out];
   };
-  const xs = axis(
-    aim.x,
-    dx,
-    maxX,
-    boxes.map((b): [number, number] => [b.x, b.dx]),
-  );
-  const ys = axis(
+
+  // Ось ДЛИНЫ: стенок столько же, сколько отсеков, а годной считается позиция, лежащая целиком в
+  // одном из них. Разрыв не требует особого случая — позиция в нём просто не проходит фильтр.
+  // Побочно это и есть «магнит вытягивает прицел из сцепки»: стенки соседних отсеков остаются
+  // кандидатами, пока прицел в пределах допуска.
+  const axisX = (aimV: number, size: number, edges: [number, number][]): number[] => {
+    const out = new Set<number>();
+    const push = (v: number) => {
+      if (Math.abs(v - aimV) <= tol && fitsInSomeCompartment(load.vehicle, v, size)) out.add(v);
+    };
+    push(aimV);
+    for (const c of compartmentsOf(load.vehicle)) {
+      push(c.x);
+      push(c.x + c.length - size);
+    }
+    for (const [start, extent] of edges) {
+      push(start + extent); // our near edge against their far edge
+      push(start - size); // our far edge against their near edge
+    }
+    return [...out];
+  };
+
+  const xs = axisX(aim.x, dx, boxes.map((b): [number, number] => [b.x, b.dx]));
+  const ys = axisY(
     aim.y,
     dy,
     maxY,
@@ -166,7 +183,8 @@ export function resolveDrop(
     );
 
   const touchesX = (v: number) =>
-    v === 0 || v === maxX || boxes.some((b) => v === b.x + b.dx || v + dx === b.x);
+    compartmentsOf(load.vehicle).some((c) => v === c.x || v + dx === c.x + c.length) ||
+    boxes.some((b) => v === b.x + b.dx || v + dx === b.x);
   const touchesY = (v: number) =>
     v === 0 || v === maxY || boxes.some((b) => v === b.y + b.dy || v + dy === b.y);
 
@@ -199,8 +217,9 @@ export function resolveDrop(
   if (best) return { x: best.x, y: best.y, ok: true, blocking: [] };
 
   // Nothing within reach. Report the aim's own problem — bounds first, as edit.ts does: "does not fit
-  // in the truck" is the more fundamental answer than "is on top of that pallet".
-  const outside = aim.x < 0 || aim.y < 0 || aim.x > maxX || aim.y > maxY;
+  // in the truck" is the more fundamental answer than "is on top of that pallet". A footprint that
+  // lands in a compartment gap counts as out-of-bounds too — that IS the aim's own problem here.
+  const outside = !fitsInSomeCompartment(load.vehicle, aim.x, dx) || aim.y < 0 || aim.y > maxY;
   if (outside) {
     return refuse(err('ERR_EDIT_OUT_OF_BOUNDS', { cargoTypeId: cargo.id, x: aim.x, y: aim.y }));
   }
@@ -311,10 +330,11 @@ export function resolveGroupDrop(
   // its most sensitive participant would be.
   const tol = opts.tolerance ?? Math.min(...members.map((m) => Math.min(m.dx, m.dy) / 2));
 
-  // Candidate deltas per axis. Each member offers: stay at the aim, sit at either wall, or sit flush
-  // against a neighbour's near/far edge — all expressed as a delta by subtracting the member's own
-  // current coordinate. Filtered to what is within reach of the aimed delta.
-  const axisDeltas = (
+  // Candidate deltas, ось ШИРИНЫ — как была: each member offers stay at the aim, sit at either
+  // wall, or sit flush against a neighbour's near/far edge — all expressed as a delta by
+  // subtracting the member's own current coordinate. Filtered to what is within reach of the aimed
+  // delta.
+  const axisYDeltas = (
     aimD: number,
     pick: (m: Box) => { pos: number; size: number },
     max: (m: Box) => number,
@@ -342,26 +362,59 @@ export function resolveGroupDrop(
     return [...out];
   };
 
-  const dxs = axisDeltas(
+  // Ось ДЛИНЫ: то же обобщение на отсеки, что и для одиночной стопки (resolveDrop:axisX) — цель
+  // каждого участника (`m.x + d`) обязана целиком лежать в одном отсеке, а не просто внутри
+  // `[0, vehicle.length]`. Кандидаты — стенки КАЖДОГО отсека для КАЖДОГО участника (переведённые в
+  // дельту вычитанием его текущей позиции), плюс кромки соседей, как и раньше. Прицел (`aimD`)
+  // по-прежнему сеется безусловно (см. комментарий выше) — это дельта группы, а не какого-то
+  // участника, и ни один пер-участник-фильтр не вправе её отсеять.
+  const axisXDeltas = (
+    aimD: number,
+    pick: (m: Box) => { pos: number; size: number },
+    edges: (b: Box) => { start: number; extent: number },
+  ): number[] => {
+    const out = new Set<number>([aimD]);
+    for (const m of members) {
+      const { pos, size } = pick(m);
+      const push = (target: number) => {
+        const d = target - pos;
+        if (fitsInSomeCompartment(load.vehicle, target, size) && Math.abs(d - aimD) <= tol) {
+          out.add(d);
+        }
+      };
+      for (const c of compartmentsOf(load.vehicle)) {
+        push(c.x);
+        push(c.x + c.length - size);
+      }
+      for (const b of boxes) {
+        const { start, extent } = edges(b);
+        push(start + extent); // our near edge against their far edge
+        push(start - size); // our far edge against their near edge
+      }
+    }
+    return [...out];
+  };
+
+  const dxs = axisXDeltas(
     aim.dx,
     (m) => ({ pos: m.x, size: m.dx }),
-    (m) => load.vehicle.length - m.dx,
     (b) => ({ start: b.x, extent: b.dx }),
   );
-  const dys = axisDeltas(
+  const dys = axisYDeltas(
     aim.dy,
     (m) => ({ pos: m.y, size: m.dy }),
     (m) => load.vehicle.width - m.dy,
     (b) => ({ start: b.y, extent: b.dy }),
   );
 
-  // Flush = at least one member ends against a wall or a neighbour's edge on that axis.
+  // Flush = at least one member ends against a wall (any compartment's, on X) or a neighbour's edge
+  // on that axis.
   const flushX = (d: number) =>
     members.some(
       (m) =>
-        m.x + d === 0 ||
-        m.x + d === load.vehicle.length - m.dx ||
-        boxes.some((b) => m.x + d === b.x + b.dx || m.x + d + m.dx === b.x),
+        compartmentsOf(load.vehicle).some(
+          (c) => m.x + d === c.x || m.x + d + m.dx === c.x + c.length,
+        ) || boxes.some((b) => m.x + d === b.x + b.dx || m.x + d + m.dx === b.x),
     );
   const flushY = (d: number) =>
     members.some(
@@ -379,12 +432,14 @@ export function resolveGroupDrop(
           overlaps1d(m.y + ddy, m.y + ddy + m.dy, b.y, b.y + b.dy),
       ),
     );
+  // Ось ДЛИНЫ у inBounds — «целиком в каком-то отсеке» (fitsInSomeCompartment), не просто внутри
+  // [0, vehicle.length]: разрыв между машинами не имеет пола, и группа не может там стоять, даже
+  // если формально не вылезает за общую длину транспорта.
   const inBounds = (ddx: number, ddy: number): boolean =>
     members.every(
       (m) =>
-        m.x + ddx >= 0 &&
+        fitsInSomeCompartment(load.vehicle, m.x + ddx, m.dx) &&
         m.y + ddy >= 0 &&
-        m.x + ddx + m.dx <= load.vehicle.length &&
         m.y + ddy + m.dy <= load.vehicle.width,
     );
 

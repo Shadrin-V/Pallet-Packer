@@ -109,6 +109,9 @@ export const ru: Dictionary = {
   'ladeplan.brandName': 'Schäfer',
   'ladeplan.brandTagline': 'Holz bewegt.',
   'ladeplan.vehicleInner': 'Кузов (внутри)',
+  // {sum}/{breakdown} — уже отформатированные числа (разделители тысяч); шаблон несёт только
+  // структуру фразы, без собственных цифр.
+  'ladeplan.vehicleInnerSpan': '{sum} ({breakdown})',
   'ladeplan.orders': 'Заказы',
   'ladeplan.loadingMode': 'Режим загрузки',
   'ladeplan.loadingModeHint':
@@ -134,6 +137,7 @@ export const ru: Dictionary = {
     'Ручные изменения раскладки будут потеряны при смене стратегии. Продолжить?',
   'ladeplan.emptyHint': 'Заполните заказы и нажмите «Рассчитать» — план загрузки появится здесь.',
   'ladeplan.unplacedFig': 'Не размещено',
+  'ladeplan.compartments': 'По отсекам',
   'action.print': 'Печать',
 
   'field.name': 'Название',
@@ -145,6 +149,8 @@ export const ru: Dictionary = {
 
   'vehicle.label': 'Транспортное средство',
   'vehicle.cargoHold': 'Грузовой отсек',
+  'vehicle.compartment.tractor': 'Тягач',
+  'vehicle.compartment.trailer': 'Прицеп',
 
   'cargoType.label': 'Тип груза',
   'cargoType.rotation.label': 'Вращение',
@@ -213,6 +219,8 @@ export const ru: Dictionary = {
   ERR_INVALID_ROTATION: 'Некорректный режим вращения.',
   ERR_EMPTY_LOAD: 'Список груза пуст.',
   ERR_UNKNOWN_VEHICLE: 'Кузов не найден в справочнике.',
+  ERR_INVALID_COMPARTMENTS:
+    'Отсеки кузова заданы некорректно: координаты и длины должны быть целыми положительными числами, отсеки — идти по возрастанию и не пересекаться (разрыв между ними, например сцепка автопоезда, допустим), а конец последнего отсека — совпадать с концом транспорта.',
 
   ERR_EDIT_NO_STACK: 'Стопка не найдена.',
   ERR_EDIT_OVERLAP: 'Там уже стоит другая стопка.',

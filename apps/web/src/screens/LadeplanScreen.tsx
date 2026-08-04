@@ -4,6 +4,7 @@
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  compartmentsOf,
   findGeometryViolations,
   moveStack,
   moveStacks,
@@ -18,7 +19,7 @@ import {
   type Load,
   type StackRef,
 } from '@shadrin-v/engine';
-import { formatLength } from '@shadrin-v/i18n';
+import { formatLength, type TranslationKey } from '@shadrin-v/i18n';
 import { useLocale } from '../i18n/LocaleContext';
 import { Button, InfoHint } from '../ui/primitives';
 import { BrandMark } from './components/BrandMark';
@@ -118,6 +119,39 @@ function MetaField({ label, value }: { label: string; value: string }) {
     <div className="flex flex-col gap-0.5">
       <span className="text-label uppercase tracking-wide text-faint">{label}</span>
       <span className="text-body font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+/** Размещённое по отсекам (p3p Task 13) — чистый вывод из `layout.placements`, без нового поля
+ *  контракта: отсек владеет интервалом `[x, x + length)` (compartmentsOf — тотальная и единственная
+ *  точка правды про отсеки, ADR 026/p3p), и единица засчитывается в тот отсек, чей интервал содержит
+ *  её `x`. Разрыв между отсеками не может содержать `placements` вовсе (пакер туда не кладёт, resolveDrop
+ *  отменяет ручной бросок) — так что суммы по всем отсекам всегда равны `layout.placements.length`. */
+const placedPerCompartment = (
+  load: Load,
+  layout: Layout,
+): { id: string; name?: string; count: number }[] =>
+  compartmentsOf(load.vehicle).map((c) => ({
+    id: c.id,
+    name: c.name,
+    count: layout.placements.filter((p) => p.x >= c.x && p.x < c.x + c.length).length,
+  }));
+
+/** Односоставный кузов не рендерит эту строку вовсе (`load.vehicle.compartments === undefined`
+ *  проверяется у вызывающей стороны) — «в отсеке столько же, сколько всего» была бы шумом. */
+function CompartmentCounts({ counts, tt }: { counts: { id: string; name?: string; count: number }[]; tt: (k: TranslationKey) => string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-label uppercase tracking-wide text-faint">{tt('ladeplan.compartments')}</span>
+      <span className="flex gap-3 text-body font-semibold tabular-nums">
+        {counts.map((c) => (
+          <span key={c.id}>
+            {c.name ? tt(c.name as TranslationKey) : c.id}{' '}
+            <span data-testid="compartment-count">{c.count}</span>
+          </span>
+        ))}
+      </span>
     </div>
   );
 }
@@ -626,7 +660,20 @@ export function LadeplanScreen({
 
   const v = load.vehicle;
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
-  const dims = `${grp(v.length)} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
+  // Финальное ревью, находка 3: `v.length` — полный пролёт транспорта, ВКЛЮЧАЯ разрывы между
+  // отсеками (для автопоезда — 1200 мм сцепки, где пола нет). Печатать его как «внутренние размеры
+  // кузова» противоречит соседним цифрам на этом же листе: volumeFillPercent (движок) и
+  // setupSummary.vehicleVolume уже честно суммируют отсеки. Грузовая длина — сумма отсеков, с
+  // разбивкой по составу, чтобы читающий видел структуру, а не одно число без объяснения скачка со
+  // 16 600 на 15 400.
+  const cargoLength =
+    v.compartments === undefined
+      ? grp(v.length)
+      : fillTemplate(tt('ladeplan.vehicleInnerSpan'), {
+          sum: grp(compartmentsOf(v).reduce((sum, c) => sum + c.length, 0)),
+          breakdown: compartmentsOf(v).map((c) => grp(c.length)).join(' + '),
+        });
+  const dims = `${cargoLength} × ${grp(v.width)} × ${formatLength(v.height, locale)}`;
   const orderIds = [...orderIndexMap(load).keys()].filter(Boolean);
   const m = edited.metrics;
 
@@ -758,6 +805,9 @@ export function LadeplanScreen({
           <MetaField label={tt('ladeplan.vehicleInner')} value={dims} />
           {orderIds.length > 0 && (
             <MetaField label={tt('ladeplan.orders')} value={orderIds.join(' · ')} />
+          )}
+          {v.compartments !== undefined && (
+            <CompartmentCounts counts={placedPerCompartment(load, edited)} tt={tt} />
           )}
           <div className="ml-auto flex items-end gap-6 print:gap-4">
             {figures.map((f) => (

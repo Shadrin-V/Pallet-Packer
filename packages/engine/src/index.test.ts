@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import * as engine from './index';
 
 describe('@shadrin-v/engine bootstrap', () => {
-  it('exposes the API contract version 0.15.0', () => {
-    expect(engine.ENGINE_CONTRACT_VERSION).toBe('0.15.0');
+  it('exposes the API contract version 0.16.0', () => {
+    expect(engine.ENGINE_CONTRACT_VERSION).toBe('0.16.0');
   });
 
   it('exposes the fork-access constants (ADR 018)', () => {
@@ -57,5 +57,11 @@ describe('@shadrin-v/engine bootstrap', () => {
     expect(engine.orientedDims(1200, 800, 144, 'lwh')).toEqual([1200, 800, 144]);
     expect(engine.orientedDims(1200, 800, 144, 'wlh')).toEqual([800, 1200, 144]);
     expect(engine.orientedDims(1200, 800, 144, 'hlw')).toEqual([144, 1200, 800]);
+  });
+
+  it('exposes the compartment model (p3p, ADR 026)', () => {
+    expect(typeof engine.compartmentsOf).toBe('function');
+    expect(typeof engine.compartmentSpanning).toBe('function');
+    expect(typeof engine.fitsInSomeCompartment).toBe('function');
   });
 });

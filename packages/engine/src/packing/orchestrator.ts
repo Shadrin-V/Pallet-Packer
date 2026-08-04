@@ -1,6 +1,7 @@
 import type { CargoType, Layout, Load, OrderGrouping, Placement, UnplacedCount } from '../model/index';
 import { ENGINE_CONTRACT_VERSION } from '../index';
 import { computeFillMetrics } from '../metrics/metrics';
+import { compartmentsOf, type CompartmentSpan } from '../model/compartments';
 import { packFloor, type FloorRequest } from './floor';
 import { computeVerticalStack } from './vertical';
 
@@ -87,25 +88,31 @@ function zoneTotalPlaced(z: ZonePacking): number {
   return total;
 }
 
-/** Pack a given list of zones as adjacent slices along the vehicle length (the shared inner loop of
- *  {@link packLoad}). Each zone: floor footprints via packFloor, then per-tier columns. */
-function packZones(load: Load, zones: CargoType[][]): ZonePacking {
+/** Разложить зоны внутри ОДНОГО отсека, вычитая размещённое из общей карты остатков.
+ *  Остатки общие на весь транспорт: прицеп грузит то, чего не хватило тягачу. */
+function packZones(
+  load: Load,
+  zones: CargoType[][],
+  comp: CompartmentSpan,
+  remaining: Map<string, number>,
+): ZonePacking {
   const { vehicle } = load;
   const clearance = load.clearance ?? 0;
   const loadingMode = load.loadingMode ?? 'combined'; // contract/ADR-012 default
   const placements: Placement[] = [];
   const placedByType = new Map<string, number>();
   let usedFloorPositions = 0;
-  let xOffset = 0;
+  let xOffset = comp.x;
 
   for (const zone of zones) {
-    const region = { length: vehicle.length - xOffset, width: vehicle.width };
+    const region = { length: comp.x + comp.length - xOffset, width: vehicle.width };
     if (region.length <= 0) break;
-    // vertical capacity per type
     const stackOf = new Map<string, number>();
     const requests: FloorRequest[] = [];
     const fillReqs: FloorRequest[] = [];
     for (const c of zone) {
+      const rem = remaining.get(c.id) ?? 0;
+      if (rem <= 0) continue;                       // всё уже уехало в предыдущий отсек
       const S = computeVerticalStack(c, vehicle.height).count;
       stackOf.set(c.id, S);
       if (S <= 0) continue;
@@ -114,16 +121,15 @@ function packZones(load: Load, zones: CargoType[][]): ZonePacking {
         length: c.length,
         width: c.width,
         rotation: c.rotation,
-        count: c.fill ? 1_000_000 : Math.ceil(c.quantity / S),
+        // Место запрашивается под ОСТАТОК, а не под всю заявку: иначе второй отсек попросил бы
+        // столько же, сколько первый, и вытеснил бы соседей по зоне.
+        count: c.fill ? 1_000_000 : Math.ceil(rem / S),
         forkAccess: c.forkAccess,
         forkAxis: c.forkAxis,
       };
       (c.fill ? fillReqs : requests).push(req);
     }
     const fps = packFloor(region, [...requests, ...fillReqs], { clearance, loadingMode });
-    // remaining quantity per type (fill = Infinity)
-    const remaining = new Map<string, number>();
-    for (const c of zone) remaining.set(c.id, c.fill ? Number.POSITIVE_INFINITY : c.quantity);
     let maxX = 0;
     for (const fp of fps) {
       const c = zone.find((z) => z.id === fp.cargoTypeId)!;
@@ -142,6 +148,25 @@ function packZones(load: Load, zones: CargoType[][]): ZonePacking {
   return { placements, placedByType, usedFloorPositions };
 }
 
+/** Пройти все отсеки по возрастанию x, протягивая остатки сквозь них. */
+function packCompartments(load: Load, zones: CargoType[][]): ZonePacking {
+  const remaining = new Map<string, number>();
+  for (const c of load.cargo) remaining.set(c.id, c.fill ? Number.POSITIVE_INFINITY : c.quantity);
+
+  const placements: Placement[] = [];
+  const placedByType = new Map<string, number>();
+  let usedFloorPositions = 0;
+  for (const comp of compartmentsOf(load.vehicle)) {
+    const part = packZones(load, zones, comp, remaining);
+    placements.push(...part.placements);
+    for (const [id, n] of part.placedByType) {
+      placedByType.set(id, (placedByType.get(id) ?? 0) + n);
+    }
+    usedFloorPositions += part.usedFloorPositions;
+  }
+  return { placements, placedByType, usedFloorPositions };
+}
+
 /**
  * Orchestrate a full Load into a Layout (qrd.7): zone by orderId (ADR 011), place each zone's floor
  * footprints via packFloor (ADR 004/012), expand each floor position into a per-tier column via
@@ -155,10 +180,10 @@ function packZones(load: Load, zones: CargoType[][]): ZonePacking {
  */
 export function packLoad(load: Load): Layout {
   const grouping: OrderGrouping = load.orderGrouping ?? 'strict'; // contract/ADR-016 default
-  const strictPack = packZones(load, zonesOf(load.cargo, 'strict'));
+  const strictPack = packCompartments(load, zonesOf(load.cargo, 'strict'));
   let chosen = strictPack;
   if (grouping === 'densityFirst') {
-    const single = packZones(load, zonesOf(load.cargo, 'densityFirst'));
+    const single = packCompartments(load, zonesOf(load.cargo, 'densityFirst'));
     if (zoneTotalPlaced(single) > zoneTotalPlaced(strictPack)) chosen = single;
   }
   const { placements, placedByType, usedFloorPositions } = chosen;

@@ -3,14 +3,15 @@
 // В ужатом виде остаётся одна строка «кузов · сводка · Рассчитать»; за переключение отвечает
 // useStickyCompact, шапка только рисует то, что ей сказали.
 import type { LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
-import { formatVolume } from '@shadrin-v/i18n';
+import { formatVolume, type TranslationKey } from '@shadrin-v/i18n';
 import { useT, useLocale } from '../../i18n/LocaleContext';
 import { fillTemplate } from '../components/stackFormula';
 import { Button, InfoHint, Measure, Select } from '../../ui/primitives';
 import { LoadingModeSwitch } from '../../ui/LoadingModeSwitch';
 import { OrderGroupingToggle } from '../../ui/OrderGroupingToggle';
-import { VEHICLE_PRESETS } from '../../data/presets';
+import { VEHICLE_PRESETS, vehicleFromPreset } from '../../data/presets';
 import { numOr0, type Num } from './setupState';
+import { setCompartmentLength } from './vehicleCompartments';
 import type { SetupSummary } from './setupValidation';
 
 export interface SetupHeaderProps {
@@ -74,10 +75,12 @@ export function SetupHeader({
                 value={vehicle.name}
                 onChange={(name) => {
                   const p = VEHICLE_PRESETS.find((v) => v.name === name);
+                  // vehicleFromPreset (финальное ревью, находка 1): без него автопоезд молча
+                  // выродился бы в один отсек длиной 16,6 м — ровно та поломка, ради которой
+                  // заведена модель отсеков. Заодно копирует `compartments`, а не расшаривает их
+                  // массив по ссылке с модульной константой VEHICLE_PRESETS (Minor).
                   onVehicleChange(
-                    p
-                      ? { id: p.key, name: p.name, length: p.length, width: p.width, height: p.height }
-                      : { ...vehicle, name: tt('setup.vehiclePreset.custom') },
+                    p ? vehicleFromPreset(p) : { ...vehicle, name: tt('setup.vehiclePreset.custom') },
                   );
                 }}
                 options={[
@@ -86,7 +89,19 @@ export function SetupHeader({
                 ]}
               />
             </div>
-            <MeasureField label={tt('field.length')} value={vehicle.length} onChange={(v) => onVehicleChange({ ...vehicle, length: numOr0(v) })} />
+            {vehicle.compartments === undefined ? (
+              <MeasureField label={tt('field.length')} value={vehicle.length}
+                onChange={(v) => onVehicleChange({ ...vehicle, length: numOr0(v) })} />
+            ) : (
+              vehicle.compartments.map((c, i) => (
+                <MeasureField
+                  key={c.id}
+                  label={`${tt('field.length')} · ${c.name ? tt(c.name as TranslationKey) : c.id}`}
+                  value={c.length}
+                  onChange={(v) => onVehicleChange(setCompartmentLength(vehicle, i, numOr0(v)))}
+                />
+              ))
+            )}
             <MeasureField label={tt('field.width')} value={vehicle.width} onChange={(v) => onVehicleChange({ ...vehicle, width: numOr0(v) })} />
             <MeasureField label={tt('field.height')} value={vehicle.height} onChange={(v) => onVehicleChange({ ...vehicle, height: numOr0(v) })} />
           </>

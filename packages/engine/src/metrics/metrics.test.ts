@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { CargoType, Load, Vehicle } from '../model/index';
+import type { CargoType, Layout, Load, Vehicle } from '../model/index';
 import { packLoad } from '../packing/orchestrator';
 import { computeFillMetrics } from './metrics';
 
@@ -130,5 +130,25 @@ describe('computeFillMetrics', () => {
     const layout = packLoad(l);
     expect(layout.metrics.floorFillPercent).toBe(100);
     expect(layout.metrics.volumeFillPercent).toBe(100);
+  });
+
+  it('разрыв между отсеками не считается объёмом кузова', () => {
+    // Два отсека по 2400 мм при разрыве 1000: пролёт 5800, но кузова только 4800.
+    const vehicle: Vehicle = {
+      id: 'v', name: 'v', length: 5800, width: 1200, height: 1000,
+      compartments: [{ id: 'a', x: 0, length: 2400 }, { id: 'b', x: 3400, length: 2400 }],
+    };
+    const cargo: CargoType = {
+      id: 'c', name: 'c', length: 1200, width: 1200, height: 1000, quantity: 1,
+      rotation: 'none', stacking: { stackable: false }, nesting: { nestable: false },
+      state: 'entschachtelt',
+    };
+    const layout: Layout = {
+      placements: [{ cargoTypeId: 'c', x: 0, y: 0, z: 0, orientation: 'lwh', tier: 1, state: 'entschachtelt' }],
+      unplaced: [], metrics: { totalPlaced: 1, usedFloorPositions: 1, floorFillPercent: 0, volumeFillPercent: 0 },
+      contractVersion: '0.16.0',
+    };
+    // Пол кузова = (2400 + 2400) × 1200; одна единица 1200×1200 = четверть.
+    expect(computeFillMetrics({ vehicle, cargo: [cargo] }, layout).floorFillPercent).toBeCloseTo(25, 9);
   });
 });
