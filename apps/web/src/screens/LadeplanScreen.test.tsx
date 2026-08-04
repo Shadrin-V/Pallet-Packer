@@ -1237,10 +1237,15 @@ describe('LadeplanScreen — перестановка стопок во двор
     contractVersion: '0.14.0',
   };
 
-  /** The known limitation, pinned rather than fixed (task-6-brief.md, bead LKWkalk-72g): the yard's
-   *  order is a list of `cargoTypeId`, not tile identities. p3 here yields TWO tiles of the SAME type
-   *  (a full stack of 17 — height 100, maxTiers 17, vehicle height 1700 — plus a remainder of 12), so
-   *  `stackBuffer` order is [p3×17, p3×12, p1×1]. */
+  /** Двор из двух плиток ОДНОГО типа и одной чужой: p3 даёт полную стопку из 17 (height 100,
+   *  maxTiers 17, высота кузова 1700) плюс остаток 12, поэтому порядок `stackBuffer` —
+   *  [p3×17, p3×12, p1×1].
+   *
+   *  Прежде эта фикстура пиннила ограничение «порядок — список `cargoTypeId`, плитки одного типа не
+   *  переставляются». Ограничение снято в 72g: порядок хранится ключами «количество : тип», и
+   *  ×17 с ×12 теперь различимы — что и доказывает тест «плитки одного типа с разным количеством
+   *  переставляются» ниже. Неразличимыми остаются лишь плитки одного типа И одного количества
+   *  (фикстура `twinsLoad`). */
   const sameTypeLoad: Load = {
     vehicle: yardVehicle,
     cargo: [
@@ -1254,6 +1259,21 @@ describe('LadeplanScreen — перестановка стопок во двор
       { cargoTypeId: 'p3', count: 29 },
       { cargoTypeId: 'p1', count: 1 },
     ],
+    metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
+    contractVersion: '0.14.0',
+  };
+
+  /** Двор из двух ПОЛНОСТЬЮ одинаковых плиток: 34 единицы p3 при полной стопке 17 дают [×17, ×17],
+   *  плюс чужая p1×1. Такие плитки неразличимы и на экране (та же подпись, та же геометрия), и в
+   *  ключе порядка — их перестановка остаётся пустым жестом намеренно (решение владельца,
+   *  2026-08-03: «если они идентичны — зачем их переставлять»). */
+  const twinsLoad: Load = {
+    vehicle: yardVehicle,
+    cargo: [box('p3', 'P3', 34, { height: 100, stacking: { stackable: true, maxTiers: 17 } }), box('p1', 'P1', 1)],
+  };
+  const twinsLayout: Layout = {
+    placements: [],
+    unplaced: [{ cargoTypeId: 'p3', count: 34 }, { cargoTypeId: 'p1', count: 1 }],
     metrics: { totalPlaced: 0, usedFloorPositions: 0, floorFillPercent: 0, volumeFillPercent: 0 },
     contractVersion: '0.14.0',
   };
@@ -1448,6 +1468,28 @@ describe('LadeplanScreen — перестановка стопок во двор
       await dragFromTo(tiles[0], tiles[2]);
       const after = yardTiles(yard).map((el) => el.getAttribute('data-units'));
       expect(after).toEqual(['12', '17', '1']);
+    });
+  });
+
+  // Обратная сторона 72g, и она намеренная: у плиток одного типа И одного количества ключ общий,
+  // перестановка даёт тот же список, `sameOrder` в `reorderYard` признаёт жест пустым и НИЧЕГО не
+  // пишет в состояние — иначе жест, ничего не изменивший, заморозил бы неявный порядок по умолчанию
+  // в явный пользовательский. Тест держит это свойство явным: увидев его падение, правщик должен
+  // понимать, что сменилась модель порядка, а не «сломался тест». Здесь же проходит и известное
+  // ограничение: ориентация в ключ не входит, поэтому повёрнутую плитку среди её близнецов тоже не
+  // переставить, хотя на экране она отличается.
+  it('плитки одного типа и одного количества между собой не переставляются (граница 72g)', async () => {
+    await withYardGeometry(async () => {
+      render(
+        <LocaleProvider initial="de">
+          <LadeplanScreen load={twinsLoad} layout={twinsLayout} />
+        </LocaleProvider>,
+      );
+      const yard = document.querySelector('svg[data-warehouse]')!;
+      const tiles = yardTiles(yard);
+      expect(tiles.map((el) => el.getAttribute('data-units'))).toEqual(['17', '17', '1']);
+      await dragFromTo(tiles[0], tiles[2]);
+      expect(yardTiles(yard).map((el) => el.getAttribute('data-units'))).toEqual(['17', '17', '1']);
     });
   });
 

@@ -600,12 +600,20 @@ export function LadeplanScreen({
         // ревью, находка 2).
         // Ключи порядка несут количество (72g), а `StackRef` его не несёт: единицы колонны берём из
         // `topRects` — той же группировки по `cargoTypeId:x:y`, что рисует вид сверху.
+        // Колонну, которой в `edited` не нашлось, ключом НЕ подменяем: умолчание «одна единица»
+        // дало бы ключ `1:тип`, а плитка ровно в одну единицу во дворе бывает часто (остаток при
+        // 18 неразмещённых и полной стопке 17) — точная фаза выдернула бы ЧУЖУЮ плитку в точку
+        // броска вместо мягкой деградации. Пропущенный ключ просто сажает стопку на место по
+        // умолчанию, как было до задачи B.
         const columns = topRects(load, edited);
-        const unitsOf = (r: StackRef) =>
-          columns.find((c) => c.cargoTypeId === r.cargoTypeId && c.x === r.x && c.y === r.y)?.count ?? 1;
+        const droppedKeys: string[] = [];
+        for (const r of refs) {
+          const col = columns.find((c) => c.cargoTypeId === r.cargoTypeId && c.x === r.x && c.y === r.y);
+          if (col) droppedKeys.push(yardOrderKey({ cargoTypeId: col.cargoTypeId, units: col.count ?? 1 }));
+        }
         const idx = insertionIndexAt(yardFloor, pt, { orderId: orderOfType(refs[0].cargoTypeId) });
         const snapshot = orderedTiles.map(yardOrderKey);
-        snapshot.splice(idx, 0, ...refs.map((r) => yardOrderKey({ cargoTypeId: r.cargoTypeId, units: unitsOf(r) })));
+        snapshot.splice(idx, 0, ...droppedKeys);
         setBufferOrder(snapshot);
       }
       applyEdit((prev) => unplaceStacks(load, prev, refs));
