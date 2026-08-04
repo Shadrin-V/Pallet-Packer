@@ -68,5 +68,11 @@ ruleTester.run('no-untranslated-text', noUntranslatedText, {
       code: 'const a = <b>Stück: {n}</b>;',
       errors: [{ messageId: 'hardcoded' }],
     },
+    // Асимметрия намеренная: aria-hidden прячет от скринридера, но не от глаз —
+    // placeholder и title в спрятанном поддереве пользователь по-прежнему читает.
+    {
+      code: 'const a = <div aria-hidden="true"><input placeholder="Suchen" /></div>;',
+      errors: [{ messageId: 'hardcoded' }],
+    },
   ],
 });
