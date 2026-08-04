@@ -2,7 +2,13 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['packages/*/src/**/*.test.ts', 'apps/*/src/**/*.test.{ts,tsx}', 'tests/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'apps/*/src/**/*.test.{ts,tsx}',
+      'tests/**/*.test.ts',
+      // Тесты локальных eslint-правил лежат рядом с правилами (LKWkalk-y5j).
+      'tools/eslint/**/*.test.js',
+    ],
     environmentMatchGlobs: [['apps/web/**', 'jsdom']],
     setupFiles: ['apps/web/src/test-setup.ts'],
     // 20 с вместо умолчания в 5 (LKWkalk-3c5, LKWkalk-bmi). Компонентные тесты `apps/web` печатают
