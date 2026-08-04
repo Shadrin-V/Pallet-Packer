@@ -24,7 +24,7 @@ export function InfoHint({
         onBlur={() => setOpen(false)}
         className="grid h-4 w-4 place-items-center rounded-full border border-line-strong text-[10px] font-semibold leading-none text-muted hover:border-brand hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint"
       >
-        i
+        <span aria-hidden="true">i</span>
       </button>
       {open && (
         <span
