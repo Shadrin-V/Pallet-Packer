@@ -1258,6 +1258,50 @@ describe('LadeplanScreen — перестановка стопок во двор
     contractVersion: '0.14.0',
   };
 
+  /** Запасная фаза реконсиляции (72g): p3 стоит в кузове колонной из 5 единиц при полной стопке в
+   *  17, поэтому бросок её во двор превращает 24 неразмещённых p3 в 29 — и буфер, нарезанный
+   *  [×17, ×7], становится [×17, ×12]. Ключи, записанные в момент броска (`5:p3` для брошенной,
+   *  `7:p3` для остатка), не совпадают ни с одной плиткой; порядок обязан удержаться на запасной
+   *  фазе (любая плитка своего типа), иначе брошенная стопка сядет на место по умолчанию. */
+  const fallbackLoad: Load = {
+    // width: 50 — по образцу `dropLoad` в describe «drop lands at the release point». `CrossSection`
+    // считает «отпущено ВНЕ кузова» не по `getBoundingClientRect` (его `withYardGeometry` и уводит в
+    // отрицательные Y), а по углам собственного viewBox — (0,0)–(length, spanY) через `getScreenCTM`.
+    // При spanY = width = 2000 центры дворовых плиток (y ≈ 450) попадают внутрь этого прямоугольника,
+    // и релиз читается как «уронил обратно на пол», до `onDropOutside` дело не доходит вовсе. Узкий
+    // кузов освобождает y: любой y > 50 — уже снаружи. На высоту стопки (17 ярусов при height 100 и
+    // height кузова 1700) ширина не влияет, а раскладка здесь собрана руками, не упаковщиком.
+    vehicle: { ...yardVehicle, width: 50 },
+    cargo: [box('p1', 'P1', 1), box('p3', 'P3', 29, { height: 100, stacking: { stackable: true, maxTiers: 17 } })],
+  };
+  const fallbackLayout: Layout = {
+    placements: Array.from({ length: 5 }, (_, i) => ({
+      cargoTypeId: 'p3', x: 0, y: 0, z: i * 100, orientation: 'lwh' as const, tier: i + 1, state: 'entschachtelt' as const,
+    })),
+    unplaced: [{ cargoTypeId: 'p1', count: 1 }, { cargoTypeId: 'p3', count: 24 }],
+    metrics: { totalPlaced: 5, usedFloorPositions: 1, floorFillPercent: 3, volumeFillPercent: 3 },
+    contractVersion: '0.14.0',
+  };
+
+  /** Точная фаза для БРОСКА (72g): p3 стоит в кузове колонной из 5 при общем количестве 22 и полной
+   *  стопке в 17, так что во дворе до жеста ровно одна плитка ×17, а возврат колонны нарезает буфер
+   *  в [×17, ×5] — и ключ `5:p3`, записанный в момент броска, совпадает с остатком ТОЧНО. Именно
+   *  количество здесь и решает: со старым ключом (`p3`, без количества) точного совпадения нет
+   *  вовсе, работает запасная фаза, она снимает первую попавшуюся плитку своего типа — полную ×17 —
+   *  и стопка, брошенная ПЕРЕД единственной плиткой двора, садится позади неё. */
+  const unitsKeyLoad: Load = {
+    vehicle: { ...yardVehicle, width: 50 }, // тот же узкий кузов и по той же причине, что в `fallbackLoad`
+    cargo: [box('p3', 'P3', 22, { height: 100, stacking: { stackable: true, maxTiers: 17 } })],
+  };
+  const unitsKeyLayout: Layout = {
+    placements: Array.from({ length: 5 }, (_, i) => ({
+      cargoTypeId: 'p3', x: 0, y: 0, z: i * 100, orientation: 'lwh' as const, tier: i + 1, state: 'entschachtelt' as const,
+    })),
+    unplaced: [{ cargoTypeId: 'p3', count: 17 }],
+    metrics: { totalPlaced: 5, usedFloorPositions: 1, floorFillPercent: 3, volumeFillPercent: 3 },
+    contractVersion: '0.14.0',
+  };
+
   function renderPlanWithYard({ grouped, sameType = false }: { grouped: boolean; sameType?: boolean }) {
     if (grouped) localStorage.setItem('ladungsplaner.yardGrouping', 'true');
     const l = sameType ? sameTypeLoad : threeTypesLoad;
@@ -1333,6 +1377,37 @@ describe('LadeplanScreen — перестановка стопок во двор
     fireEvent.pointerUp(window, { clientX, clientY, pointerId: 1 });
   }
 
+  /** Прямоугольник обёртки `bufferRef` — это обычный `HTMLDivElement`, для которого jsdom отдаёт
+   *  нули, а `onDropOutside` начинается ровно с него: без подмены `overBuffer` никогда не станет
+   *  `true` и ни один бросок из кузова не дойдёт до двора. Перестановкам ВНУТРИ двора он не нужен —
+   *  они идут другим путём (`dropTileAt`), поэтому подменяется только там, где нужен. */
+  async function withBufferBox(run: () => void | Promise<void>) {
+    const orig = HTMLDivElement.prototype.getBoundingClientRect;
+    HTMLDivElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, right: 10000, top: 0, bottom: 4000, width: 10000, height: 4000, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      await run();
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = orig;
+    }
+  }
+
+  /** Взять колонну `ref` в виде сверху и отпустить её в точке `to` двора.
+   *
+   *  Нажатие в (500, 25) — ВНУТРИ кузова: под единичной CTM, которую ставит `installSvgGeometry`,
+   *  клиентский прямоугольник узкого кузова этих фикстур — (0,0)–(4000, 50). Именно по этим углам
+   *  собственного viewBox `CrossSection.onUp` и решает «отпущено снаружи», а не по
+   *  `getBoundingClientRect` — тот у вложенного svg разрастается вокруг переносимого призрака.
+   *  События идут через сам svg с `data-hold="top"`: слушатели переноса внутри кузова висят на нём
+   *  (в отличие от дворового драга, чьи слушатели глобальны). */
+  function dropColumnOnYard(ref: string, to: { x: number; y: number }) {
+    const hold = document.querySelector('svg[data-hold="top"]')!;
+    fireEvent.pointerDown(hold.querySelector(`[data-stack-ref="${ref}"]`)!, { clientX: 500, clientY: 25, pointerId: 2 });
+    fireEvent.pointerMove(hold, { clientX: to.x, clientY: to.y, pointerId: 2 });
+    fireEvent.pointerUp(hold, { clientX: to.x, clientY: to.y, pointerId: 2 });
+  }
+
   it('при выключенной группировке бросок стопки над двором меняет её место в потоке', async () => {
     await withYardGeometry(async () => {
       renderPlanWithYard({ grouped: false });
@@ -1374,6 +1449,55 @@ describe('LadeplanScreen — перестановка стопок во двор
       const after = yardTiles(yard).map((el) => el.getAttribute('data-units'));
       expect(after).toEqual(['12', '17', '1']);
     });
+  });
+
+  // 72g, ведущий тест задачи 3: снимок порядка, который бросок из кузова записывает в `bufferOrder`,
+  // обязан нести КОЛИЧЕСТВО. Здесь количество единственное, что решает: `5:p3` совпадает с остатком
+  // ×5 точно и ставит брошенную стопку туда, куда её отпустили, — перед единственной плиткой двора.
+  // Старый снимок (голые `cargoTypeId`) точного совпадения не даёт вовсе, уходит в запасную фазу, а
+  // та снимает первую попавшуюся плитку своего типа — полную ×17 — и стопка садится позади неё.
+  it('бросок из кузова записывает ключ с количеством и садится в точку броска (72g)', async () => {
+    await withBufferBox(() =>
+      withYardGeometry(() => {
+        render(
+          <LocaleProvider initial="de">
+            <LadeplanScreen load={unitsKeyLoad} layout={unitsKeyLayout} />
+          </LocaleProvider>,
+        );
+        const yard = document.querySelector('svg[data-warehouse]')!;
+        // 17 неразмещённых при полной стопке в 17 — ровно одна плитка; 5 единиц стоят в кузове.
+        expect(yardTiles(yard).map((el) => el.getAttribute('data-units'))).toEqual(['17']);
+
+        dropColumnOnYard('p3@0,0', centreOf(yardTiles(yard)[0]));
+
+        // 22 неразмещённых p3 → буфер [×17, ×5]; брошенная стопка отпущена ПЕРЕД плиткой ×17.
+        expect(yardTiles(yard).map((el) => el.getAttribute('data-units'))).toEqual(['5', '17']);
+      }),
+    );
+  });
+
+  // Регрессия на запасную фазу (72g). Ключи, записанные броском (`5:p3`), и старые ключи двора
+  // (`7:p3`) здесь не совпадают НИ С ОДНОЙ плиткой: `stackBuffer` перенарезает буфер под новое
+  // количество. Порядок обязан удержаться на запасной фазе — снять любую плитку своего типа;
+  // выбросьте её из `reconcileYardOrder`, и брошенная стопка сядет на место по умолчанию
+  // (['1','17','12']), то есть эта задача починила бы остаток и сломала бы уже работающий бросок.
+  it('бросок из кузова садится в точку броска, даже когда буфер перенарезан (запасная фаза, 72g)', async () => {
+    await withBufferBox(() =>
+      withYardGeometry(() => {
+        render(
+          <LocaleProvider initial="de">
+            <LadeplanScreen load={fallbackLoad} layout={fallbackLayout} />
+          </LocaleProvider>,
+        );
+        const yard = document.querySelector('svg[data-warehouse]')!;
+        expect(yardTiles(yard).map((el) => el.getAttribute('data-units'))).toEqual(['1', '17', '7']);
+
+        dropColumnOnYard('p3@0,0', centreOf(yardTiles(yard)[0]));
+
+        // Стопка вернулась во двор целиком: 29 неразмещённых p3 → ×17 и ×12.
+        expect(yardTiles(yard).map((el) => el.getAttribute('data-units'))).toEqual(['17', '1', '12']);
+      }),
+    );
   });
 
   // Finding 6 (fix round 1): both tests above assert only that NOTHING changed — a drag rig that

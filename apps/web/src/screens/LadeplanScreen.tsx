@@ -24,7 +24,7 @@ import { Button, InfoHint } from '../ui/primitives';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
-import { orderIndexMap } from './components/cutaway';
+import { orderIndexMap, topRects } from './components/cutaway';
 import { orderBreakdown } from './components/orderBreakdown';
 import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
@@ -580,8 +580,11 @@ export function LadeplanScreen({
       // to re-emit them next render: snapshot the CURRENT display order, splice the dropped types in
       // at the release point, and store that as the new `bufferOrder`. The dropped stacks are not in
       // `tiles` yet — `unplaceStacks` runs below, and `edited` only updates on the next render — but
-      // that is fine: once they appear, `orderedTiles`' FIFO dequeue places them per the order just
-      // recorded here, correct by construction. `toWarehouseMm` returning null (pointer strayed off
+      // that is fine: once they appear, `reconcileYardOrder` places them per the order recorded here.
+      // Точного совпадения ключа при этом НЕ гарантировано: `stackBuffer` перенарезает буфер, и
+      // вернувшаяся колонна из 5 при полной стопке в 17 не даст плитки ×5 вовсе — тогда ключ снимает
+      // любую плитку своего типа (запасная фаза), то есть ведёт себя как модель «по типу» до 72g.
+      // `toWarehouseMm` returning null (pointer strayed off
       // the warehouse svg for this one event) falls back to the pre-B behaviour: unplace without
       // reordering, rather than lose the drop.
       const pt = toWarehouseMm(clientX, clientY);
@@ -595,9 +598,14 @@ export function LadeplanScreen({
         // `warehouseFloor` a third time on this screen for the same answer — this file's own
         // comments record these arguments drifting apart three separate times already (финальное
         // ревью, находка 2).
+        // Ключи порядка несут количество (72g), а `StackRef` его не несёт: единицы колонны берём из
+        // `topRects` — той же группировки по `cargoTypeId:x:y`, что рисует вид сверху.
+        const columns = topRects(load, edited);
+        const unitsOf = (r: StackRef) =>
+          columns.find((c) => c.cargoTypeId === r.cargoTypeId && c.x === r.x && c.y === r.y)?.count ?? 1;
         const idx = insertionIndexAt(yardFloor, pt, { orderId: orderOfType(refs[0].cargoTypeId) });
-        const snapshot = orderedTiles.map((t) => t.cargoTypeId);
-        snapshot.splice(idx, 0, ...refs.map((r) => r.cargoTypeId));
+        const snapshot = orderedTiles.map(yardOrderKey);
+        snapshot.splice(idx, 0, ...refs.map((r) => yardOrderKey({ cargoTypeId: r.cargoTypeId, units: unitsOf(r) })));
         setBufferOrder(snapshot);
       }
       applyEdit((prev) => unplaceStacks(load, prev, refs));
