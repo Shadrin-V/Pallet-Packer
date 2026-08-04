@@ -30,3 +30,4 @@
 | 023 | [Continuous deployment из ветки `main`](023-continuous-deploy-from-main.md)                             | Принято |
 | 024 | [Прижать к упору: запрос `resolveSlide`, а не флаг у `moveStacks`](024-slide-to-stop.md)  | Принято |
 | 025 | [Две фирменные палитры: `forest` и `warm`](025-two-brand-palettes.md)                    | Принято |
+| 026 | [Транспорт с несколькими отсеками: интервалы на общей оси](026-multi-compartment-vehicle.md) | Принято |
