@@ -2,12 +2,14 @@
 // Production exports are added test-first (TDD).
 
 /** Version of the engine JSON API contract (see docs/api-contract.md). */
-export const ENGINE_CONTRACT_VERSION = '0.16.0';
+export const ENGINE_CONTRACT_VERSION = '0.17.0';
 
 export * from './model/index';
 export { calculateLayout, getLayoutReport, computeStack } from './api/api';
 export type { StackPreview } from './api/api';
 export { validateLoad } from './validation/validate';
+export { VALIDATION_ERROR_CODES } from './validation/codes';
+export type { ValidationErrorCode } from './validation/codes';
 export { orientedDims } from './model/orientation';
 export { findGeometryViolations } from './geometry/geometry';
 export type { GeometryViolation } from './geometry/geometry';

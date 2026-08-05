@@ -404,3 +404,59 @@ describe('App shell (single page)', () => {
     });
   });
 });
+
+describe('предохранитель: раскладка с ошибками не становится планом', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Заявка с валидным кузовом, но пустым грузом → движок отвечает ERR_EMPTY_LOAD (validate.ts:74-76).
+   *  Сюда, а не в шапку «Настройки», потому что проверяется граница App (сохранённый Load), а не
+   *  экран: сам код ошибки для этого теста неважен — важно только то, что `layout.errors` непуст. */
+  const brokenLoad = {
+    vehicle: { id: 'v', name: 'LKW', length: 13600, width: 2450, height: 2450 },
+    cargo: [],
+    loadingMode: 'combined',
+    orderGrouping: 'strict',
+  };
+
+  it('сохранённый Load с ошибками не восстанавливается: план пуст, ключи плана вычищены', () => {
+    localStorage.setItem('ladungsplaner.load', JSON.stringify(brokenLoad));
+    localStorage.setItem('ladungsplaner.orderColors', JSON.stringify({ 'SO-1': 0 }));
+    localStorage.setItem('ladungsplaner.strategy', JSON.stringify({ loadingMode: 'rear' }));
+    render(<App />);
+    expect(screen.getByTestId('empty-plan')).toBeInTheDocument();
+    expect(localStorage.getItem('ladungsplaner.load')).toBeNull();
+    expect(localStorage.getItem('ladungsplaner.orderColors')).toBeNull();
+    // Негодный ПЛАН выброшен, но не работа пользователя: черновик «Настройки» и выбранная стратегия
+    // к плану не относятся и обязаны пережить его отказ.
+    expect(localStorage.getItem('ladungsplaner.strategy')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Von hinten', pressed: true })).toBeInTheDocument();
+  });
+
+  // Тест «результата нет» с чистого листа прошёл бы и при неверной очистке: начинаем с готового
+  // плана и ручной правки, потому что отказ обязан быть атомарным — он ничего не разрушает.
+  it('отказ не разрушает уже показанный план и ручные правки', async () => {
+    // Этот тест НЕ доказывает предохранитель App.onCalculate (App.guard.test.tsx делает это
+    // изолированно, подменяя calculateLayout). Обнулённая длина кузова даёт безадресный
+    // ERR_INVALID_DIMENSION, и второй клик по «Berechnen» перехватывает гейт 2 экрана
+    // (SetupScreen.handleCalculate, showReasons) ДО confirm и ДО App.onCalculate — window.confirm
+    // не вызывается вовсе, мокать его незачем. Тест проверяет другое: что отказ (на любом рубеже)
+    // атомарен и не разрушает уже показанный план и ручные правки — в отличие от теста с чистого
+    // листа, который прошёл бы и при неверной очистке состояния.
+    render(<App />);
+    // Menge=2, как в planWithEditableStack: editStackManually кликает по стопке «×2», а
+    // одиночная позиция (Menge по умолчанию 1) такой стопки не даёт — обычный calculate() тут
+    // недостаточен для сценария «есть, что редактировать».
+    fillDims();
+    fireEvent.change(screen.getAllByLabelText('Menge')[0], { target: { value: '2' } });
+    await userEvent.click(berechnenHeader());
+    await editStackManually();
+    const before = screen.getByRole('group', { name: 'Draufsicht' }).innerHTML;
+
+    // Ломаем заявку: обнуляем длину кузова в шапке — движок ответит ERR_INVALID_DIMENSION.
+    fireEvent.change(screen.getAllByLabelText('Länge')[0], { target: { value: '0' } });
+    await userEvent.click(berechnenHeader());
+
+    expect(screen.getByRole('group', { name: 'Draufsicht' }).innerHTML).toBe(before);
+    expect(screen.queryByTestId('empty-plan')).toBeNull();
+  });
+});

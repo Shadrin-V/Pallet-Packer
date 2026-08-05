@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, validateLoad, type Load } from '@shadrin-v/engine';
 import { demoSetup, DEMO_VARIANTS, type DemoVariant } from './demo';
-import { toCargo } from '../screens/SetupScreen';
+import { toCargoList } from '../screens/setup/setupState';
 
 /** Rebuild the demo Load exactly as SetupScreen.handleDemo does (rear + strict, 4bj.12/4bj.13). */
 function demoLoad(): Load {
   const d = demoSetup();
   return {
     vehicle: d.vehicle,
-    cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+    cargo: toCargoList(d.orders).cargo,
     loadingMode: 'rear',
     orderGrouping: 'strict',
   };
@@ -20,7 +20,7 @@ function loadOf(variant: DemoVariant): Load {
   const d = variant.build();
   return {
     vehicle: d.vehicle,
-    cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+    cargo: toCargoList(d.orders).cargo,
     loadingMode: 'rear',
     orderGrouping: 'strict',
   };
@@ -56,6 +56,13 @@ describe('demo variants (rgv.5)', () => {
     for (const variant of DEMO_VARIANTS) {
       const load = loadOf(variant);
       expect(findGeometryViolations(load, calculateLayout(load))).toEqual([]);
+    }
+  });
+
+  it('каждый демо-вариант валиден: иначе Demo оставит форму и план в разных состояниях', () => {
+    for (const v of DEMO_VARIANTS) {
+      // Ключ варианта в ожидании, а не рядом в комментарии: падение обязано называть виновника.
+      expect({ variant: v.key, errors: validateLoad(loadOf(v)) }).toEqual({ variant: v.key, errors: [] });
     }
   });
 

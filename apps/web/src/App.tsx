@@ -47,6 +47,10 @@ function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Reco
     if (!raw) return null;
     const load = JSON.parse(raw) as Load;
     const layout = calculateLayout(load);
+    // Инвариант границы (p3p.16): раскладка с ошибками — не план, а отчёт о непригодном вводе.
+    // Без этой строки перезагрузка возвращала молчаливый пустой лист: геометрических нарушений у
+    // пустой раскладки нет, и прежняя проверка её пропускала.
+    if (layout.errors?.length) return null;
     if (findGeometryViolations(load, layout).length > 0) return null;
     let orderColors: Record<string, number> | undefined;
     try {
@@ -129,13 +133,17 @@ export function App() {
     }
   }, [result]);
 
-  const onCalculate = (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => {
+  /** Возвращает, принят ли результат. «Настройка» объявляет расчёт выполненным только по `true`:
+   *  раньше объявление шло безусловно и врало уже при геометрическом отказе. */
+  const onCalculate = (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }): boolean => {
     // Стратегию передают все вызывающие явно: «Рассчитать» берёт её из состояния ниже, Demo
     // пришпиливает свою (4bj.13). Прежний fallback на стратегию предыдущего плана стал мёртвым
     // кодом вместе с переключателями на ладеплане (5nb этап 2) и убран.
     const layout = calculateLayout(load);
+    // Невалидный ввод: показывать нечего, но и разрушать нечего — прежний план остаётся на экране.
+    if (layout.errors?.length) return false;
     // Domain invariant: never surface a layout with geometry violations.
-    if (findGeometryViolations(load, layout).length > 0) return;
+    if (findGeometryViolations(load, layout).length > 0) return false;
     // Demo doesn't pass orderColors → keep the current plan's map.
     setResult({ load, layout, transient: opts?.persist === false, orderColors: opts?.orderColors ?? result?.orderColors });
     // Стратегия того, что реально посчиталось, становится текущей — иначе Demo (он пришпиливает
@@ -143,6 +151,7 @@ export function App() {
     // иначе: единственный на всю страницу переключатель обязан описывать то, что на ней видно.
     setLoadingMode(load.loadingMode ?? 'combined');
     setOrderGrouping(load.orderGrouping ?? 'strict');
+    return true;
   };
 
   /** «Сброс» убирает и план, и стратегию: она часть заявки, а не отдельная настройка приложения —

@@ -222,12 +222,12 @@ export const de: Dictionary = {
   ERR_INVALID_QUANTITY:
     'Ungültige Menge: Der Wert muss 0 oder größer sein (oder „Rest auffüllen“ verwenden).',
   ERR_INVALID_NESTING:
-    'Ungültige Verschachtelung: Die Schritthöhe muss zwischen 0 und der Höhe der Ladung liegen.',
+    'Ungültige Verschachtelung: Die Schritthöhe muss größer als 0 und höchstens so groß wie die Höhe der Ladung sein.',
   ERR_INVALID_ROTATION: 'Ungültiger Drehmodus.',
   ERR_EMPTY_LOAD: 'Die Ladeliste ist leer.',
   ERR_UNKNOWN_VEHICLE: 'Fahrzeug wurde im Bestand nicht gefunden.',
   ERR_INVALID_COMPARTMENTS:
-    'Die Laderaumabschnitte sind ungültig: Positionen und Längen müssen positive ganze Zahlen sein, aufsteigend liegen, dürfen sich nicht überschneiden (eine Kupplungslücke zwischen ihnen ist erlaubt), und der letzte Abschnitt muss genau am Fahrzeugende enden.',
+    'Die Laderaumabschnitte sind ungültig: Längen müssen positive ganze Zahlen sein, Positionen ganze Zahlen ab 0, aufsteigend und ohne Überschneidung (eine Kupplungslücke dazwischen ist erlaubt), jede Abschnitts-ID muss eindeutig sein, und der letzte Abschnitt muss genau am Fahrzeugende enden.',
 
   ERR_EDIT_NO_STACK: 'Dieser Stapel wurde nicht gefunden.',
   ERR_EDIT_OVERLAP: 'Dort steht bereits ein Stapel.',
