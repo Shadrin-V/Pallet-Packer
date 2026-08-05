@@ -227,7 +227,7 @@ export const de: Dictionary = {
   ERR_EMPTY_LOAD: 'Die Ladeliste ist leer.',
   ERR_UNKNOWN_VEHICLE: 'Fahrzeug wurde im Bestand nicht gefunden.',
   ERR_INVALID_COMPARTMENTS:
-    'Die Laderaumabschnitte sind ungültig: Längen müssen positive ganze Zahlen sein, Positionen ganze Zahlen ab 0, aufsteigend und ohne Überschneidung (eine Kupplungslücke dazwischen ist erlaubt), und der letzte Abschnitt muss genau am Fahrzeugende enden.',
+    'Die Laderaumabschnitte sind ungültig: Längen müssen positive ganze Zahlen sein, Positionen ganze Zahlen ab 0, aufsteigend und ohne Überschneidung (eine Kupplungslücke dazwischen ist erlaubt), jede Abschnitts-ID muss eindeutig sein, und der letzte Abschnitt muss genau am Fahrzeugende enden.',
 
   ERR_EDIT_NO_STACK: 'Dieser Stapel wurde nicht gefunden.',
   ERR_EDIT_OVERLAP: 'Dort steht bereits ein Stapel.',
