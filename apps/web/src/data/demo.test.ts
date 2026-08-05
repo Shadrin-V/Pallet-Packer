@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, validateLoad, type Load } from '@shadrin-v/engine';
 import { demoSetup, DEMO_VARIANTS, type DemoVariant } from './demo';
 import { toCargoList } from '../screens/setup/setupState';
 
@@ -56,6 +56,13 @@ describe('demo variants (rgv.5)', () => {
     for (const variant of DEMO_VARIANTS) {
       const load = loadOf(variant);
       expect(findGeometryViolations(load, calculateLayout(load))).toEqual([]);
+    }
+  });
+
+  it('каждый демо-вариант валиден: иначе Demo оставит форму и план в разных состояниях', () => {
+    for (const v of DEMO_VARIANTS) {
+      // Ключ варианта в ожидании, а не рядом в комментарии: падение обязано называть виновника.
+      expect({ variant: v.key, errors: validateLoad(loadOf(v)) }).toEqual({ variant: v.key, errors: [] });
     }
   });
 
