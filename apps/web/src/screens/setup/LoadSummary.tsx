@@ -87,6 +87,7 @@ export function LoadSummary({
     <aside
       ref={summaryRef}
       tabIndex={-1}
+      aria-label={tt('setup.summary.title')}
       data-testid="load-summary"
       className="flex flex-col gap-4 rounded-card bg-card p-4 shadow-card"
     >
