@@ -259,6 +259,10 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 Run: `npm test -- packages/engine/src/packing/resolveDrop.test.ts`
 Expected: PASS, 31 тест (30 после Task 1, плюс второй экземпляр sweep).
 
+> Отчёт по факту: план изначально обещал в шаге 4 «1128/1128» — арифметическая ошибка автора плана,
+> не пересчитавшего, что параметризация sweep ДОБАВЛЯЕТ экземпляр теста, а не заменяет его.
+> Фактически 1125 + 3 точечных + 1 sweep = **1129**. Число ниже исправлено.
+
 Если экземпляр «пара в разных отсеках» красный — это НАСТОЯЩЕЕ расхождение `resolveGroupDrop` ↔
 `moveStacks`, а не дефект теста. Действовать по Global Constraints: СТОП, `systematic-debugging`,
 `bd create`. Ассерт не ослаблять, фикстуру под зелёный не подгонять.
@@ -274,7 +278,7 @@ Sweep молча проходит, если `resolveGroupDrop` не сказал
 - [ ] **Шаг 4: Гейты целиком**
 
 ```bash
-npm test          # ожидается 1128/1128 (было 1125), 87 файлов
+npm test          # 1129/1129 (было 1125), 87 файлов
 npm run typecheck # 0 ошибок
 npm run lint      # 0 ошибок
 git diff -- packages/engine/src/packing/resolveDrop.ts   # пусто
