@@ -26,7 +26,8 @@
 
 ### 2026-08-05 — Коды валидации движка на экране «Настройка» (`LKWkalk-p3p.16`)
 
-Контракт движка не менялся, `docs/api-contract.md` не трогается. Тесты 1114 → 1116. Спека —
+Контракт движка получил аддитивный бамп `0.16.0` → `0.17.0` (экспонированы `VALIDATION_ERROR_CODES`
+и тип `ValidationErrorCode`; поведение не менялось). Тесты 1086 → 1116. Спека —
 [`superpowers/specs/2026-08-05-engine-errors-on-setup-design.md`](superpowers/specs/2026-08-05-engine-errors-on-setup-design.md).
 
 - Экран «Настройка» показывает коды валидации движка (`validateLoad`) рядом со своими проверками:
