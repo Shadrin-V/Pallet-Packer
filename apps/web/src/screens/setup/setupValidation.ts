@@ -1,20 +1,30 @@
 // Сводка загрузки и сообщения экрана «Настройка» (LKWkalk-5nb, спека §6). Чистый модуль: ни DOM,
 // ни перевода — коды и адреса строк, текст подставляет компонент (та же граница, что у
 // positionRules и stackFormula).
-import { compartmentsOf, type Vehicle } from '@shadrin-v/engine';
+import { compartmentsOf, validateLoad, type ValidationErrorCode, type Vehicle } from '@shadrin-v/engine';
 import { stepInvalid } from '../components/stackFormula';
-import { activeStep, dimsComplete, numOr0, type OrderState, type SetupMessageWhere } from './setupState';
+import {
+  activeStep,
+  dimsComplete,
+  numOr0,
+  toCargoList,
+  type OrderState,
+  type SetupMessageWhere,
+} from './setupState';
 
 export type { SetupMessageWhere };
 
-/** Коды сообщений = ключи локалей: строку выбирает компонент, модуль их не знает. */
-export type SetupMessageCode =
+/** Коды локальных проверок = ключи локалей: строку выбирает компонент, модуль их не знает. */
+export type LocalMessageCode =
   | 'setup.msg.stepInvalid'
   | 'setup.msg.dimsMissing'
   | 'setup.msg.tooTall'
   | 'setup.msg.volumeOver'
   | 'setup.msg.zeroQuantity'
   | 'setup.msg.duplicateOrderId';
+
+/** Сообщение панели — либо локальная проверка, либо код движка: для экрана это одно множество. */
+export type SetupMessageCode = LocalMessageCode | ValidationErrorCode;
 
 export interface SetupMessage {
   code: SetupMessageCode;
@@ -99,6 +109,64 @@ export function setupMessages(orders: OrderState[], vehicle: Vehicle): SetupMess
   if (s.cargoVolume > s.vehicleVolume)
     warnings.push({ code: 'setup.msg.volumeOver', level: 'warning' });
   return [...errors, ...warnings];
+}
+
+/** Коды `validateLoad` как сообщения панели (p3p.16). Все они — ошибки: движок отвергает ввод
+ *  целиком, полутонов у него нет. Ошибка про груз адресуется строке через карту `toCargoList`;
+ *  ошибки кузова и отсеков адреса не имеют — как `volumeOver`, им некуда вести.
+ *
+ *  Адрес честен ровно настолько, насколько уникальны `p.id`: `loadSetup` уникальность не проверяет,
+ *  и испорченный черновик с двумя одинаковыми id подсветит одну строку из двух. Чинится это не
+ *  здесь, а в LKWkalk-p3p.15 (ERR_DUPLICATE_CARGO_ID в самом движке). */
+export function engineMessages(orders: OrderState[], vehicle: Vehicle): SetupMessage[] {
+  const { cargo, addressOf } = toCargoList(orders);
+  const byId = new Map(cargo.map((c) => [c.id, c] as const));
+  return validateLoad({ vehicle, cargo }).map((e) => {
+    const id = typeof e.details?.cargoTypeId === 'string' ? e.details.cargoTypeId : undefined;
+    const where = id ? addressOf.get(id) : undefined;
+    const c = id ? byId.get(id) : undefined;
+    return {
+      code: e.code as ValidationErrorCode,
+      level: 'error' as const,
+      ...(where ? { where } : {}),
+      ...(c ? { orderId: c.orderId, name: c.name } : {}),
+    };
+  });
+}
+
+/** Всё, что экран показывает и считает: локальные проверки плюс коды движка.
+ *
+ *  Подавление узкое и намеренно несимметричное:
+ *  — локальная ОШИБКА по строке глушит коды движка по ней же: недозаполненная строка должна дать
+ *    одно человеческое «укажите размеры», а не три ERR_INVALID_DIMENSION;
+ *  — обратно — ровно одна пара: ERR_CARGO_EXCEEDS_VEHICLE прячет tooTall, потому что «не влезает ни
+ *    в одной ориентации» строго сильнее «выше кузова». Широкое правило «ошибка движка съедает
+ *    warnings строки» отвергнуто: duplicateOrderId относится к заказу, а адресован первой строке,
+ *    и любая ошибка движка на ней проглотила бы его молча.
+ *
+ *  Порядок фиксирован (ошибки, потом предупреждения) — от него зависит, к какой строке прыгает
+ *  «Рассчитать»: плавающий порядок означал бы разный прыжок на одном и том же вводе. */
+export function allMessages(orders: OrderState[], vehicle: Vehicle): SetupMessage[] {
+  const local = setupMessages(orders, vehicle);
+  const engine = engineMessages(orders, vehicle);
+
+  const rowsWithLocalError = new Set(
+    local.filter((m) => m.level === 'error' && m.where).map((m) => m.where!.positionId),
+  );
+  const engineShown = engine.filter((m) => !(m.where && rowsWithLocalError.has(m.where.positionId)));
+
+  const rowsThatDoNotFit = new Set(
+    engineShown.filter((m) => m.code === 'ERR_CARGO_EXCEEDS_VEHICLE' && m.where).map((m) => m.where!.positionId),
+  );
+  const localShown = local.filter(
+    (m) => !(m.code === 'setup.msg.tooTall' && m.where && rowsThatDoNotFit.has(m.where.positionId)),
+  );
+
+  return [
+    ...localShown.filter((m) => m.level === 'error'),
+    ...engineShown,
+    ...localShown.filter((m) => m.level === 'warning'),
+  ];
 }
 
 /** Первая ошибка, к которой есть куда вести. Это и есть адрес, куда прыгает «Рассчитать» (§6). */
