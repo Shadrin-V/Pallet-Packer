@@ -1,6 +1,7 @@
 // Пустое состояние панели разбора (LKWkalk-5nb, спека §6): пока строка не выбрана, панель занята
 // делом — показывает сводку заявки и то, что мешает или испортит расчёт. Каждое сообщение с адресом
 // кликабельно и ведёт к своей строке.
+import type { Ref } from 'react';
 import { formatVolume } from '@shadrin-v/i18n';
 import { useT, useLocale } from '../../i18n/LocaleContext';
 import { fillTemplate } from '../components/stackFormula';
@@ -69,17 +70,26 @@ export function LoadSummary({
   summary,
   messages,
   onGoTo,
+  summaryRef,
 }: {
   summary: SetupSummary;
   messages: SetupMessage[];
   onGoTo: (where: SetupMessageWhere) => void;
+  /** Куда уводить фокус, когда «Рассчитать» отказал по причине без адреса строки (p3p.16):
+   *  причины перечислены здесь, и нажатие не должно выглядеть как «ничего не произошло». */
+  summaryRef?: Ref<HTMLElement>;
 }) {
   const tt = useT();
   const { locale } = useLocale();
   const errors = messages.filter((m) => m.level === 'error');
   const warnings = messages.filter((m) => m.level === 'warning');
   return (
-    <aside className="flex flex-col gap-4 rounded-card bg-card p-4 shadow-card">
+    <aside
+      ref={summaryRef}
+      tabIndex={-1}
+      data-testid="load-summary"
+      className="flex flex-col gap-4 rounded-card bg-card p-4 shadow-card"
+    >
       <span className="text-label uppercase font-semibold text-faint">{tt('setup.summary.title')}</span>
       <div className="flex flex-wrap gap-x-6 gap-y-3">
         <Figure value={String(summary.orders)} label={tt('setup.summary.orders')} />

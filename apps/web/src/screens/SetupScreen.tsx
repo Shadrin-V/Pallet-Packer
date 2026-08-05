@@ -21,7 +21,7 @@ import { SetupHeader } from './setup/SetupHeader';
 import { RULES_PANEL_ID } from './setup/PositionRow';
 import { useIsWide } from './setup/useIsWide';
 import { useStickyCompact } from './setup/useStickyCompact';
-import { firstError, setupMessages, setupSummary, type SetupMessageWhere } from './setup/setupValidation';
+import { allMessages, firstError, setupSummary, type SetupMessageWhere } from './setup/setupValidation';
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
@@ -39,8 +39,10 @@ export interface SetupScreenProps {
   initialVehicle?: Vehicle;
   initialOrders?: OrderState[];
   /** `persist: false` computes a throwaway preview (Demo) that must not overwrite the saved plan.
-   *  `orderColors` maps orderId → stable palette slot so plan colours match Setup after reorder. */
-  onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => void;
+   *  `orderColors` maps orderId → stable palette slot so plan colours match Setup after reorder.
+   *  Возвращает, принят ли результат: раскладку с ошибками валидации или геометрии App отвергает
+   *  (p3p.16). Объявлять расчёт выполненным можно только по `true`. */
+  onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => boolean;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
   /** Стратегия расчёта (5nb этап 2, решение владельца 3): одно состояние на два экрана, владеет им
@@ -390,9 +392,13 @@ export function SetupScreen({
   // §6: сводка и сообщения — чистые функции от того же состояния, что уходит в Load, поэтому
   // показанное в шапке и в панели не может разойтись с тем, что реально посчитается.
   const summary = setupSummary(orders, vehicle);
-  const messages = setupMessages(orders, vehicle);
+  const messages = allMessages(orders, vehicle);
   const errorCount = messages.filter((m) => m.level === 'error').length;
   const [compact, sentinelRef] = useStickyCompact();
+  // Куда уводить фокус, когда «Рассчитать» отказал по причине без адреса строки (p3p.16): ошибки
+  // кузова, отсеков и пустой заявки строкой не адресуются, панель — единственная поверхность,
+  // которая их перечисляет.
+  const summaryRef = useRef<HTMLElement>(null);
 
   /** Открыть строку по адресу из сообщения — общий путь для клика по сообщению и для «Рассчитать»
    *  с ошибками: выбрать строку, открыть её панель, увести туда фокус. */
@@ -416,38 +422,51 @@ export function SetupScreen({
     });
   };
 
+  /** Показать причины отказа, когда вести некуда: ошибки кузова, отсеков и пустой заявки строкой не
+   *  адресуются. Выбор снимается, чтобы панель разбора вернулась к сводке со списком причин — в
+   *  широком режиме иначе на её месте были бы правила выбранной строки. */
+  const showReasons = () => {
+    setSelection(null);
+    requestAnimationFrame(() => summaryRef.current?.focus());
+  };
+
   const handleCalculate = () => {
-    // Кнопка больше не гаснет (§6): погашенная не фокусируется и не объявляется скринридером, то
-    // есть молча прячет и причину, и адрес ошибки. Нажатие при ошибках не считает, а ведёт к первой
+    // Кнопка не гаснет (§6): погашенная не фокусируется и не объявляется скринридером, то есть
+    // молча прячет и причину, и адрес ошибки. Нажатие при ошибках не считает, а ведёт к первой
     // ошибочной строке; предупреждения (количество 0, объём, высота) расчёт не блокируют.
     const first = firstError(messages);
     if (first?.where) {
       goTo(first.where);
       return;
     }
-    // Пересчёт строит раскладку с нуля и выбрасывает ручные правки стопок. Раньше об этом
-    // предупреждали переключатели стратегии на ладеплане (withDiscardGuard); с 5nb этапа 2 они
-    // ничего не пересчитывают, и единственный, кто теряет правки, — эта кнопка. Спрашиваем только
-    // когда терять действительно есть что.
+    // Ошибки движка про кузов, отсеки и пустую заявку адреса не имеют: вести некуда, но и молчать
+    // нельзя — иначе нажатие снова выглядит как «ничего не произошло» (p3p.16).
+    if (messages.some((m) => m.level === 'error')) {
+      showReasons();
+      return;
+    }
+    // Пересчёт строит раскладку с нуля и выбрасывает ручные правки стопок. Спрашиваем только когда
+    // терять действительно есть что — и только после гейта: переспрашивать о потере правок, когда
+    // расчёт всё равно запрещён, бессмысленно.
     if (hasManualEdits && typeof window !== 'undefined' && !window.confirm(tt('ladeplan.discardEditsConfirm')))
       return;
     const { cargo } = toCargoList(orders);
     // Стратегия кладётся в Load ЯВНО: сама по себе она ничего не пересчитывает (решение владельца
     // 1), выбор из шапки применяется именно здесь.
-    onCalculate(
+    const accepted = onCalculate(
       { vehicle, cargo, loadingMode, orderGrouping },
       { orderColors: buildOrderColors(orders) },
     );
-    // Task 7: announce the result of THIS calculation from the summary already computed above —
-    // the same numbers the empty-panel state and the header show, so the announcement cannot drift
-    // from what the screen displays. Placement percentages live in the Load result the parent (App)
-    // computes, not here, so the announcement reports what this screen actually knows: how much was
-    // asked for.
+    // App отверг ввод (ошибки валидации или геометрии) — объявлять нечего.
+    if (!accepted) return;
+    // Task 7: announce the result of THIS calculation. Объявляем числа ПРИНЯТОГО груза, а не сводки
+    // черновика: сводка описывает, сколько строк заведено, а посчитано может быть меньше — нулевые
+    // строки в заявку не входят (p3p.16).
     setLastResult((prev) => ({
       text: fillTemplate(tt('setup.calcDone'), {
-        orders: summary.orders,
-        positions: summary.positions,
-        units: summary.units,
+        orders: new Set(cargo.map((c) => c.orderId)).size,
+        positions: cargo.length,
+        units: cargo.reduce((a, c) => a + c.quantity, 0),
       }),
       seq: (prev?.seq ?? 0) + 1,
     }));
@@ -575,6 +594,7 @@ export function SetupScreen({
               summary={summary}
               messages={messages}
               onGoTo={goTo}
+              summaryRef={summaryRef}
             />
           </aside>
         )}
@@ -584,7 +604,7 @@ export function SetupScreen({
             больше кузова) не оставалось никакой поверхности. Рендерится всегда, а не только при
             пустом выборе: drawer накрывает её сверху, и список не прыгает при открытии-закрытии. */}
         {!wide && (
-          <LoadSummary summary={summary} messages={messages} onGoTo={goTo} />
+          <LoadSummary summary={summary} messages={messages} onGoTo={goTo} summaryRef={summaryRef} />
         )}
       </div>
 

@@ -21,16 +21,22 @@ afterEach(() => {
 
 /** Стратегия расчёта — проп сверху (5nb этап 2): экран её только показывает и меняет колбэком,
  *  владеет ею App. `opts` перекрывает любой проп, чтобы тесту не приходилось расширять хелпер
- *  каждый раз, когда нужен ещё один вход. */
+ *  каждый раз, когда нужен ещё один вход.
+ *
+ *  p3p.16: `onCalculate` пропа теперь возвращает `boolean` (принят ли результат) — этим владеет
+ *  App, а не тест. Обёртка ниже вызывает переданный тестами `vi.fn(): void` и сама возвращает
+ *  `true` («принят»), чтобы десятки существующих тестов не сломались на типах. Тест отказа
+ *  (App отверг результат) передаёт свой `onCalculate` через `opts` — `{...opts}` идёт последним,
+ *  так что он перекрывает эту обёртку. */
 function renderSetup(
-  onCalculate: (l: Load) => void,
+  onCalculate: (l: Load, o?: { persist?: boolean; orderColors?: Record<string, number> }) => unknown,
   onReset?: () => void,
   opts: Partial<SetupScreenProps> = {},
 ) {
   return render(
     <LocaleProvider initial="de">
       <SetupScreen
-        onCalculate={onCalculate}
+        onCalculate={(l, o) => { onCalculate(l, o); return true; }}
         onReset={onReset}
         loadingMode="combined"
         orderGrouping="strict"
@@ -101,7 +107,7 @@ function renderSetupWithCatalogue(dpOverrides: Partial<DataProvider> = {}) {
     <LocaleProvider initial="de">
       <DataProviderProvider value={dp}>
         <SetupScreen
-          onCalculate={() => {}}
+          onCalculate={() => true}
           loadingMode="combined"
           orderGrouping="strict"
           onLoadingModeChange={() => {}}
@@ -805,6 +811,111 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
   });
 });
 
+describe('коды валидации движка на экране (p3p.16)', () => {
+  /** Кузов-автопоезд: отсеки короче, чем полный пролёт, поэтому длинный груз не влезает никуда. */
+  const train = { id: 't', name: 'Zug', length: 16600, width: 2450, height: 3050,
+    compartments: [{ id: 'tractor', x: 0, length: 7700 }, { id: 'trailer', x: 8900, length: 7700 }] };
+
+  /** Узкий экран — своя копия: в этом файле `narrow` объявлен внутри чужих describe-блоков. */
+  const narrow = () =>
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+
+  it('адресуемая ошибка движка не даёт считать и ведёт к строке', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialVehicle: train,
+      initialOrders: [order('SO-1001', [position({ id: 'p1', length: 8000, rotation: 'none' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    expect(onCalculate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Artikel')).toHaveValue('EPAL 1');
+  });
+
+  it('текст кода движка виден в панели', () => {
+    renderSetup(vi.fn(), undefined, {
+      initialVehicle: train,
+      initialOrders: [order('SO-1001', [position({ id: 'p1', length: 8000, rotation: 'none' })])],
+    });
+    expect(screen.getByText(/passt in keiner zulässigen Ausrichtung/)).toBeInTheDocument();
+  });
+
+  it('шапка считает ошибки движка наравне со своими', () => {
+    renderSetup(vi.fn(), undefined, {
+      initialVehicle: { ...train, compartments: [{ id: 'tractor', x: 0, length: 0 }, { id: 'trailer', x: 8900, length: 7700 }] },
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    expect(screen.getByText(/Berechnung nicht möglich: 1 Fehler/)).toBeInTheDocument();
+  });
+
+  it('безадресная ошибка движка не даёт считать и уводит фокус в панель причин', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialVehicle: { ...train, compartments: [{ id: 'tractor', x: 0, length: 0 }, { id: 'trailer', x: 8900, length: 7700 }] },
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    expect(onCalculate).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId('load-summary')).toHaveFocus());
+  });
+
+  it('на узком экране фокус уходит в ту же панель, которая там смонтирована', async () => {
+    narrow();
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialVehicle: { ...train, compartments: [{ id: 'tractor', x: 0, length: 0 }, { id: 'trailer', x: 8900, length: 7700 }] },
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    expect(onCalculate).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId('load-summary')).toHaveFocus());
+  });
+
+  it('ручные правки не переспрашиваются, когда расчёт всё равно запрещён', async () => {
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      hasManualEdits: true,
+      initialVehicle: train,
+      initialOrders: [order('SO-1001', [position({ id: 'p1', length: 8000, rotation: 'none' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onCalculate).not.toHaveBeenCalled();
+  });
+
+  it('нулевая строка не попадает в принятый Load', async () => {
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 }), position({ id: 'p2' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    const load = onCalculate.mock.calls[0][0] as Load;
+    expect(load.cargo.map((c) => c.id)).toEqual(['p2']);
+  });
+
+  it('отказ принявшего не объявляет расчёт выполненным', async () => {
+    // App отвергает раскладку с ошибками (Task 3). Экран обязан промолчать: объявление шло
+    // безусловно и врало уже при геометрическом отказе.
+    renderSetup(vi.fn(), undefined, {
+      onCalculate: () => false,
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    expect(screen.queryByText(/Berechnet:/)).toBeNull();
+  });
+
+  it('объявление называет числа посчитанного, а не черновика', async () => {
+    renderSetup(vi.fn(), undefined, {
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 4 }), position({ id: 'p2', quantity: 0 })])],
+    });
+    await userEvent.click(berechnenHeader());
+    await waitFor(() => expect(screen.getByText(/Berechnet: 1 Aufträge, 1 Positionen, 4 Einheiten/)).toBeInTheDocument());
+  });
+});
+
 describe('SetupScreen article combobox', () => {
   it('has no preset dropdown and no separate name field any more (rgv.8)', () => {
     renderSetup(() => {});
@@ -1068,7 +1179,7 @@ describe('SetupScreen article combobox', () => {
       <LocaleProvider initial="de">
         <DataProviderProvider value={dp}>
           <SetupScreen
-            onCalculate={() => {}}
+            onCalculate={() => true}
             loadingMode="combined"
             orderGrouping="strict"
             onLoadingModeChange={() => {}}

@@ -1,7 +1,7 @@
 // Панель разбора позиции (LKWkalk-5nb, спека §4): правила редактируются здесь и только здесь.
 // Содержимое — перенос раскрывающегося блока PositionRow из SetupScreen.tsx (Task 4), плюс новая
 // секция фраз ruleSentences и formatLength вместо зашитой единицы ' mm' (LKWkalk-5gi, пункт 2).
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import { computeStack, FORK_AXES, type NestingMode, type StackPreview, type Vehicle, type ForkAxis } from '@shadrin-v/engine';
 import type { Article } from '@shadrin-v/contracts';
 import { formatLength } from '@shadrin-v/i18n';
@@ -42,9 +42,12 @@ export interface RulesPanelProps {
   summary?: SetupSummary;
   messages?: SetupMessage[];
   onGoTo?: (where: SetupMessageWhere) => void;
+  /** Проброс в LoadSummary — куда уводить фокус, когда «Рассчитать» отказал по причине без адреса
+   *  строки (p3p.16). */
+  summaryRef?: Ref<HTMLElement>;
 }
 
-export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onSaveArticle, onClose, summary, messages, onGoTo }: RulesPanelProps) {
+export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onSaveArticle, onClose, summary, messages, onGoTo, summaryRef }: RulesPanelProps) {
   const tt = useT();
   const { locale } = useLocale();
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -54,7 +57,7 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
     // Пустое состояние — не заглушка: панель показывает сводку заявки и список сообщений (§6).
     // Пропы необязательные: старые тесты рендерят панель без них и должны продолжать работать.
     if (summary && messages && onGoTo) {
-      return <LoadSummary summary={summary} messages={messages} onGoTo={onGoTo} />;
+      return <LoadSummary summary={summary} messages={messages} onGoTo={onGoTo} summaryRef={summaryRef} />;
     }
     return (
       <aside className="rounded-card bg-card p-4 shadow-card">
