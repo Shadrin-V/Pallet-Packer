@@ -404,3 +404,49 @@ describe('App shell (single page)', () => {
     });
   });
 });
+
+describe('предохранитель: раскладка с ошибками не становится планом', () => {
+  /** Кузов сломан так, как это делает шапка «Настройки»: длина отсека 0 → ERR_INVALID_COMPARTMENTS.
+   *  Здесь короче — прямо в сохранённом плане, потому что проверяется граница App, а не экран. */
+  const brokenLoad = {
+    vehicle: { id: 'v', name: 'LKW', length: 13600, width: 2450, height: 2450 },
+    cargo: [],
+    loadingMode: 'combined',
+    orderGrouping: 'strict',
+  };
+
+  it('сохранённый Load с ошибками не восстанавливается: план пуст, ключи плана вычищены', () => {
+    localStorage.setItem('ladungsplaner.load', JSON.stringify(brokenLoad));
+    localStorage.setItem('ladungsplaner.orderColors', JSON.stringify({ 'SO-1': 0 }));
+    localStorage.setItem('ladungsplaner.strategy', JSON.stringify({ loadingMode: 'rear' }));
+    render(<App />);
+    expect(screen.getByTestId('empty-plan')).toBeInTheDocument();
+    expect(localStorage.getItem('ladungsplaner.load')).toBeNull();
+    expect(localStorage.getItem('ladungsplaner.orderColors')).toBeNull();
+    // Негодный ПЛАН выброшен, но не работа пользователя: черновик «Настройки» и выбранная стратегия
+    // к плану не относятся и обязаны пережить его отказ.
+    expect(localStorage.getItem('ladungsplaner.strategy')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Von hinten', pressed: true })).toBeInTheDocument();
+  });
+
+  // Тест «результата нет» с чистого листа прошёл бы и при неверной очистке: начинаем с готового
+  // плана и ручной правки, потому что отказ обязан быть атомарным — он ничего не разрушает.
+  it('отказ не разрушает уже показанный план и ручные правки', async () => {
+    render(<App />);
+    // Menge=2, как в planWithEditableStack: editStackManually кликает по стопке «×2», а
+    // одиночная позиция (Menge по умолчанию 1) такой стопки не даёт — обычный calculate() тут
+    // недостаточен для сценария «есть, что редактировать».
+    fillDims();
+    fireEvent.change(screen.getAllByLabelText('Menge')[0], { target: { value: '2' } });
+    await userEvent.click(berechnenHeader());
+    await editStackManually();
+    const before = screen.getByRole('group', { name: 'Draufsicht' }).innerHTML;
+
+    // Ломаем заявку: обнуляем длину кузова в шапке — движок ответит ERR_INVALID_DIMENSION.
+    fireEvent.change(screen.getAllByLabelText('Länge')[0], { target: { value: '0' } });
+    await userEvent.click(berechnenHeader());
+
+    expect(screen.getByRole('group', { name: 'Draufsicht' }).innerHTML).toBe(before);
+    expect(screen.queryByTestId('empty-plan')).toBeNull();
+  });
+});
