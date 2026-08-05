@@ -344,6 +344,26 @@ describe('resolveGroupDrop', () => {
     expect(r.dx).toBe(0);
     expect(r.dy).toBe(0);
   });
+
+  // Прицел {0, 0} во всех негативных сценариях ниже: «остаться на месте» законно геометрически,
+  // поэтому отказ может прийти ТОЛЬКО от пер-участница проверки, а не от поиска дельты.
+  for (const order of ['AB', 'BA'] as const) {
+    it(`refuses when a member's orientation is forbidden by the rotation rule — порядок ${order} (s9o)`, () => {
+      const { load, layout, refs } = mixedOrientationPair(order);
+      // Правило вращения ужесточили ПОСЛЕ расчёта: rotation:'none' разрешает только 'lwh', а
+      // колонна B стоит в 'wlh'.
+      const after: Load = { ...load, cargo: [{ ...load.cargo[0], rotation: 'none' as const }] };
+
+      const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
+      // orientation:'wlh' есть только у колонны B — именно он доказывает, что судили её, а не
+      // законную A. cargoTypeId у обеих один ('p'), поэтому он проверяет контракт ошибки, но
+      // ничего не доказывает про обход.
+      expect(r.error?.details).toMatchObject({ cargoTypeId: 'p', orientation: 'wlh' });
+    });
+  }
 });
 
 // LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
