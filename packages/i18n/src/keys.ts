@@ -236,6 +236,9 @@ export const TRANSLATION_KEYS = [
   // Многосоставный транспорт (ADR 026, contract 0.16.0) — движок уже эмитирует этот код
   // (packages/engine/src/validation/codes.ts), словари его не несли (финальное ревью p3p, находка 4).
   'ERR_INVALID_COMPARTMENTS',
+  // Дубль cargo.id (contract 0.18.0, LKWkalk-p3p.15): движок группирует размещения и остатки по
+  // cargoTypeId, поэтому два груза с одним id портят счётчики друг друга.
+  'ERR_DUPLICATE_CARGO_ID',
 
   // Manual layout edits (contract 0.12.0, ADR 019)
   'ERR_EDIT_NO_STACK',

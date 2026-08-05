@@ -50,6 +50,25 @@ function compartmentErrors(vehicle: Vehicle): EngineError[] {
   return [];
 }
 
+/** Дубли `cargo.id`. Движок группирует placements/unplaced по `cargoTypeId` (`getLayoutReport`,
+ *  колонки метрик, остатки упаковщика), поэтому второй элемент с тем же id молча портит счётчики
+ *  первого. Одна ошибка на КАЖДЫЙ задвоенный id, а не на каждое повторное вхождение: адрес у
+ *  вхождений общий, а владельцу нужно увидеть все сломанные id за один прогон. Сравнение точное,
+ *  без `trim`: «epal1» и « epal1 » — разные ключи группировки, они работают корректно. */
+function duplicateCargoIdErrors(cargo: readonly CargoType[]): EngineError[] {
+  const counts = new Map<string, number>();
+  for (const c of cargo) counts.set(c.id, (counts.get(c.id) ?? 0) + 1);
+  const errors: EngineError[] = [];
+  const emitted = new Set<string>();
+  for (const c of cargo) {
+    const count = counts.get(c.id) ?? 0;
+    if (count < 2 || emitted.has(c.id)) continue;
+    emitted.add(c.id);
+    errors.push({ code: 'ERR_DUPLICATE_CARGO_ID', details: { cargoTypeId: c.id, count } });
+  }
+  return errors;
+}
+
 /**
  * Validate a Load against api-contract.md 0.1.0. Returns an empty array for a valid load,
  * otherwise one EngineError per violation. The engine returns codes only — no display text.
@@ -75,6 +94,10 @@ export function validateLoad(load: Load): EngineError[] {
   if (cargo.length === 0) {
     errors.push({ code: 'ERR_EMPTY_LOAD' });
   }
+
+  // Порядок фиксирован: сначала претензии к кузову и к заявке целиком, потом к отдельным строкам —
+  // от него зависит, к какой строке прыгает «Рассчитать» (firstError на стороне UI).
+  errors.push(...duplicateCargoIdErrors(cargo));
 
   for (const c of cargo) {
     const dimsValid =

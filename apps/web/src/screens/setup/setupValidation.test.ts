@@ -255,3 +255,29 @@ describe('коды движка переводимы', () => {
     for (const code of VALIDATION_ERROR_CODES) expect(TRANSLATION_KEYS).toContain(code);
   });
 });
+
+// Дубль cargo.id (LKWkalk-p3p.15): испорченный черновик в localStorage — единственный путь, каким
+// две строки одного id доезжают до движка из интерфейса (обычно id = crypto.randomUUID()).
+describe('ERR_DUPLICATE_CARGO_ID на экране', () => {
+  it('две строки с одним id дают адресуемую ошибку движка', () => {
+    const msgs = allMessages([order([pos(), pos({ name: 'Копия' })])], vehicle);
+    expect(msgs.find((m) => m.code === 'ERR_DUPLICATE_CARGO_ID')).toMatchObject({
+      level: 'error',
+      where: { orderKey: 'o1', positionId: 'p1' },
+    });
+  });
+
+  it('«Рассчитать» ведёт к этой строке: у первой ошибки есть адрес', () => {
+    const msgs = allMessages([order([pos(), pos({ name: 'Копия' })])], vehicle);
+    expect(firstError(msgs)).toMatchObject({ code: 'ERR_DUPLICATE_CARGO_ID' });
+  });
+
+  // Принятая граница (спека §3): локальная ошибка строки глушит коды движка по ней же, поэтому
+  // задвоенная И недозаполненная строка покажет «укажите размеры». Расчёт всё равно заблокирован —
+  // молчаливого успеха нет; после дозаполнения строки код о дубле проявится.
+  it('локальная ошибка той же строки глушит код о дубле, но расчёт остаётся заблокирован', () => {
+    const msgs = allMessages([order([pos({ length: '' }), pos({ name: 'Копия' })])], vehicle);
+    expect(msgs.some((m) => m.code === 'ERR_DUPLICATE_CARGO_ID')).toBe(false);
+    expect(msgs.some((m) => m.code === 'setup.msg.dimsMissing' && m.level === 'error')).toBe(true);
+  });
+});
