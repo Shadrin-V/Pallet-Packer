@@ -383,7 +383,7 @@ describe('resolveGroupDrop', () => {
 
       expect(r.ok).toBe(false);
       expect(r.error?.code).toBe('ERR_EDIT_FORK_ACCESS');
-      expect(r.error?.details).toMatchObject({ orientation: 'wlh', loadingMode: 'rear' });
+      expect(r.error?.details).toMatchObject({ cargoTypeId: 'p', orientation: 'wlh', loadingMode: 'rear' });
     });
   }
 });
