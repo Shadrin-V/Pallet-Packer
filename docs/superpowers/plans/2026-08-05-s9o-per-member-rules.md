@@ -25,8 +25,9 @@
   нет; правило действует всё равно).
 - Записи в `CHANGELOG` не делается: ни контракта, ни поведения, ни пользовательского эффекта.
 - Единицы — целые миллиметры.
-- Комментарии и имена тестов: код и идентификаторы по-английски, пояснительные комментарии — как в
-  соседних тестах файла (смешанные ru/en, ru для объяснения «почему»).
+- Комментарии и имена тестов: код и идентификаторы по-английски; имена тестов и пояснительные
+  комментарии — как в соседних тестах файла (файл уже смешивает ru/en в именах `it(...)`, например
+  `resolveDrop.test.ts:421`, `:593`; ru — обычно для объяснения «почему»).
 - Гейты запускаются из корня репозитория: `npm test`, `npm run typecheck`, `npm run lint`. У
   воркспейсов скрипта `test` НЕТ. Точечный прогон:
   `npm test -- packages/engine/src/packing/resolveDrop.test.ts`.
@@ -68,7 +69,7 @@
 - Produces: `mixedOrientationPair(order: 'AB' | 'BA'): { load: Load; layout: Layout; refs: StackRef[] }`
   — фикстура, которой пользуются задачи 2 и 3.
 
-- [ ] **Step 1: Написать фикстуру и контрольный тест**
+- [x] **Step 1: Написать фикстуру и контрольный тест**
 
 Вставить в `packages/engine/src/packing/resolveDrop.test.ts` после теста
 `'refuses when a member stands in an orientation the rotation rule now forbids (v1m)'`:
@@ -114,7 +115,7 @@
   });
 ```
 
-- [ ] **Step 2: Прогнать тест**
+- [x] **Step 2: Прогнать тест**
 
 Run: `npm test -- packages/engine/src/packing/resolveDrop.test.ts`
 Expected: PASS, включая новый тест `не запрещает законной паре в разных ориентациях остаться на месте (s9o)`.
@@ -123,12 +124,12 @@ Expected: PASS, включая новый тест `не запрещает за
 надо фикстуру, а не ожидание. Дальше по плану идти нельзя: на нелегальной фикстуре отказы задач 2–3
 ничего не докажут.
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
 Expected: 0 ошибок. (vitest типы не проверяет — этот шаг обязателен.)
 
-- [ ] **Step 4: Коммит**
+- [x] **Step 4: Коммит**
 
 ```bash
 git add packages/engine/src/packing/resolveDrop.test.ts
@@ -153,10 +154,10 @@ git commit -m "test(engine): фикстура пары колонн в разн�
 (`packages/engine/src/model/orientation.ts:17`). Колонна A стоит в `'lwh'` — законна; колонна B в
 `'wlh'` — нарушает. Отказ формируется как
 `err('ERR_EDIT_ROTATION', { cargoTypeId, orientation, rotation })`
-(`resolveDrop.ts:299`), а `EngineError` — это `{ code, details? }`
+(`resolveDrop.ts:302`), а `EngineError` — это `{ code, details? }`
 (`packages/engine/src/model/types.ts:142`).
 
-- [ ] **Step 1: Написать два экземпляра теста**
+- [x] **Step 1: Написать два экземпляра теста**
 
 ```ts
   // Прицел {0, 0} во всех негативных сценариях ниже: «остаться на месте» законно геометрически,
@@ -180,7 +181,7 @@ git commit -m "test(engine): фикстура пары колонн в разн�
   }
 ```
 
-- [ ] **Step 2: Прогнать точечно**
+- [x] **Step 2: Прогнать точечно**
 
 Run: `npm test -- packages/engine/src/packing/resolveDrop.test.ts`
 Expected: PASS, оба новых экземпляра зелёные.
@@ -188,12 +189,12 @@ Expected: PASS, оба новых экземпляра зелёные.
 Красный экземпляр `BA` при зелёном `AB` (или наоборот) означает, что продкод НЕ обходит всех — это
 находка о продкоде, а не о тесте: остановиться и доложить, не «чинить» ожидание.
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
 Expected: 0 ошибок.
 
-- [ ] **Step 4: Коммит**
+- [x] **Step 4: Коммит**
 
 ```bash
 git add packages/engine/src/packing/resolveDrop.test.ts
@@ -217,9 +218,9 @@ git commit -m "test(engine): rotation судится по каждой учас�
 'length')` даёт `'lwh'` (`packages/engine/src/model/orientation.ts:45`). A в `'lwh'` — законна, B в
 `'wlh'` — нарушает. Отказ:
 `err('ERR_EDIT_FORK_ACCESS', { cargoTypeId, orientation, loadingMode, forkAxis })`
-(`resolveDrop.ts:310`).
+(`resolveDrop.ts:313`).
 
-- [ ] **Step 1: Написать два экземпляра теста**
+- [x] **Step 1: Написать два экземпляра теста**
 
 ```ts
   for (const order of ['AB', 'BA'] as const) {
@@ -245,7 +246,7 @@ git commit -m "test(engine): rotation судится по каждой учас�
   }
 ```
 
-- [ ] **Step 2: Прогнать точечно**
+- [x] **Step 2: Прогнать точечно**
 
 Run: `npm test -- packages/engine/src/packing/resolveDrop.test.ts`
 Expected: PASS, оба новых экземпляра зелёные.
@@ -253,12 +254,12 @@ Expected: PASS, оба новых экземпляра зелёные.
 Если код ошибки пришёл `ERR_EDIT_ROTATION` вместо `ERR_EDIT_FORK_ACCESS` — значит `rotation` в
 `after` случайно ужесточили: вернуть `'yawOnly'`.
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
 Expected: 0 ошибок.
 
-- [ ] **Step 4: Коммит**
+- [x] **Step 4: Коммит**
 
 ```bash
 git add packages/engine/src/packing/resolveDrop.test.ts
@@ -270,7 +271,7 @@ git commit -m "test(engine): forkAccess судится по каждой уча�
 ### Task 4: мутационная приёмка и гейты
 
 **Files:**
-- Temporarily modify (и обязательно откатить): `packages/engine/src/packing/resolveDrop.ts:290-321`
+- Temporarily modify (и обязательно откатить): `packages/engine/src/packing/resolveDrop.ts:290-324`
 - Modify: `docs/superpowers/plans/2026-08-05-s9o-per-member-rules.md` (вписать фактическое число
   тестов набора)
 
@@ -281,7 +282,7 @@ git commit -m "test(engine): forkAccess судится по каждой уча�
 Это и есть критерий приёмки задачи. Зелёный прогон сам по себе не доказывает ничего: набор был
 зелёным и ДО работы.
 
-- [ ] **Step 1: Мутация M1 — судить только первую участницу**
+- [x] **Step 1: Мутация M1 — судить только первую участницу**
 
 В `resolveGroupDrop` заменить обход так, чтобы правила `rotation` и `forkAccess` проверялись только
 для `unique[0]`, а для остальных участниц только считался footprint. Прогнать:
@@ -298,7 +299,7 @@ Expected: FAIL — краснеют экземпляры `порядок AB` о�
 Оба `— порядок BA (s9o)` остались зелёными, как и предсказано (там нарушитель и есть
 `unique[0]`). Совпадает с ожиданием.
 
-- [ ] **Step 2: Откатить M1 и проверить зелень**
+- [x] **Step 2: Откатить M1 и проверить зелень**
 
 ```bash
 git checkout -- packages/engine/src/packing/resolveDrop.ts
@@ -306,7 +307,7 @@ npm test -- packages/engine/src/packing/resolveDrop.test.ts
 ```
 Expected: PASS.
 
-- [ ] **Step 3: Мутация M2 — проверять каждый `cargoTypeId` один раз**
+- [x] **Step 3: Мутация M2 — проверять каждый `cargoTypeId` один раз**
 
 Завести в цикле `const seenTypes = new Set<string>()` и пропускать проверки `rotation`/`forkAccess`
 для типа, который уже встречался. Прогнать:
@@ -325,7 +326,7 @@ Expected: FAIL — краснеют экземпляры `порядок AB`.
 `— порядок BA (s9o)` остались зелёными. Подтверждает вырождение M2 в M1-поведение на
 однотипной фикстуре, как и предсказано.
 
-- [ ] **Step 4: Откатить M2 и проверить зелень**
+- [x] **Step 4: Откатить M2 и проверить зелень**
 
 ```bash
 git checkout -- packages/engine/src/packing/resolveDrop.ts
@@ -333,7 +334,7 @@ npm test -- packages/engine/src/packing/resolveDrop.test.ts
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Мутация M3 — судить только последнюю участницу**
+- [x] **Step 5: Мутация M3 — судить только последнюю участницу**
 
 Проверять `rotation`/`forkAccess` только для `unique[unique.length - 1]`. Прогнать:
 
@@ -346,7 +347,7 @@ Expected: FAIL — краснеют экземпляры `порядок BA` о�
 
 Оба `— порядок AB (s9o)` остались зелёными, как и предсказано. Совпадает с ожиданием.
 
-- [ ] **Step 6: Откатить M3 и убедиться, что продкод не изменён**
+- [x] **Step 6: Откатить M3 и убедиться, что продкод не изменён**
 
 ```bash
 git checkout -- packages/engine/src/packing/resolveDrop.ts
@@ -354,19 +355,33 @@ git status --short packages/engine/src/packing/resolveDrop.ts
 ```
 Expected: пустой вывод — продкод не изменён ни на строку.
 
-- [ ] **Step 7: Проверить, ЧТО именно краснело**
+- [x] **Step 7: Проверить, ЧТО именно краснело**
 
 По записям шагов 1, 3, 5: упавшие тесты обязаны быть новыми тестами `s9o` в
 `resolveDrop.test.ts`. Перехват мутации в чужом файле (например, в `edit.test.ts` на фикстуре без
 смешанных ориентаций) доказательством про предмет этой работы НЕ является. Если новые тесты
 мутацию не поймали, а поймал чужой — приёмка не пройдена: возвращаться к фикстуре.
 
-**Проверено:** во всех трёх мутациях (шаги 1, 3, 5) падали ИСКЛЮЧИТЕЛЬНО экземпляры новых `(s9o)`
-тестов в `resolveDrop.test.ts` (по 2 из 36 в каждом прогоне), все остальные 34 теста файла (включая
-`v1m` и остальные `resolveGroupDrop`/`resolveDrop`/`resolveSlide`) оставались зелёными. Ни разу
-мутацию не поймал тест из другого файла.
+**Проверено (файл-скоуп):** во всех трёх мутациях (шаги 1, 3, 5) падали ИСКЛЮЧИТЕЛЬНО экземпляры
+новых `(s9o)` тестов в `resolveDrop.test.ts` (по 2 из 36 в каждом прогоне), все остальные 34 теста
+файла (включая `v1m` и остальные `resolveGroupDrop`/`resolveDrop`/`resolveSlide`) оставались
+зелёными.
 
-- [ ] **Step 8: Полные гейты с корня**
+**Проверено (полный набор, ретроактивно после финального ревью s9o):** утверждение «ни разу
+мутацию не поймал тест из другого файла» изначально было записано без прогона полного набора — все
+три прогона шагов 1/3/5 были файл-скоупные (`npm test -- packages/engine/src/packing/resolveDrop.test.ts`).
+Это незаработанное утверждение. Чтобы его заработать, мутация M1 была переприменена побайтово из
+`mutation-M1.log` и прогнана полным набором с корня (`npm test`); вербатимный вывод сохранён в
+`.superpowers/sdd/2026-08-05-s9o-per-member-rules/mutation-M1-fullsuite.log` (скретч-директория, в
+git не коммитится). Результат: `Test Files 1 failed | 86 passed (87)`, `Tests 2 failed | 1132 passed
+(1134)`. Упал ровно один файл — `resolveDrop.test.ts` — и в нём ровно те же два экземпляра, что и в
+файл-скоупном прогоне (`… rotation rule — порядок AB (s9o)`, `… fork access … — порядок AB (s9o)`).
+Ни один тест ни в одном из остальных 86 файлов не покраснел. Мутация отменена
+(`git checkout -- packages/engine/src/packing/resolveDrop.ts`), `git status --short` на файл — пуст.
+M2 и M3 полным набором НЕ перепрогонялись: результат M1 не преподнёс сюрприза (чужой файл не
+покраснел), поэтому по правилу этой находки достаточно одной полносоставной проверки.
+
+- [x] **Step 8: Полные гейты с корня**
 
 ```bash
 npm test
@@ -383,7 +398,7 @@ Expected: тесты — всё зелено; typecheck — 0; lint — 0.
 > `Tests 1134 passed (1134)`). typecheck — 0 ошибок по всем 5 воркспейсам; lint — 0 ошибок
 > (`eslint .` завершился без вывода).
 
-- [ ] **Step 9: Коммит**
+- [x] **Step 9: Коммит**
 
 ```bash
 git add docs/superpowers/plans/2026-08-05-s9o-per-member-rules.md
