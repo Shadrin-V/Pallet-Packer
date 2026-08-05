@@ -115,9 +115,10 @@ export function setupMessages(orders: OrderState[], vehicle: Vehicle): SetupMess
  *  целиком, полутонов у него нет. Ошибка про груз адресуется строке через карту `toCargoList`;
  *  ошибки кузова и отсеков адреса не имеют — как `volumeOver`, им некуда вести.
  *
- *  Адрес честен ровно настолько, насколько уникальны `p.id`: `loadSetup` уникальность не проверяет,
- *  и испорченный черновик с двумя одинаковыми id подсветит одну строку из двух. Чинится это не
- *  здесь, а в LKWkalk-p3p.15 (ERR_DUPLICATE_CARGO_ID в самом движке). */
+ *  Дубль `p.id` в испорченном черновике теперь сам является ошибкой движка
+ *  (`ERR_DUPLICATE_CARGO_ID`, контракт 0.18.0, LKWkalk-p3p.15), а не молчаливым состоянием. Адрес у
+ *  такой ошибки ведёт к ПОСЛЕДНЕМУ вхождению — `addressOf` хранит один адрес на id; чинится удалением
+ *  любой из двух строк, поэтому уточнять адрес незачем. */
 export function engineMessages(orders: OrderState[], vehicle: Vehicle): SetupMessage[] {
   const { cargo, addressOf } = toCargoList(orders);
   const byId = new Map(cargo.map((c) => [c.id, c] as const));
