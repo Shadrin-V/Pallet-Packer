@@ -178,8 +178,12 @@ describe('allMessages — коды движка рядом с локальным
     expect(ms.map((m) => m.code)).not.toContain('ERR_INVALID_DIMENSION');
   });
 
+  // Шаг должен реально довести груз до ветки движка: nestable требует state === 'verschachtelt' И
+  // step > 0 (toCargo), а validateLoad проверяет диапазон шага только когда nesting.nestable истинно.
+  // Пустой шаг (state: 'verschachtelt' без nestStepPairwise) даёт nestable: false — движок тогда
+  // молчит по построению, а не благодаря подавлению в allMessages (находка ревью, round 1).
   it('неверный шаг вложения → локальный stepInvalid, ERR_INVALID_NESTING подавлен', () => {
-    const ms = allMessages([order([pos({ state: 'verschachtelt' })])], vehicle);
+    const ms = allMessages([order([pos({ state: 'verschachtelt', nestStepPairwise: 5000 })])], vehicle);
     expect(ms.map((m) => m.code)).toContain('setup.msg.stepInvalid');
     expect(ms.map((m) => m.code)).not.toContain('ERR_INVALID_NESTING');
   });
