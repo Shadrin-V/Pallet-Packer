@@ -22,9 +22,9 @@ export function InfoHint({
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         onBlur={() => setOpen(false)}
-        className="grid h-4 w-4 place-items-center rounded-full border border-line-strong text-[10px] font-semibold leading-none text-muted hover:border-brand hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint"
+        className="grid h-4 w-4 place-items-center rounded-full border border-line-strong text-label font-semibold leading-none tracking-normal text-muted hover:border-brand hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint"
       >
-        i
+        <span aria-hidden="true">i</span>
       </button>
       {open && (
         <span
@@ -78,7 +78,7 @@ export function Measure({
           onChange(raw === '' ? '' : Number(raw));
         }}
       />
-      <span className="select-none px-2 pl-0.5 text-[10.5px] text-faint">{unit}</span>
+      <span className="select-none px-2 pl-0.5 text-unit text-faint">{unit}</span>
     </span>
   );
 }

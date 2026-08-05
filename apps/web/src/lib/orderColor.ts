@@ -10,7 +10,8 @@ export interface OrderColorToken {
   /** CSS custom property for the series colour, e.g. "var(--s1)". */
   colorVar: string;
   /** Concrete hex mirror of the series colour (theme.css --s1..--s8), for the rare context where a
-   *  CSS var() paint does not resolve. Prefer `colorVar` everywhere else. Keep in sync with theme.css. */
+   *  CSS var() paint does not resolve. Prefer `colorVar` everywhere else. Synchronisation with
+   *  theme.css is enforced by apps/web/src/series-palette.test.ts. */
   hex: string;
 }
 

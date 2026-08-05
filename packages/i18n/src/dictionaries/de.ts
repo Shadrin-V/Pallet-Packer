@@ -6,6 +6,10 @@ export const de: Dictionary = {
   'app.title': 'Ladungsplaner',
   'app.subtitle': 'LKW-Beladung planen',
 
+  // Двуязычно намеренно: носитель другого языка должен найти переключатель, не читая текущую
+  // локаль. Значение одинаково в de и ru — это не забытый перевод (LKWkalk-y5j, решение 7).
+  'a11y.localeSwitch': 'Sprache / Язык',
+
   'setup.orders': 'Aufträge',
   'setup.addOrder': 'Auftrag hinzufügen',
   'setup.addPosition': 'Position hinzufügen',

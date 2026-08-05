@@ -6,6 +6,9 @@ export const ru: Dictionary = {
   'app.title': 'Ladungsplaner',
   'app.subtitle': 'Планирование загрузки грузовика',
 
+  // Двуязычно намеренно, значение совпадает с de — см. комментарий там же.
+  'a11y.localeSwitch': 'Sprache / Язык',
+
   'setup.orders': 'Заказы',
   'setup.addOrder': 'Добавить заказ',
   'setup.addPosition': 'Добавить позицию',

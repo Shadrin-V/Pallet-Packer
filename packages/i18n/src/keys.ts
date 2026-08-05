@@ -7,6 +7,9 @@ export const TRANSLATION_KEYS = [
   'app.title',
   'app.subtitle',
 
+  // Доступные имена контролов (не видимый текст)
+  'a11y.localeSwitch',
+
   // Setup screen (order/position editor)
   'setup.orders',
   'setup.addOrder',
