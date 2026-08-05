@@ -228,6 +228,8 @@ export const de: Dictionary = {
   ERR_UNKNOWN_VEHICLE: 'Fahrzeug wurde im Bestand nicht gefunden.',
   ERR_INVALID_COMPARTMENTS:
     'Die Laderaumabschnitte sind ungültig: Längen müssen positive ganze Zahlen sein, Positionen ganze Zahlen ab 0, aufsteigend und ohne Überschneidung (eine Kupplungslücke dazwischen ist erlaubt), jede Abschnitts-ID muss eindeutig sein, und der letzte Abschnitt muss genau am Fahrzeugende enden.',
+  ERR_DUPLICATE_CARGO_ID:
+    'Zwei Ladungspositionen haben dieselbe interne Kennung. Bitte die Zeile löschen und neu anlegen.',
 
   ERR_EDIT_NO_STACK: 'Dieser Stapel wurde nicht gefunden.',
   ERR_EDIT_OVERLAP: 'Dort steht bereits ein Stapel.',
