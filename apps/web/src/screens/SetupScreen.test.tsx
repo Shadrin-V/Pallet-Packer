@@ -830,7 +830,10 @@ describe('коды валидации движка на экране (p3p.16)', 
     });
     await userEvent.click(berechnenHeader());
     expect(onCalculate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Artikel')).toHaveValue('EPAL 1');
+    // Переход к строке (goTo) уводит фокус в её поле артикула — toHaveValue истинно и без всякой
+    // навигации (поле принадлежит строке, а не панели), поэтому проверяем именно фокус.
+    // waitFor: фокус ставится в requestAnimationFrame (см. аналогичную проверку выше в этом файле).
+    await waitFor(() => expect(screen.getByLabelText('Artikel')).toHaveFocus());
   });
 
   it('текст кода движка виден в панели', () => {
