@@ -204,9 +204,7 @@ describe('ERR_DUPLICATE_CARGO_ID (contract 0.18.0)', () => {
   // Дубль ничего не говорит о габаритах, поэтому построчные коды остаются.
   it('does not suppress per-cargo codes on the duplicated rows', () => {
     const load = baseLoad([baseCargo(), baseCargo({ height: 0 })]);
-    expect(codes(load)).toEqual(
-      expect.arrayContaining(['ERR_DUPLICATE_CARGO_ID', 'ERR_INVALID_DIMENSION']),
-    );
+    expect(codes(load)).toEqual(['ERR_DUPLICATE_CARGO_ID', 'ERR_INVALID_DIMENSION']);
   });
 
   it('says nothing about a load whose ids are unique', () => {
