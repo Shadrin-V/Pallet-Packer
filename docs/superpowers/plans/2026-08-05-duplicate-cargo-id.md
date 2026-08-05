@@ -15,7 +15,7 @@
 - **Порядок задач менять нельзя.** Кросс-пакетный гейт `apps/web/src/screens/setup/setupValidation.test.ts:254` требует, чтобы каждый член `VALIDATION_ERROR_CODES` был в `TRANSLATION_KEYS`. Поэтому ключ локали (задача 2) добавляется **до** кода в движке (задача 3), иначе задача 3 закончится с красным гейтом.
 - **Документация раньше кода** (CLAUDE.md): контракт и таблица кодов правятся в задаче 1.
 - Единицы — целые миллиметры (ADR 002). Пользовательских строк в коде нет, только ключи локалей (ADR 006).
-- Гейты гоняются **с корня репозитория**, не workspace-scoped: `npm test`, `npm run typecheck`, `npm run lint`.
+- Гейты гоняются **с корня репозитория**: `npm test`, `npm run typecheck`, `npm run lint`. У воркспейсов скрипта `test` НЕТ — vitest объявлен только в корневом `package.json`, поэтому `npm test --workspace <name>` падает с `Missing script: "test"`. Точечный прогон — путём: `npm test -- <путь к файлу или каталогу>`.
 - Пакеты `@shadrin-v/i18n` и `@shadrin-v/engine` резолвятся в `dist`. После правок в них **обязательна пересборка**, иначе `apps/web` тестирует старый код:
   ```bash
   npm run build --workspace @shadrin-v/i18n && npm run build --workspace @shadrin-v/engine
@@ -129,7 +129,7 @@ git commit -m "docs(contract): ERR_DUPLICATE_CARGO_ID + контракт 0.18.0 
 - [ ] **Step 2: Прогнать — тест должен упасть**
 
 ```bash
-npm test --workspace @shadrin-v/i18n
+npm test -- packages/i18n
 ```
 Ожидание: FAIL — фактический список ключей не содержит `ERR_DUPLICATE_CARGO_ID`.
 
@@ -162,13 +162,13 @@ npm test --workspace @shadrin-v/i18n
 - [ ] **Step 5: Прогнать — тесты пакета зелёные**
 
 ```bash
-npm test --workspace @shadrin-v/i18n && npm run typecheck
+npm test -- packages/i18n && npm run typecheck
 ```
 Ожидание: PASS. Гейты «словарь определяет ровно канонические ключи» и «у каждого ключа непустой текст в de и ru» подтверждают, что ключ есть в обоих словарях.
 
 - [ ] **Step 6: Мутационное доказательство**
 
-Убрать строку `ERR_DUPLICATE_CARGO_ID: …` из `ru.ts`, прогнать `npm test --workspace @shadrin-v/i18n` — ожидание FAIL; вернуть, прогнать снова — ожидание PASS. Вывод обеих команд приложить к отчёту.
+Убрать строку `ERR_DUPLICATE_CARGO_ID: …` из `ru.ts`, прогнать `npm test -- packages/i18n` — ожидание FAIL; вернуть, прогнать снова — ожидание PASS. Вывод обеих команд приложить к отчёту.
 
 - [ ] **Step 7: Commit**
 
@@ -250,7 +250,7 @@ describe('ERR_DUPLICATE_CARGO_ID (contract 0.18.0)', () => {
 - [ ] **Step 2: Прогнать — тесты должны упасть**
 
 ```bash
-npm test --workspace @shadrin-v/engine -- validate
+npm test -- packages/engine/src/validation/validate.test.ts
 ```
 Ожидание: FAIL. Пять тестов падают на отсутствии кода; тест про пробелы и тест про уникальные id проходят и сейчас (они стерегут отсутствие ложных срабатываний, а не наличие кода).
 
@@ -298,13 +298,13 @@ function duplicateCargoIdErrors(cargo: readonly CargoType[]): EngineError[] {
 - [ ] **Step 5: Прогнать тесты движка**
 
 ```bash
-npm test --workspace @shadrin-v/engine
+npm test -- packages/engine
 ```
 Ожидание: PASS, включая шесть новых.
 
 - [ ] **Step 6: Мутационное доказательство**
 
-Закомментировать строку `errors.push(...duplicateCargoIdErrors(cargo));` → `npm test --workspace @shadrin-v/engine -- validate` → ожидание FAIL на пяти тестах; вернуть → прогнать → ожидание PASS. Вывод обеих команд приложить к отчёту.
+Закомментировать строку `errors.push(...duplicateCargoIdErrors(cargo));` → `npm test -- packages/engine/src/validation/validate.test.ts` → ожидание FAIL на пяти тестах; вернуть → прогнать → ожидание PASS. Вывод обеих команд приложить к отчёту.
 
 - [ ] **Step 7: Бампнуть версию контракта**
 
@@ -376,13 +376,13 @@ describe('ERR_DUPLICATE_CARGO_ID на экране', () => {
 
 ```bash
 npm run build --workspace @shadrin-v/i18n && npm run build --workspace @shadrin-v/engine
-npm test --workspace @app/web -- setupValidation
+npm test -- apps/web/src/screens/setup/setupValidation.test.ts
 ```
 Ожидание: PASS (код движка уже есть после задачи 3). Если FAIL — не собран `dist`; собрать и повторить.
 
 - [ ] **Step 3: Мутационное доказательство**
 
-В `packages/engine/src/validation/validate.ts` закомментировать `errors.push(...duplicateCargoIdErrors(cargo));`, пересобрать движок, прогнать `npm test --workspace @app/web -- setupValidation` — ожидание FAIL на первых двух новых тестах (третий стережёт глушение и остаётся зелёным — так и должно быть) (это доказывает, что тест проверяет доставку кода, а не сам себя); вернуть строку, пересобрать, прогнать — ожидание PASS. Вывод обеих команд приложить к отчёту.
+В `packages/engine/src/validation/validate.ts` закомментировать `errors.push(...duplicateCargoIdErrors(cargo));`, пересобрать движок, прогнать `npm test -- apps/web/src/screens/setup/setupValidation.test.ts` — ожидание FAIL на первых двух новых тестах (третий стережёт глушение и остаётся зелёным — так и должно быть) (это доказывает, что тест проверяет доставку кода, а не сам себя); вернуть строку, пересобрать, прогнать — ожидание PASS. Вывод обеих команд приложить к отчёту.
 
 - [ ] **Step 4: Снять устаревшую оговорку в комментарии**
 
