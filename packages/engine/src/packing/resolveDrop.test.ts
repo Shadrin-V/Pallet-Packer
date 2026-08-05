@@ -305,6 +305,45 @@ describe('resolveGroupDrop', () => {
     expect(r.ok).toBe(false);
     expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
   });
+
+  // LKWkalk-s9o: rotation и forkAccess — свойства ТИПА груза, а нарушение зависит от ОРИЕНТАЦИИ
+  // колонны. Пара колонн ОДНОГО типа в РАЗНЫХ ориентациях — единственная фикстура, на которой
+  // мутация «проверить каждый cargoTypeId один раз» отличима от корректного кода: на двух разных
+  // типах такой дедуп законен и прошёл бы незамеченным. Смесь ориентаций достижима вживую —
+  // rotateStack (edit.ts:233) флипает одну колонну на месте, а правило типа меняют уже потом.
+  //
+  // Порядок refs параметризован: нарушителем (колонна в 'wlh') побывает и первая участница, и
+  // последняя. Один только порядок [A, B] доказывал бы «судят не первую», но не «судят каждую» —
+  // мутация «судить только unique.at(-1)» его пережила бы.
+  const mixedOrientationPair = (
+    order: 'AB' | 'BA',
+  ): { load: Load; layout: Layout; refs: StackRef[] } => {
+    const load: Load = { vehicle: V, cargo: [{ ...pallet, quantity: 2 }] };
+    const a = at(0, 0); // 'lwh' → footprint 1200 × 800
+    const b = { ...at(4000, 0), orientation: 'wlh' as const }; // footprint 800 × 1200
+    const refs: StackRef[] = [
+      { cargoTypeId: 'p', x: a.x, y: a.y },
+      { cargoTypeId: 'p', x: b.x, y: b.y },
+    ];
+    return {
+      load,
+      layout: layoutOf([a, b], 0),
+      refs: order === 'AB' ? refs : [refs[1], refs[0]],
+    };
+  };
+
+  it('не запрещает законной паре в разных ориентациях остаться на месте (s9o)', () => {
+    // Контроль на ложный отказ: без него тесты ниже неотличимы от «фикстура нелегальна сама по
+    // себе». Обе колонны в габаритах и не пересекаются, обе выбраны — значит препятствий нет, и
+    // нулевая дельта обязана пройти.
+    const { load, layout, refs } = mixedOrientationPair('AB');
+
+    const r = resolveGroupDrop(load, layout, refs, { dx: 0, dy: 0 });
+
+    expect(r.ok).toBe(true);
+    expect(r.dx).toBe(0);
+    expect(r.dy).toBe(0);
+  });
 });
 
 // LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
