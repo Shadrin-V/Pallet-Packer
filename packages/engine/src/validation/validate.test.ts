@@ -163,3 +163,53 @@ describe('валидация отсеков', () => {
     ).toContain('ERR_INVALID_COMPARTMENTS');
   });
 });
+
+// Дубли cargo.id (LKWkalk-p3p.15, контракт 0.18.0). Движок группирует placements/unplaced по
+// cargoTypeId, поэтому второй элемент с тем же id молча портит счётчики первого.
+describe('ERR_DUPLICATE_CARGO_ID (contract 0.18.0)', () => {
+  it('rejects two cargo entries sharing an id, with the occurrence count', () => {
+    const load = baseLoad([baseCargo(), baseCargo({ name: 'EPAL 1 (Kopie)' })]);
+    expect(validateLoad(load)).toEqual([
+      { code: 'ERR_DUPLICATE_CARGO_ID', details: { cargoTypeId: 'epal1', count: 2 } },
+    ]);
+  });
+
+  it('reports three occurrences of one id as a single error with count 3', () => {
+    const load = baseLoad([baseCargo(), baseCargo(), baseCargo()]);
+    expect(validateLoad(load)).toEqual([
+      { code: 'ERR_DUPLICATE_CARGO_ID', details: { cargoTypeId: 'epal1', count: 3 } },
+    ]);
+  });
+
+  it('reports each duplicated id once, in order of first occurrence', () => {
+    const load = baseLoad([
+      baseCargo({ id: 'gitter' }),
+      baseCargo({ id: 'epal1' }),
+      baseCargo({ id: 'gitter' }),
+      baseCargo({ id: 'epal1' }),
+    ]);
+    expect(validateLoad(load)).toEqual([
+      { code: 'ERR_DUPLICATE_CARGO_ID', details: { cargoTypeId: 'gitter', count: 2 } },
+      { code: 'ERR_DUPLICATE_CARGO_ID', details: { cargoTypeId: 'epal1', count: 2 } },
+    ]);
+  });
+
+  // Точное сравнение, без trim: для движка id — ключ группировки как есть, «epal1» и « epal1 »
+  // дают разные колонки и разные остатки, то есть работают корректно.
+  it('treats ids differing only in whitespace as distinct', () => {
+    const load = baseLoad([baseCargo(), baseCargo({ id: ' epal1 ' })]);
+    expect(codes(load)).not.toContain('ERR_DUPLICATE_CARGO_ID');
+  });
+
+  // Дубль ничего не говорит о габаритах, поэтому построчные коды остаются.
+  it('does not suppress per-cargo codes on the duplicated rows', () => {
+    const load = baseLoad([baseCargo(), baseCargo({ height: 0 })]);
+    expect(codes(load)).toEqual(
+      expect.arrayContaining(['ERR_DUPLICATE_CARGO_ID', 'ERR_INVALID_DIMENSION']),
+    );
+  });
+
+  it('says nothing about a load whose ids are unique', () => {
+    expect(codes(baseLoad([baseCargo(), baseCargo({ id: 'gitter' })]))).toEqual([]);
+  });
+});

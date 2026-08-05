@@ -9,6 +9,7 @@ export const VALIDATION_ERROR_CODES = [
   'ERR_INVALID_ROTATION',
   'ERR_EMPTY_LOAD',
   'ERR_INVALID_COMPARTMENTS',
+  'ERR_DUPLICATE_CARGO_ID',
 ] as const;
 
 export type ValidationErrorCode = (typeof VALIDATION_ERROR_CODES)[number];
