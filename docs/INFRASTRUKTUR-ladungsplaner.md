@@ -144,7 +144,7 @@ Docker `HEALTHCHECK` бьёт `127.0.0.1` внутри контейнера — 
 ## 7. Проверка после деплоя (smoke)
 
 ```bash
-curl -s https://ladungsplaner.holz-schaefer.de/api/health          # {"status":"ok","contract":"0.16.0"}
+curl -s https://ladungsplaner.holz-schaefer.de/api/health          # {"status":"ok","contract":"0.17.0"}
 curl -s https://ladungsplaner.holz-schaefer.de/                     # отдаёт SPA (title Ladungsplaner)
 curl -s https://ladungsplaner.holz-schaefer.de/api/orders/SO-1      # 503 ERR_ERPNEXT_UNCONFIGURED (пока нет ключей)
 ```
