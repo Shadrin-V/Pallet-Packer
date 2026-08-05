@@ -484,20 +484,30 @@ describe('resolveGroupDrop — стенки каждого отсека (p3p)', 
   });
 
   // ADR 020 для группы: если resolveGroupDrop сказала ok, moveStacks по этой дельте не откажет.
-  it('never returns ok for a group delta moveStacks would refuse (compartment gap swept)', () => {
-    const { load, layout, refs } = singleAtWall();
-    for (let dx = -1600; dx <= 4600; dx += 100) {
-      for (const dy of [0, 400, 800, 1200]) {
-        const r = resolveGroupDrop(load, layout, refs, { dx, dy });
-        if (!r.ok) continue;
-        const moved = moveStacks(load, layout, refs, r.dx, r.dy);
-        expect(
-          moved.error,
-          `resolveGroupDrop said ok at dx=${r.dx},dy=${r.dy} (aim ${dx},${dy}) but moveStacks refused`,
-        ).toBeUndefined();
+  // Прогоняется по ОБЕИМ фикстурам: у группы из одной стопки `members.every(…)` вырождается в
+  // `members[0]`, поэтому одиночка этот инвариант для группы не стережёт — пару нужно гонять
+  // отдельно.
+  const sweepFixtures: [string, () => { load: Load; layout: Layout; refs: StackRef[] }][] = [
+    ['одна стопка у стенки тягача', singleAtWall],
+    ['пара в разных отсеках', () => pairAcrossBays(0, 3600)],
+  ];
+
+  for (const [name, fixture] of sweepFixtures) {
+    it(`never returns ok for a group delta moveStacks would refuse — ${name}`, () => {
+      const { load, layout, refs } = fixture();
+      for (let dx = -1600; dx <= 4600; dx += 100) {
+        for (const dy of [0, 400, 800, 1200]) {
+          const r = resolveGroupDrop(load, layout, refs, { dx, dy });
+          if (!r.ok) continue;
+          const moved = moveStacks(load, layout, refs, r.dx, r.dy);
+          expect(
+            moved.error,
+            `resolveGroupDrop said ok at dx=${r.dx},dy=${r.dy} (aim ${dx},${dy}) but moveStacks refused`,
+          ).toBeUndefined();
+        }
       }
-    }
-  });
+    });
+  }
 
   it('отказывает, когда в разрыв попадает НЕ первая участница группы', () => {
     const { load, layout, refs } = pairAcrossBays(1200, 3400);
