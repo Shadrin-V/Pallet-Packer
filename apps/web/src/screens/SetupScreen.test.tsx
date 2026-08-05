@@ -872,7 +872,11 @@ describe('коды валидации движка на экране (p3p.16)', 
     await waitFor(() => expect(screen.getByTestId('load-summary')).toHaveFocus());
   });
 
-  it('ручные правки не переспрашиваются, когда расчёт всё равно запрещён', async () => {
+  // Ревью round 1 (Important): название уточнено — эта фикстура адресуема (`where` есть), так что
+  // проверяется пара «гейт 1 (адрес) против гейта 3 (confirm)»: расчёт останавливается на первом же
+  // гейте и до hasManualEdits/confirm управление не доходит вовсе. Пара «гейт 2 (безадресная
+  // ошибка) против гейта 3» — отдельный, более хрупкий стык, и у неё свой тест ниже.
+  it('ручные правки не переспрашиваются при АДРЕСУЕМОЙ ошибке движка (гейт 1 против гейта 3)', async () => {
     const confirmSpy = vi.fn(() => true);
     vi.stubGlobal('confirm', confirmSpy);
     const onCalculate = vi.fn();
@@ -880,6 +884,25 @@ describe('коды валидации движка на экране (p3p.16)', 
       hasManualEdits: true,
       initialVehicle: train,
       initialOrders: [order('SO-1001', [position({ id: 'p1', length: 8000, rotation: 'none' })])],
+    });
+    await userEvent.click(berechnenHeader());
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onCalculate).not.toHaveBeenCalled();
+  });
+
+  // Ревью round 1 (Important, дефект брифа): тест выше не проверяет стык гейта 2 и гейта 3 —
+  // адресуемая ошибка перехватывается гейтом 1 раньше, чем дело доходит до hasManualEdits. Здесь
+  // фикстура даёт БЕЗАДРЕСНУЮ ошибку движка (сломанный отсек, длина 0 — как в тестах гейта 2 выше),
+  // и именно этот стык бриф называет местом дефекта: «переспрашивать о потере правок, когда расчёт
+  // всё равно запрещён, — дефект» (обязательный порядок гейтов, разрешение неоднозначностей №1).
+  it('ручные правки не переспрашиваются при БЕЗАДРЕСНОЙ ошибке движка (гейт 2 против гейта 3)', async () => {
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    const onCalculate = vi.fn();
+    renderSetup(onCalculate, undefined, {
+      hasManualEdits: true,
+      initialVehicle: { ...train, compartments: [{ id: 'tractor', x: 0, length: 0 }, { id: 'trailer', x: 8900, length: 7700 }] },
+      initialOrders: [order('SO-1001', [position({ id: 'p1' })])],
     });
     await userEvent.click(berechnenHeader());
     expect(confirmSpy).not.toHaveBeenCalled();
