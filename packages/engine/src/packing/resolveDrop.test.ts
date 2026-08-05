@@ -364,6 +364,28 @@ describe('resolveGroupDrop', () => {
       expect(r.error?.details).toMatchObject({ cargoTypeId: 'p', orientation: 'wlh' });
     });
   }
+
+  for (const order of ['AB', 'BA'] as const) {
+    it(`refuses when fork access pins a member to another orientation — порядок ${order} (s9o)`, () => {
+      const { load, layout, refs } = mixedOrientationPair(order);
+      // Режим погрузки и ось вил задали ПОСЛЕ расчёта: rear+length пришпиливает 'lwh', а колонна B
+      // стоит в 'wlh'. rotation остаётся 'yawOnly' НАМЕРЕННО: в цикле rotation проверяется раньше
+      // forkAccess, и при 'none' колонна B упала бы на вращении — тест доказывал бы не то правило.
+      const after: Load = {
+        ...load,
+        cargo: [
+          { ...load.cargo[0], forkAccess: 'twoSides' as const, forkAxis: 'length' as const },
+        ],
+        loadingMode: 'rear' as const,
+      };
+
+      const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe('ERR_EDIT_FORK_ACCESS');
+      expect(r.error?.details).toMatchObject({ orientation: 'wlh', loadingMode: 'rear' });
+    });
+  }
 });
 
 // LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
