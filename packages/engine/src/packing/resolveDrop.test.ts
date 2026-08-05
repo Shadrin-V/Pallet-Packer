@@ -449,6 +449,29 @@ describe('resolveGroupDrop — стенки каждого отсека (p3p)', 
     return { load, layout, refs: [{ cargoTypeId: 'c', x: 1200, y: 0 }] };
   };
 
+  /** Две участницы в РАЗНЫХ отсеках. Порядок refs — [A, B]: нарушителем во всех сценариях ниже
+   *  сделана ВТОРАЯ участница. Иначе проверка «судим только members[0]» отвергала бы дельту по той
+   *  же причине, что и корректный код, и тест не отличил бы одно от другого. */
+  const pairAcrossBays = (
+    xa: number,
+    xb: number,
+  ): { load: Load; layout: Layout; refs: StackRef[] } => {
+    const load = { vehicle: twoBays, cargo: [cube({ quantity: 8 })] };
+    const layout: Layout = {
+      ...packLoad(load),
+      placements: [atC(xa, 0), atC(xb, 0)],
+      unplaced: [{ cargoTypeId: 'c', count: 6 }],
+    };
+    return {
+      load,
+      layout,
+      refs: [
+        { cargoTypeId: 'c', x: xa, y: 0 },
+        { cargoTypeId: 'c', x: xb, y: 0 },
+      ],
+    };
+  };
+
   it('группу не телепортирует в разрыв — прицел вглубь разрыва снапится к ближней стенке прицепа', () => {
     const { load, layout, refs } = singleAtWall();
     // Дельта 2000: наивная цель x=1200+2000=3200 — внутри разрыва (2400,3400), туда нельзя. До
@@ -474,5 +497,42 @@ describe('resolveGroupDrop — стенки каждого отсека (p3p)', 
         ).toBeUndefined();
       }
     }
+  });
+
+  it('отказывает, когда в разрыв попадает НЕ первая участница группы', () => {
+    const { load, layout, refs } = pairAcrossBays(1200, 3400);
+    // A@1200 — у дальней стенки тягача, B@3400 — у ближней стенки прицепа. Дельта −1000 ставит A в
+    // [200, 1400) (законно, тягач), а B — в [2400, 3600): начало в разрыве. Ни один кандидат в
+    // допуске 600 не устраивает ОБЕИХ: ближайший (−1200, при котором A встаёт к стенке x=0) уводит
+    // B в [2200, 3400) — снова разрыв.
+    const res = resolveGroupDrop(load, layout, refs, { dx: -1000, dy: 0 });
+
+    expect(res.ok).toBe(false);
+    expect(res.error?.code).toBe('ERR_EDIT_OUT_OF_BOUNDS');
+  });
+
+  it('корректирует дельту по замыкающей участнице, а не по первой', () => {
+    const { load, layout, refs } = pairAcrossBays(0, 3600);
+    // Прицел 1200 — ровно та дельта, при которой A встаёт впритык к дальней стенке тягача. Для A она
+    // законна, для B — нет: [4800, 6000) торчит за корму прицепа (5800). Магнит обязан отступить к
+    // 1000, где к дальней стенке встаёт B, а A остаётся внутри тягача. 1000 и 1200 одинаково
+    // «впритык», поэтому 1200 проверяется первой как ближняя к прицелу — и отвергается из-за B.
+    const res = resolveGroupDrop(load, layout, refs, { dx: 1200, dy: 0 });
+
+    expect(res.ok).toBe(true);
+    expect(res.dx).toBe(1000);
+    expect(res.dy).toBe(0);
+  });
+
+  it('не запрещает группе, законно стоящей сразу в двух отсеках, остаться на месте', () => {
+    const { load, layout, refs } = pairAcrossBays(0, 3600);
+    // Контроль на ложный отказ: проверка обязана отвергать нелегальное, не запрещая легального.
+    // Краснеет, если отсек ищут один раз по первой участнице и её границами судят остальных —
+    // тогда группа, живущая в двух отсеках, не может даже остаться на месте.
+    const res = resolveGroupDrop(load, layout, refs, { dx: 0, dy: 0 });
+
+    expect(res.ok).toBe(true);
+    expect(res.dx).toBe(0);
+    expect(res.dy).toBe(0);
   });
 });
