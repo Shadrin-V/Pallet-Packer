@@ -3,7 +3,9 @@
 // positionRules и stackFormula).
 import { compartmentsOf, type Vehicle } from '@shadrin-v/engine';
 import { stepInvalid } from '../components/stackFormula';
-import { activeStep, dimsComplete, numOr0, type OrderState } from './setupState';
+import { activeStep, dimsComplete, numOr0, type OrderState, type SetupMessageWhere } from './setupState';
+
+export type { SetupMessageWhere };
 
 /** Коды сообщений = ключи локалей: строку выбирает компонент, модуль их не знает. */
 export type SetupMessageCode =
@@ -13,12 +15,6 @@ export type SetupMessageCode =
   | 'setup.msg.volumeOver'
   | 'setup.msg.zeroQuantity'
   | 'setup.msg.duplicateOrderId';
-
-/** Адрес строки: ключ заказа + id позиции — ровно то, чем экран выбирает строку (`Selection`). */
-export interface SetupMessageWhere {
-  orderKey: string;
-  positionId: string;
-}
 
 export interface SetupMessage {
   code: SetupMessageCode;

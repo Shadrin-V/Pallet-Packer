@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { calculateLayout, findGeometryViolations, type Load } from '@shadrin-v/engine';
 import { demoSetup, DEMO_VARIANTS, type DemoVariant } from './demo';
-import { toCargo } from '../screens/SetupScreen';
+import { toCargoList } from '../screens/setup/setupState';
 
 /** Rebuild the demo Load exactly as SetupScreen.handleDemo does (rear + strict, 4bj.12/4bj.13). */
 function demoLoad(): Load {
   const d = demoSetup();
   return {
     vehicle: d.vehicle,
-    cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+    cargo: toCargoList(d.orders).cargo,
     loadingMode: 'rear',
     orderGrouping: 'strict',
   };
@@ -20,7 +20,7 @@ function loadOf(variant: DemoVariant): Load {
   const d = variant.build();
   return {
     vehicle: d.vehicle,
-    cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+    cargo: toCargoList(d.orders).cargo,
     loadingMode: 'rear',
     orderGrouping: 'strict',
   };

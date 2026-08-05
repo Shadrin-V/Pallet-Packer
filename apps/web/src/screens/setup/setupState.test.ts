@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   SETUP_STORAGE_KEY, emptyOrder, emptyPosition, loadSetup, nextColorIndex, nextOrderNumber, toCargo,
+  toCargoList, type PositionState,
 } from './setupState';
 
 describe('nextOrderNumber', () => {
@@ -61,5 +62,41 @@ describe('loadSetup', () => {
   it('returns null on a corrupt draft instead of throwing', () => {
     globalThis.localStorage.setItem(SETUP_STORAGE_KEY, '{not json');
     expect(loadSetup()).toBeNull();
+  });
+});
+
+describe('toCargoList', () => {
+  /** Позиция, пригодная к расчёту: `emptyPosition()` приходит без габаритов. */
+  const p = (over: Partial<PositionState> = {}): PositionState => ({
+    ...emptyPosition(), name: 'EPAL 1', length: 1200, width: 800, height: 144, quantity: 10, ...over,
+  });
+
+  it('собирает груз и адрес каждой позиции одним проходом', () => {
+    const orders = [
+      { ...emptyOrder(1), key: 'o1', orderId: 'SO-1', positions: [p({ id: 'p1' })] },
+      { ...emptyOrder(2), key: 'o2', orderId: 'SO-2', positions: [p({ id: 'p2', quantity: 3 })] },
+    ];
+    const { cargo, addressOf } = toCargoList(orders);
+    expect(cargo.map((c) => c.id)).toEqual(['p1', 'p2']);
+    expect(cargo.map((c) => c.orderId)).toEqual(['SO-1', 'SO-2']);
+    expect(addressOf.get('p2')).toEqual({ orderKey: 'o2', positionId: 'p2' });
+  });
+
+  // Обнуление количества — способ временно исключить строку из заявки (спека §6). Пока строка
+  // попадала в груз, движок всё равно проверял её габариты, и обнулённый слишком крупный груз
+  // МОЛЧА рвал расчёт: ERR_CARGO_EXCEEDS_VEHICLE → пустая раскладка без объяснения.
+  it('исключает позиции с нулевым количеством — вместе с их адресом', () => {
+    const orders = [{
+      ...emptyOrder(1), key: 'o1', orderId: 'SO-1',
+      positions: [p({ id: 'p1', quantity: 0 }), p({ id: 'p2' })],
+    }];
+    const { cargo, addressOf } = toCargoList(orders);
+    expect(cargo.map((c) => c.id)).toEqual(['p2']);
+    expect(addressOf.has('p1')).toBe(false);
+  });
+
+  it('все количества нулевые → груза нет (движок ответит ERR_EMPTY_LOAD)', () => {
+    const orders = [{ ...emptyOrder(1), key: 'o1', orderId: 'SO-1', positions: [p({ quantity: 0 })] }];
+    expect(toCargoList(orders).cargo).toEqual([]);
   });
 });

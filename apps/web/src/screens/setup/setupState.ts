@@ -204,6 +204,34 @@ export function toCargo(p: PositionState, orderId: string): CargoType {
   };
 }
 
+/** Адрес строки заявки: ключ заказа + id позиции — ровно то, чем экран выбирает строку
+ *  (`Selection`). Живёт здесь, а не в setupValidation: адрес рождается вместе с грузом. */
+export interface SetupMessageWhere {
+  orderKey: string;
+  positionId: string;
+}
+
+/** Груз заявки и адрес каждой его позиции, собранные одним проходом (p3p.16).
+ *  ЕДИНСТВЕННАЯ сборка груза в приложении: её зовут «Рассчитать», Demo и живая валидация — разойтись
+ *  им негде, а расхождение сборок и было корнем молчаливого пустого плана.
+ *  Позиции с нулевым количеством в груз не попадают: обнуление временно исключает строку из заявки
+ *  (спека §6), и её габариты не должны блокировать расчёт. */
+export function toCargoList(orders: OrderState[]): {
+  cargo: CargoType[];
+  addressOf: Map<string, SetupMessageWhere>;
+} {
+  const cargo: CargoType[] = [];
+  const addressOf = new Map<string, SetupMessageWhere>();
+  for (const o of orders) {
+    for (const p of o.positions) {
+      if (numOr0(p.quantity) === 0) continue;
+      cargo.push(toCargo(p, o.orderId));
+      addressOf.set(p.id, { orderKey: o.key, positionId: p.id });
+    }
+  }
+  return { cargo, addressOf };
+}
+
 /** Locked = exactly the fields ERPNext supplied (Task 2 provenance; ADR 022 adds `name` to the
  *  set). Never inferred from "value present": a value the user typed into a field ERPNext left
  *  blank must stay editable. Shared by picking a suggestion and by binding a row to the article a

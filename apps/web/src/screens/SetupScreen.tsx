@@ -26,7 +26,7 @@ import { firstError, setupMessages, setupSummary, type SetupMessageWhere } from 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
   emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, saveSetup,
-  SETUP_STORAGE_KEY, toCargo,
+  SETUP_STORAGE_KEY, toCargo, toCargoList,
   type LockedFields, type OrderState, type PositionState,
 } from './setup/setupState';
 
@@ -257,7 +257,7 @@ export function SetupScreen({
     onCalculate(
       {
         vehicle: d.vehicle,
-        cargo: d.orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId))),
+        cargo: toCargoList(d.orders).cargo,
         loadingMode: 'rear',
         orderGrouping: 'strict',
       },
@@ -431,7 +431,7 @@ export function SetupScreen({
     // когда терять действительно есть что.
     if (hasManualEdits && typeof window !== 'undefined' && !window.confirm(tt('ladeplan.discardEditsConfirm')))
       return;
-    const cargo = orders.flatMap((o) => o.positions.map((p) => toCargo(p, o.orderId)));
+    const { cargo } = toCargoList(orders);
     // Стратегия кладётся в Load ЯВНО: сама по себе она ничего не пересчитывает (решение владельца
     // 1), выбор из шапки применяется именно здесь.
     onCalculate(

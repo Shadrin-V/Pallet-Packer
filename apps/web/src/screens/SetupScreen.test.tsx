@@ -609,9 +609,11 @@ describe('SetupScreen — «Рассчитать» и сводка (5nb этап
 
   it('предупреждение расчёт не блокирует', async () => {
     const onCalculate = vi.fn();
-    // количество 0 — законный способ временно исключить позицию, а не ошибка (§6)
+    // Количество 0 — законный способ временно исключить позицию, а не ошибка (§6). Рядом стоит
+    // непустая позиция: сама по себе нулевая строка дала бы пустой груз, а это уже ошибка
+    // ERR_EMPTY_LOAD, и тест проверял бы блокировку вместо её отсутствия.
     renderSetup(onCalculate, undefined, {
-      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 })])],
+      initialOrders: [order('SO-1001', [position({ id: 'p1', quantity: 0 }), position({ id: 'p2' })])],
     });
     await userEvent.click(berechnenHeader());
     expect(onCalculate).toHaveBeenCalledOnce();
