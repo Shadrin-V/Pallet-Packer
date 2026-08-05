@@ -225,6 +225,19 @@ describe('allMessages — коды движка рядом с локальным
     expect(ms.map((m) => m.code)).toContain('ERR_EMPTY_LOAD');
   });
 
+  // Minor 6 финального ревью: спека утверждала, что ERR_INVALID_QUANTITY с экрана недостижим — это
+  // неверно. `Measure` (apps/web/src/ui/primitives.tsx) — `type="number"` без `min`, поэтому
+  // отрицательное количество проходит `numOr0` без изменений (`numOr0(-5) !== 0`, строка не
+  // исключается решением 5) и доезжает до `toCargoList` → `validateLoad` отвечает адресуемым
+  // ERR_INVALID_QUANTITY.
+  it('отрицательное количество (поле без min) → адресуемая ошибка движка ERR_INVALID_QUANTITY', () => {
+    const ms = allMessages([order([pos({ quantity: -5 })])], vehicle);
+    expect(ms).toContainEqual(expect.objectContaining({
+      code: 'ERR_INVALID_QUANTITY', level: 'error',
+      where: { orderKey: 'o1', positionId: 'p1' }, orderId: 'SO-1001', name: 'EPAL 1',
+    }));
+  });
+
   it('порядок детерминирован: локальные ошибки, ошибки движка, потом предупреждения', () => {
     const ms = allMessages(
       [order([pos({ id: 'p1', length: '' }), pos({ id: 'p2', length: 8000, rotation: 'none' }), pos({ id: 'p3', quantity: 0 })])],
