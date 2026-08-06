@@ -158,9 +158,7 @@ export function SetupScreen({
 
   /** Заказ, который не удалось импортировать по ссылке (LKWkalk-s17). `code` — из конверта
    *  {code, details}, который бросает HttpDataProvider; его может не быть вовсе (см. эффект).
-   *  Значение читает только разметка заметки об ошибке (следующая задача той же ветки/PR) — до
-   *  неё `importFailure` присвоен, но не прочитан. */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- consumed by the next task's JSX
+   *  Читается заметкой об ошибке ниже в разметке. */
   const [importFailure, setImportFailure] = useState<{ orderId: string; code?: string } | null>(null);
 
   // Announced result of the LAST successful calculation (Task 7). `null` before the first one, so
@@ -568,6 +566,31 @@ export function SetupScreen({
           {tt(DEMO_VARIANTS[loadedDemo].hintKey)}{' '}
           <span className="text-faint">{tt('setup.demoNext')}</span>
         </p>
+      )}
+
+      {/* Неудачный импорт по ссылке (LKWkalk-s17) не мешает работать: черновик не тронут, экран
+          обычный, причина — заметкой. role="status", а не "alert": логист не обязан бросать ввод
+          ради неё, и вежливое объявление не перебивает то, что он печатает. */}
+      {importFailure && (
+        <div
+          role="status"
+          data-testid="import-failure-notice"
+          className="mb-4 flex items-start gap-3 rounded-lg border border-danger bg-sub p-3"
+        >
+          <p className="min-w-0 flex-1 text-caption text-danger">
+            {importFailure.code === 'ERR_ERPNEXT_UNCONFIGURED'
+              ? tt('setup.import.unconfigured')
+              : fillTemplate(tt('setup.import.failed'), { orderId: importFailure.orderId })}
+          </p>
+          <button
+            type="button"
+            aria-label={tt('setup.import.dismiss')}
+            onClick={() => setImportFailure(null)}
+            className="px-1 text-muted hover:text-brand"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* Master-detail (spec §7): order cards + the selected position's rules panel. From xl

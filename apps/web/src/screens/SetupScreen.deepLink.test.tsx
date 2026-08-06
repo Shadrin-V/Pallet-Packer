@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { OrderZone } from '@shadrin-v/contracts';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { DataProviderProvider } from '../data/DataProviderContext';
@@ -88,5 +89,49 @@ describe('SetupScreen — deep-link импорта заказа (s17)', () => {
     await waitFor(() => expect(importOrder).toHaveBeenCalledTimes(1));
     expect(screen.queryByDisplayValue('SO-1234')).not.toBeInTheDocument();
     expect(globalThis.location.search).toBe('?order=SO-1234');
+    // Стартовый заказ уцелел — импорт не тронул черновик, а не просто не добавил свой.
+    expect(screen.getByDisplayValue('SO-1')).toBeInTheDocument();
+  });
+
+  it('при отказе ERPNext показывает заметку про настройку', async () => {
+    globalThis.history.replaceState(null, '', '/?order=SO-1234');
+    const importOrder = vi.fn().mockRejectedValue({ code: 'ERR_ERPNEXT_UNCONFIGURED' });
+
+    renderSetup(fakeProvider(importOrder));
+
+    // getByTestId, а не getByRole('status'): экран уже несёт role="status" у сводки блокировки
+    // расчёта в шапке (всегда — черновик стартует с незаполненной строкой) и у пустого
+    // live-региона результата расчёта — простое findByRole('status') неоднозначно уже без нашей
+    // заметки. Роль всё равно проверяем явно атрибутом ниже.
+    const notice = await screen.findByTestId('import-failure-notice');
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice).toHaveTextContent('ERPNext');
+  });
+
+  it('тело без кода даёт общую заметку с номером заказа', async () => {
+    // Неизвестный заказ сейчас приходит дефолтной 500 Fastify, где поля code нет вовсе
+    // (LKWkalk-w0k). Общая ветка — не подстраховка, а самый частый случай: опечатка в номере.
+    globalThis.history.replaceState(null, '', '/?order=SO-9999');
+    const importOrder = vi.fn().mockRejectedValue({ statusCode: 500, message: 'boom' });
+
+    renderSetup(fakeProvider(importOrder));
+
+    const notice = await screen.findByTestId('import-failure-notice');
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice).toHaveTextContent('SO-9999');
+  });
+
+  it('заметку можно закрыть', async () => {
+    globalThis.history.replaceState(null, '', '/?order=SO-9999');
+    const importOrder = vi.fn().mockRejectedValue({ statusCode: 500 });
+
+    renderSetup(fakeProvider(importOrder));
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Hinweis schließen' }));
+
+    // queryByTestId, а не queryByRole('status') — см. комментарий выше: экран несёт и другие
+    // role="status" регионы (шапка, live-регион результата), не связанные с заметкой импорта.
+    expect(screen.queryByTestId('import-failure-notice')).not.toBeInTheDocument();
   });
 });
