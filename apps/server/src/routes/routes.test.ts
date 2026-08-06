@@ -53,6 +53,51 @@ describe('REST routes', () => {
     await app.close();
   });
 
+  // LKWkalk-559: calculateLayout сигнализирует доменную ошибку ЗНАЧЕНИЕМ (layout.errors), а не
+  // исключением, и роут это значение не читал — невалидная заявка ложилась в SQLite как обычный
+  // план и раздавалась через GET /api/plans/:id. Инвариант «раскладка с ошибками — не план» держит
+  // экран (предохранитель App, p3p.16); он обязан держаться и на серверной границе.
+  it('POST /api/plans отвергает доменно-невалидный Load и НИЧЕГО не сохраняет (559)', async () => {
+    const app = buildApp({ db: openDb(':memory:') });
+    // Тело синтаксически валидно — JSON-схема роута его пропускает; отвергает движок: груз
+    // 5000 мм не влезает в кузов 2000 мм ни в одной ориентации.
+    const load = {
+      vehicle: V,
+      cargo: [
+        {
+          id: 'c1',
+          name: 'Riesenbox',
+          length: 5000,
+          width: 5000,
+          height: 5000,
+          quantity: 1,
+          rotation: 'none',
+          stacking: { stackable: false },
+          nesting: { nestable: false },
+          state: 'entschachtelt',
+        },
+      ],
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/plans',
+      payload: { name: 'P', load, erpnextOrderIds: [] },
+    });
+
+    expect(res.statusCode).toBe(400);
+    // Отдельный код, не ERR_VALIDATION: кривое тело и невыполнимая заявка — разные сценарии для
+    // клиента. details.errors несёт EngineError[] дословно — SPA локализует коды через i18n.
+    expect(res.json()).toMatchObject({
+      code: 'ERR_INVALID_LOAD',
+      details: { errors: [{ code: 'ERR_CARGO_EXCEEDS_VEHICLE', details: { cargoTypeId: 'c1' } }] },
+    });
+    // Главное: в БД не осталось следа. Без этой проверки роут мог бы сохранить и всё равно ответить
+    // 400 — отказ клиенту без отката записи не является выполнением инварианта.
+    expect((await app.inject({ method: 'GET', url: '/api/plans' })).json()).toEqual([]);
+    await app.close();
+  });
+
   it('GET /api/plans/:id returns 404 JSON for a missing plan', async () => {
     const app = buildApp({ db: openDb(':memory:') });
     const res = await app.inject({ method: 'GET', url: '/api/plans/nope' });
