@@ -13,6 +13,7 @@ import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
+import { orderParam, urlWithoutOrderParam } from './setup/orderDeepLink';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
 import { LoadSummary } from './setup/LoadSummary';
@@ -25,7 +26,7 @@ import { allMessages, firstError, setupSummary, type SetupMessageWhere } from '.
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
-  emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, saveSetup,
+  emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, orderStateFromZone, saveSetup,
   SETUP_STORAGE_KEY, toCargo, toCargoList,
   type LockedFields, type OrderState, type PositionState,
 } from './setup/setupState';
@@ -155,6 +156,13 @@ export function SetupScreen({
   // holds by construction instead of by keeping a flag per row in step (ADR 022).
   const [armed, setArmed] = useState<{ kind: 'position' | 'order'; key: string } | null>(null);
 
+  /** Заказ, который не удалось импортировать по ссылке (LKWkalk-s17). `code` — из конверта
+   *  {code, details}, который бросает HttpDataProvider; его может не быть вовсе (см. эффект).
+   *  Значение читает только разметка заметки об ошибке (следующая задача той же ветки/PR) — до
+   *  неё `importFailure` присвоен, но не прочитан. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- consumed by the next task's JSX
+  const [importFailure, setImportFailure] = useState<{ orderId: string; code?: string } | null>(null);
+
   // Announced result of the LAST successful calculation (Task 7). `null` before the first one, so
   // the live region below the bottom "Berechnen" starts empty rather than claiming a result that
   // does not exist yet. Set only on the branch of handleCalculate that actually calls onCalculate —
@@ -242,6 +250,51 @@ export function SetupScreen({
     setLoadedDemo(null);
     saveSetup({ vehicle, orders });
   }, [vehicle, orders]);
+
+  // Deep-link импорта заказа (LKWkalk-s17): ссылка из ERPNext срабатывает ОДИН раз. Караулит ref, а
+  // не пустой список зависимостей: StrictMode монтирует эффекты дважды, и без него разработочная
+  // сборка импортировала бы заказ дважды. Отмены запроса нет намеренно — она бы и сработала как раз
+  // на этом двойном монтировании и отменила единственную настоящую попытку; setState после
+  // размонтирования в React 18 безвреден.
+  const deepLinkDoneRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkDoneRef.current) return;
+    const orderId = orderParam(globalThis.location?.search ?? '');
+    if (!orderId) {
+      deepLinkDoneRef.current = true;
+      return;
+    }
+    const stripParam = () =>
+      globalThis.history?.replaceState(null, '', urlWithoutOrderParam(globalThis.location.href));
+    // Дубль отсекается ДО запроса: незачем ходить в ERPNext, чтобы выбросить ответ. Повторный
+    // приход по той же ссылке не должен ни плодить копий, ни затирать вписанные руками габариты.
+    if (orders.some((o) => o.orderId === orderId)) {
+      deepLinkDoneRef.current = true;
+      stripParam();
+      return;
+    }
+    // Провайдера нет (экран отрендерен вне DataProviderProvider) — импортировать нечем. Ref НЕ
+    // взводим: провайдер может приехать следующим рендером, и тогда попытка состоится.
+    if (!dp) return;
+    deepLinkDoneRef.current = true;
+    void dp
+      .importOrder(orderId)
+      .then((zone) => {
+        setOrders((os) =>
+          os.some((o) => o.orderId === zone.orderId)
+            ? os
+            : [...os, orderStateFromZone(zone, nextColorIndex(os))],
+        );
+        stripParam();
+      })
+      .catch((e: unknown) => {
+        // Параметр НЕ вычищаем: F5 обязан повторить попытку. Тело ошибки — то, что бросил
+        // HttpDataProvider; поля `code` в нём может не быть вовсе (неизвестный заказ приходит как
+        // дефолтная 500 Fastify — LKWkalk-w0k), поэтому читаем его осторожно.
+        const code = typeof e === 'object' && e !== null ? (e as { code?: unknown }).code : undefined;
+        setImportFailure({ orderId, code: typeof code === 'string' ? code : undefined });
+      });
+  }, [orders, dp]);
 
   /** Fill a demo plan and compute it right away (build the Load from the demo data directly —
    *  setState is async, so we must not read it back in this tick). Transient: neither the demo setup
