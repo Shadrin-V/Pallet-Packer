@@ -436,6 +436,59 @@ describe('resolveGroupDrop', () => {
     expect(r.dx).toBe(0);
     expect(r.dy).toBe(0);
   });
+
+  // Прицел {0, 0} в обоих негативных тестах: «остаться на месте» законно геометрически, поэтому
+  // отказ может прийти ТОЛЬКО от пер-участница проверки, а не от поиска дельты.
+  for (const order of ['AB', 'BA'] as const) {
+    it(`refuses by the violator's own rotation rule in a two-type group — порядок ${order} (5iw)`, () => {
+      const { load, layout, refs } = twoTypePair(order);
+      // Вращение ужесточили ПОСЛЕ расчёта и только у типа 'q': 'none' разрешает лишь 'lwh', а
+      // колонна B стоит в 'wlh'. Тип 'p' остаётся 'yawOnly', то есть законным.
+      const after: Load = {
+        ...load,
+        cargo: [load.cargo[0], { ...load.cargo[1], rotation: 'none' as const }],
+      };
+
+      const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
+      // cargoTypeId:'q' и есть доказательство: правило взято у нарушившей участницы, а не у первой.
+      // Под резолвом по unique[0] в порядке AB участница B судилась бы правилом 'p' (yawOnly),
+      // прошла бы, и отказа не было бы вовсе.
+      expect(r.error?.details).toMatchObject({ cargoTypeId: 'q', orientation: 'wlh' });
+    });
+  }
+
+  for (const order of ['AB', 'BA'] as const) {
+    it(`refuses by the violator's own fork-access rule in a two-type group — порядок ${order} (5iw)`, () => {
+      const { load, layout, refs } = twoTypePair(order);
+      // Двусторонние вилы заданы ТОЛЬКО у 'q'; rear+length пришпиливает 'lwh', а колонна B стоит в
+      // 'wlh'. У 'p' forkAccess не задан вовсе — под резолвом по unique[0] ветка вил для B не
+      // сработала бы. rotation у 'q' остаётся 'yawOnly' НАМЕРЕННО: в цикле rotation проверяется
+      // раньше forkAccess, и при 'none' колонна B упала бы на вращении — тест доказывал бы не то
+      // правило.
+      const after: Load = {
+        ...load,
+        cargo: [
+          load.cargo[0],
+          { ...load.cargo[1], forkAccess: 'twoSides' as const, forkAxis: 'length' as const },
+        ],
+        loadingMode: 'rear' as const,
+      };
+
+      const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe('ERR_EDIT_FORK_ACCESS');
+      expect(r.error?.details).toMatchObject({
+        cargoTypeId: 'q',
+        orientation: 'wlh',
+        loadingMode: 'rear',
+        forkAxis: 'length',
+      });
+    });
+  }
 });
 
 // LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
