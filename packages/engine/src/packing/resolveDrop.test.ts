@@ -386,6 +386,133 @@ describe('resolveGroupDrop', () => {
       expect(r.error?.details).toMatchObject({ cargoTypeId: 'p', orientation: 'wlh', loadingMode: 'rear' });
     });
   }
+
+  // LKWkalk-5iw: группа из ДВУХ РАЗНЫХ типов груза. Пробел, осознанно оставленный s9o: там обе
+  // колонны были одного типа, поэтому резолв «один раз по unique[0].cargoTypeId» и резолв на каждую
+  // участницу давали ОДИН И ТОТ ЖЕ объект cargo — мутация «вынести резолв из цикла» была
+  // неотличима от здорового кода. Здесь типы различаются и правилами, и габаритами, поэтому чужой
+  // cargo виден и в вердикте правила (тесты ниже), и в footprint участницы (последний тест).
+  const other: CargoType = {
+    ...pallet,
+    id: 'q',
+    name: 'Q',
+    length: 1000,
+    width: 600,
+    height: 900,
+    quantity: 1,
+  };
+
+  // Нарушителем всегда назначается колонна B (тип 'q'), а правило ужесточается ТОЛЬКО у 'q': тип
+  // 'p' остаётся законным. Именно это делает подстановку чужого cargo наблюдаемой — под мутацией B
+  // судится правилами 'p' и проходит.
+  const twoTypePair = (
+    order: 'AB' | 'BA',
+  ): { load: Load; layout: Layout; refs: StackRef[] } => {
+    const load: Load = { vehicle: V, cargo: [{ ...pallet, quantity: 1 }, other] };
+    const a = at(0, 0); // тип 'p', 'lwh' → footprint 1200 × 800
+    const b = { ...at(4000, 0), cargoTypeId: 'q', orientation: 'wlh' as const }; // 600 × 1000
+    const refs: StackRef[] = [
+      { cargoTypeId: 'p', x: a.x, y: a.y },
+      { cargoTypeId: 'q', x: b.x, y: b.y },
+    ];
+    return {
+      load,
+      // unplaced переопределён: файловый layoutOf зашивает cargoTypeId 'p', и на двухтипной
+      // загрузке это была бы ложь в фикстуре. resolveGroupDrop поля не читает, но фикстура не врёт.
+      layout: { ...layoutOf([a, b], 0), unplaced: [] },
+      refs: order === 'AB' ? refs : [refs[1], refs[0]],
+    };
+  };
+
+  it('не запрещает законной паре из двух типов остаться на месте (5iw)', () => {
+    // Контроль на ложный отказ: без него негативные тесты ниже неотличимы от «фикстура нелегальна
+    // сама по себе». Обе колонны в габаритах и не пересекаются, обе выбраны — нулевая дельта обязана
+    // пройти.
+    const { load, layout, refs } = twoTypePair('AB');
+
+    const r = resolveGroupDrop(load, layout, refs, { dx: 0, dy: 0 });
+
+    expect(r.ok).toBe(true);
+    expect(r.dx).toBe(0);
+    expect(r.dy).toBe(0);
+  });
+
+  // Прицел {0, 0} в обоих негативных тестах: «остаться на месте» законно геометрически, поэтому
+  // отказ может прийти ТОЛЬКО от пер-участница проверки, а не от поиска дельты.
+  for (const order of ['AB', 'BA'] as const) {
+    it(`refuses by the violator's own rotation rule in a two-type group — порядок ${order} (5iw)`, () => {
+      const { load, layout, refs } = twoTypePair(order);
+      // Вращение ужесточили ПОСЛЕ расчёта и только у типа 'q': 'none' разрешает лишь 'lwh', а
+      // колонна B стоит в 'wlh'. Тип 'p' остаётся 'yawOnly', то есть законным.
+      const after: Load = {
+        ...load,
+        cargo: [load.cargo[0], { ...load.cargo[1], rotation: 'none' as const }],
+      };
+
+      const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe('ERR_EDIT_ROTATION');
+      // cargoTypeId:'q' и есть доказательство: правило взято у нарушившей участницы, а не у первой.
+      // Под резолвом по unique[0] в порядке AB участница B судилась бы правилом 'p' (yawOnly),
+      // прошла бы, и отказа не было бы вовсе.
+      expect(r.error?.details).toMatchObject({ cargoTypeId: 'q', orientation: 'wlh' });
+    });
+  }
+
+  for (const order of ['AB', 'BA'] as const) {
+    it(`refuses by the violator's own fork-access rule in a two-type group — порядок ${order} (5iw)`, () => {
+      const { load, layout, refs } = twoTypePair(order);
+      // Двусторонние вилы заданы ТОЛЬКО у 'q'; rear+length пришпиливает 'lwh', а колонна B стоит в
+      // 'wlh'. У 'p' forkAccess не задан вовсе — под резолвом по unique[0] ветка вил для B не
+      // сработала бы. rotation у 'q' остаётся 'yawOnly' НАМЕРЕННО: в цикле rotation проверяется
+      // раньше forkAccess, и при 'none' колонна B упала бы на вращении — тест доказывал бы не то
+      // правило.
+      const after: Load = {
+        ...load,
+        cargo: [
+          load.cargo[0],
+          { ...load.cargo[1], forkAccess: 'twoSides' as const, forkAxis: 'length' as const },
+        ],
+        loadingMode: 'rear' as const,
+      };
+
+      const r = resolveGroupDrop(after, layout, refs, { dx: 0, dy: 0 });
+
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe('ERR_EDIT_FORK_ACCESS');
+      expect(r.error?.details).toMatchObject({
+        cargoTypeId: 'q',
+        orientation: 'wlh',
+        loadingMode: 'rear',
+        forkAxis: 'length',
+      });
+    });
+  }
+
+  it('снапит группу к стенке по СОБСТВЕННОМУ footprint участницы, а не первой (5iw)', () => {
+    // Правиловые тесты выше убивают резолв по unique[0] целиком — но только потому, что отказ
+    // приходит РАНЬШЕ геометрии. Живой остаётся более узкая мутация: правила пер-ref честные, а
+    // orientedDims (resolveDrop.ts:322) считается от unique[0]. Ловит её только этот тест.
+    //
+    // Флеш даёт колонна B: дальняя стенка отсека минус её СОБСТВЕННЫЙ footprint по длине
+    // (10000 − 600 = 9400, resolveDrop.ts:387), минус её текущая координата 4000 → дельта 5400.
+    // Под габаритами 'p' в 'wlh' (800 × 1200) кандидат стал бы 10000 − 800 − 4000 = 5200.
+    // Прицел промахивается мимо флеша на 20 мм — это внутри толеранса группы (min(600,1000)/2 = 300
+    // у B, что меньше 400 у A), поэтому «флеш бьёт промах» (сортировка кандидатов по flush в
+    // resolveDrop.ts) и побеждает кандидат от стенки, а не сам прицел.
+    //
+    // Порядок только AB: при BA чужие габариты достались бы законной A, дельта B осталась бы 5400 и
+    // мутация выжила бы — второй инстанс не доказывал бы ничего. Асимметрия с тестами выше
+    // намеренная.
+    const { load, layout, refs } = twoTypePair('AB');
+
+    const r = resolveGroupDrop(load, layout, refs, { dx: 5380, dy: 0 });
+
+    expect(r.ok).toBe(true);
+    expect(r.dx).toBe(5400);
+    expect(r.dy).toBe(0);
+  });
 });
 
 // LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
