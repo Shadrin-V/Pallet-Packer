@@ -154,6 +154,43 @@ export function orderStateFromZone(zone: OrderZone, colorIndex: number): OrderSt
   };
 }
 
+/** Does `p` still hold exactly the values `emptyPosition()` hands out — every field except `id`
+ *  (each call mints its own)? Compares the UNION of both objects' own keys, not a hand-written
+ *  field list (F2, финальное ревью): a hardcoded list would silently stop covering a field the
+ *  moment `PositionState` grows one — the union catches both a stale template comparison AND an
+ *  optional field the position picked up (e.g. `articleCode` from an article binding) that the
+ *  bare template never had. */
+function isPristinePosition(p: PositionState): boolean {
+  const template = emptyPosition();
+  const keys = new Set<keyof PositionState>([
+    ...(Object.keys(p) as (keyof PositionState)[]),
+    ...(Object.keys(template) as (keyof PositionState)[]),
+  ]);
+  keys.delete('id');
+  for (const k of keys) {
+    if (p[k] !== template[k]) return false;
+  }
+  return true;
+}
+
+/**
+ * Ровно одна НЕТРОНУТАЯ стартовая заготовка (F2, решение владельца 2026-08-06): ровно один заказ,
+ * ровно одна позиция, все поля позиции равны умолчаниям `emptyPosition()` (кроме `id`), и `orderId`
+ * заказа не менялся с того, что дал бы свежий `emptyOrder(1)` — единственный источник такого заказа
+ * в приложении (начальное состояние `orders`, `SetupScreen.tsx`).
+ *
+ * Используется deep-link импортом заказа: логист, ни разу не тронувший форму, не должен получать
+ * пустую блокирующую карточку ПЛЮС импортированный заказ — заготовка ЗАМЕЩАЕТСЯ. Любой реальный
+ * черновик (вторая позиция, второй заказ, любая правка) по-прежнему дополняется.
+ */
+export function isPristineDraft(orders: OrderState[]): boolean {
+  if (orders.length !== 1) return false;
+  const [order] = orders;
+  if (order.orderId !== emptyOrder(1).orderId) return false;
+  if (order.positions.length !== 1) return false;
+  return isPristinePosition(order.positions[0]);
+}
+
 /** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
  *  Deleting an order frees no number for reuse while others survive it — otherwise a later
  *  addOrder can mint an id that collides with a surviving order (Finding 1: create SO-1/SO-2,

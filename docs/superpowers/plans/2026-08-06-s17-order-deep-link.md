@@ -150,7 +150,7 @@ export function urlWithoutOrderParam(href: string): string {
 - [ ] **Step 4: Прогнать — обязан позеленеть**
 
 Run: `npm test -- apps/web/src/screens/setup/orderDeepLink.test.ts`
-Expected: PASS (8 тестов).
+Expected: PASS (7 тестов).
 
 - [ ] **Step 5: Написать тесты отображения зоны**
 

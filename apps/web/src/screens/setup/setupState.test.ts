@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  SETUP_STORAGE_KEY, emptyOrder, emptyPosition, loadSetup, nextColorIndex, nextOrderNumber,
-  orderStateFromZone, toCargo, toCargoList, type PositionState,
+  SETUP_STORAGE_KEY, emptyOrder, emptyPosition, isPristineDraft, loadSetup, nextColorIndex,
+  nextOrderNumber, orderStateFromZone, toCargo, toCargoList, type PositionState,
 } from './setupState';
 
 describe('nextOrderNumber', () => {
@@ -174,5 +174,50 @@ describe('orderStateFromZone (s17)', () => {
 
   it('заказ без позиций даёт пустую карточку, а не падение', () => {
     expect(orderStateFromZone({ orderId: 'SO-0', positions: [] }, 0).positions).toEqual([]);
+  });
+});
+
+describe('isPristineDraft (F2, решение владельца: нетронутая заготовка замещается импортом)', () => {
+  it('ровно один заказ с ровно одной нетронутой позицией — нетронутая заготовка', () => {
+    expect(isPristineDraft([emptyOrder(1)])).toBe(true);
+  });
+
+  it('тронутое имя позиции — уже не заготовка', () => {
+    const o = emptyOrder(1);
+    o.positions[0].name = 'Palette';
+    expect(isPristineDraft([o])).toBe(false);
+  });
+
+  it('введённый габарит — уже не заготовка', () => {
+    const o = emptyOrder(1);
+    o.positions[0].length = 800;
+    expect(isPristineDraft([o])).toBe(false);
+  });
+
+  it('изменённый orderId — уже не заготовка', () => {
+    const o = { ...emptyOrder(1), orderId: 'AB-77' };
+    expect(isPristineDraft([o])).toBe(false);
+  });
+
+  it('две позиции в заказе — уже не заготовка', () => {
+    const o = emptyOrder(1);
+    o.positions.push(emptyPosition());
+    expect(isPristineDraft([o])).toBe(false);
+  });
+
+  it('два заказа — уже не заготовка, даже если оба нетронуты', () => {
+    expect(isPristineDraft([emptyOrder(1), emptyOrder(2)])).toBe(false);
+  });
+
+  it('пустой список заказов — не заготовка', () => {
+    expect(isPristineDraft([])).toBe(false);
+  });
+
+  it('тронутое поле правила (не только габариты/имя) — уже не заготовка', () => {
+    // Предикат сравнивает ВСЕ поля позиции с emptyPosition() программно, а не по списку — это
+    // ловит правило (например, rotation), а не только габариты и имя.
+    const o = emptyOrder(1);
+    o.positions[0].rotation = 'full';
+    expect(isPristineDraft([o])).toBe(false);
   });
 });

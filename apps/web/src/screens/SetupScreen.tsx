@@ -26,8 +26,8 @@ import { allMessages, firstError, setupSummary, type SetupMessageWhere } from '.
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
-  emptyPosition, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0, orderStateFromZone, saveSetup,
-  SETUP_STORAGE_KEY, toCargo, toCargoList,
+  emptyPosition, isPristineDraft, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0,
+  orderStateFromZone, saveSetup, SETUP_STORAGE_KEY, toCargo, toCargoList,
   type LockedFields, type OrderState, type PositionState,
 } from './setup/setupState';
 
@@ -254,6 +254,14 @@ export function SetupScreen({
   // сборка импортировала бы заказ дважды. Отмены запроса нет намеренно — она бы и сработала как раз
   // на этом двойном монтировании и отменила единственную настоящую попытку; setState после
   // размонтирования в React 18 безвреден.
+  //
+  // Ref нужен и в проде, не только против StrictMode (F1, финальное ревью): зависимости эффекта —
+  // `[orders, dp]`, а `orders` меняется на КАЖДОЕ действие в форме (правка позиции, добавление
+  // заказа). ERPNext отвечает медленно, логист правит черновик, пока запрос ещё в полёте, — без
+  // ref каждая такая правка перезапускала бы эффект и звала `importOrder` заново поверх ещё не
+  // завершённого первого вызова. Доказано мутацией: тест
+  // `SetupScreen.deepLink.test.tsx` "deepLinkDoneRef защищает от повторного импорта…" красный без
+  // этой строки (importOrder вызывается дважды) и зелёный с ней.
   const deepLinkDoneRef = useRef(false);
   useEffect(() => {
     if (deepLinkDoneRef.current) return;
@@ -266,7 +274,11 @@ export function SetupScreen({
       globalThis.history?.replaceState(null, '', urlWithoutOrderParam(globalThis.location.href));
     // Дубль отсекается ДО запроса: незачем ходить в ERPNext, чтобы выбросить ответ. Повторный
     // приход по той же ссылке не должен ни плодить копий, ни затирать вписанные руками габариты.
-    if (orders.some((o) => o.orderId === orderId)) {
+    // trim (F3, финальное ревью): setupValidation.ts:95 уже считает « SO-1234 » и «SO-1234» одним
+    // заказом для дубль-предупреждения — deep-link обязан рассуждать так же, иначе черновик с
+    // лишним пробелом в номере получит вторую карточку того же заказа. `orderId` сюда приходит уже
+    // обрезанным (`orderParam` тримит сам), обрезать нужно только сторону черновика.
+    if (orders.some((o) => o.orderId.trim() === orderId)) {
       deepLinkDoneRef.current = true;
       stripParam();
       return;
@@ -278,11 +290,18 @@ export function SetupScreen({
     void dp
       .importOrder(orderId)
       .then((zone) => {
-        setOrders((os) =>
-          os.some((o) => o.orderId === zone.orderId)
-            ? os
-            : [...os, orderStateFromZone(zone, nextColorIndex(os))],
-        );
+        setOrders((os) => {
+          if (os.some((o) => o.orderId === zone.orderId)) return os;
+          // F2 (решение владельца 2026-08-06): ровно одна НЕТРОНУТАЯ стартовая заготовка (пустая
+          // позиция даёт блокирующую ошибку «укажите размеры» — «Рассчитать» упёрлось бы в неё
+          // из-за карточки, которую логист не создавал) ЗАМЕЩАЕТСЯ импортированным заказом вместо
+          // того, чтобы получить соседа. Любой реальный черновик по-прежнему дополняется. Слот
+          // палитры заготовки переиспользуется — она единственная, `nextColorIndex` тут просто
+          // вернул бы её же слот следующим свободным.
+          return isPristineDraft(os)
+            ? [orderStateFromZone(zone, os[0].colorIndex)]
+            : [...os, orderStateFromZone(zone, nextColorIndex(os))];
+        });
         stripParam();
       })
       .catch((e: unknown) => {

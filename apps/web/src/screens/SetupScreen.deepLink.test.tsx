@@ -6,7 +6,7 @@ import { LocaleProvider } from '../i18n/LocaleContext';
 import { DataProviderProvider } from '../data/DataProviderContext';
 import type { DataProvider } from '../data/DataProvider';
 import { SetupScreen } from './SetupScreen';
-import { SETUP_STORAGE_KEY, emptyOrder, type OrderState } from './setup/setupState';
+import { SETUP_STORAGE_KEY, emptyOrder, emptyPosition, type OrderState } from './setup/setupState';
 
 const ZONE: OrderZone = {
   orderId: 'SO-1234',
@@ -43,19 +43,69 @@ describe('SetupScreen — deep-link импорта заказа (s17)', () => {
     globalThis.history.replaceState(null, '', '/');
   });
 
-  it('импортирует заказ из ?order=, добавляет его к черновику и вычищает параметр', async () => {
+  it('нетронутая стартовая заготовка ЗАМЕЩАЕТСЯ импортированным заказом, а не дополняется (F2)', async () => {
+    // Решение владельца 2026-08-06: чистый браузер даёт [emptyOrder(1)] — ровно одну нетронутую
+    // заготовку с пустой позицией. Она даёт блокирующую ошибку «укажите размеры», и добавление
+    // импортированного заказа поверх неё упирало бы главный сценарий фичи в заблокированный расчёт
+    // из-за карточки, которую логист не создавал. Поэтому заготовка замещается.
     globalThis.history.replaceState(null, '', '/?order=SO-1234');
     const importOrder = vi.fn().mockResolvedValue(ZONE);
 
     renderSetup(fakeProvider(importOrder));
 
     await waitFor(() => expect(screen.getByDisplayValue('SO-1234')).toBeInTheDocument());
-    // Черновик ДОПОЛНЕН, а не заменён: стартовый SO-1 на месте.
-    expect(screen.getByDisplayValue('SO-1')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('SO-1')).not.toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('SO-1234')).toHaveLength(1);
     expect(screen.getByDisplayValue('Einwegpalette')).toBeInTheDocument();
     expect(importOrder).toHaveBeenCalledTimes(1);
     expect(importOrder).toHaveBeenCalledWith('SO-1234');
     expect(globalThis.location.search).toBe('');
+  });
+
+  it('черновик с реальным содержимым ДОПОЛНЯЕТСЯ импортированным заказом, а не замещается (F2)', async () => {
+    globalThis.history.replaceState(null, '', '/?order=SO-1234');
+    const importOrder = vi.fn().mockResolvedValue(ZONE);
+    const filled: OrderState[] = [
+      {
+        ...emptyOrder(1),
+        positions: [{ ...emptyPosition(), name: 'Handpalette', length: 1200, width: 800, height: 150 }],
+      },
+    ];
+
+    renderSetup(fakeProvider(importOrder), filled);
+
+    await waitFor(() => expect(screen.getByDisplayValue('SO-1234')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('SO-1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Handpalette')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Einwegpalette')).toBeInTheDocument();
+    expect(importOrder).toHaveBeenCalledTimes(1);
+    expect(globalThis.location.search).toBe('');
+  });
+
+  it('deepLinkDoneRef защищает от повторного импорта, если черновик правят, пока запрос висит (F1)', async () => {
+    // Прод-сценарий, не дев-костыль StrictMode: ERPNext отвечает медленно, логист правит черновик
+    // (клик по «+ Auftrag hinzufügen»), пока запрос ещё в полёте. Эффект deep-link зависит от
+    // [orders, dp], а `orders` меняется на КАЖДОЕ такое действие — без караульного ref эффект
+    // перезапустился бы и позвал `importOrder` второй раз поверх ещё не завершённого первого.
+    globalThis.history.replaceState(null, '', '/?order=SO-1234');
+    let resolveImport!: (zone: OrderZone) => void;
+    const pending = new Promise<OrderZone>((resolve) => {
+      resolveImport = resolve;
+    });
+    const importOrder = vi.fn().mockReturnValue(pending);
+
+    renderSetup(fakeProvider(importOrder));
+
+    await waitFor(() => expect(importOrder).toHaveBeenCalledTimes(1));
+
+    const user = userEvent.setup();
+    const [addOrderButton] = screen.getAllByRole('button', { name: '+ Auftrag hinzufügen' });
+    await user.click(addOrderButton);
+
+    expect(importOrder).toHaveBeenCalledTimes(1);
+
+    resolveImport(ZONE);
+    await waitFor(() => expect(screen.getByDisplayValue('SO-1234')).toBeInTheDocument());
   });
 
   it('не импортирует заказ, который уже есть в черновике, и в ERPNext не ходит', async () => {
@@ -68,6 +118,22 @@ describe('SetupScreen — deep-link импорта заказа (s17)', () => {
     // Дубль отсекается ДО запроса, поэтому проверяем и вызов, и очистку параметра.
     await waitFor(() => expect(globalThis.location.search).toBe(''));
     expect(importOrder).not.toHaveBeenCalled();
+    expect(screen.getAllByDisplayValue('SO-1234')).toHaveLength(1);
+  });
+
+  it('не импортирует заказ, если orderId в черновике совпадает с точностью до пробелов (F3)', async () => {
+    // setupValidation.ts:95 уже считает « SO-1234 » и «SO-1234» одним заказом (там есть trim);
+    // deep-link обязан рассуждать так же, иначе лишний пробел в номере даёт вторую карточку.
+    globalThis.history.replaceState(null, '', '/?order=SO-1234');
+    const importOrder = vi.fn().mockResolvedValue(ZONE);
+    const existing: OrderState[] = [{ ...emptyOrder(1), orderId: '  SO-1234  ' }];
+
+    renderSetup(fakeProvider(importOrder), existing);
+
+    await waitFor(() => expect(globalThis.location.search).toBe(''));
+    expect(importOrder).not.toHaveBeenCalled();
+    // getByDisplayValue нормализует пробелы при сравнении — единственная карточка всё ещё несёт
+    // сырое значение поля '  SO-1234  ' (проверено выше отсутствием второго вызова importOrder).
     expect(screen.getAllByDisplayValue('SO-1234')).toHaveLength(1);
   });
 
