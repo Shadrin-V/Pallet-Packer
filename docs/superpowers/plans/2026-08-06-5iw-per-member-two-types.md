@@ -47,8 +47,9 @@
 **Interfaces:**
 - Consumes: файловые `V`, `pallet`, `at`, `layoutOf`; импорты `CargoType`, `Layout`, `Load`,
   `StackRef`, `resolveGroupDrop` уже есть в шапке файла (строки 1–7) — добавлять импорты не нужно.
-- Produces: `twoTypePair(order: 'AB' | 'BA'): { load: Load; layout: Layout; refs: StackRef[] }` и
-  константу `other: CargoType` — их используют задачи 2 и 3.
+- Produces: `twoTypePair(order: 'AB' | 'BA'): { load: Load; layout: Layout; refs: StackRef[] }` —
+  используют задачи 2 и 3. Константа `other: CargoType` — внутренняя деталь фикстуры; наружу она
+  отдаётся через `load.cargo[1]`.
 
 - [ ] **Step 1: Написать фикстуру и контрольный тест**
 
