@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  SETUP_STORAGE_KEY, emptyOrder, emptyPosition, loadSetup, nextColorIndex, nextOrderNumber, toCargo,
-  toCargoList, type PositionState,
+  SETUP_STORAGE_KEY, emptyOrder, emptyPosition, loadSetup, nextColorIndex, nextOrderNumber,
+  orderStateFromZone, toCargo, toCargoList, type PositionState,
 } from './setupState';
 
 describe('nextOrderNumber', () => {
@@ -98,5 +98,81 @@ describe('toCargoList', () => {
   it('все количества нулевые → груза нет (движок ответит ERR_EMPTY_LOAD)', () => {
     const orders = [{ ...emptyOrder(1), key: 'o1', orderId: 'SO-1', positions: [p({ quantity: 0 })] }];
     expect(toCargoList(orders).cargo).toEqual([]);
+  });
+});
+
+describe('orderStateFromZone (s17)', () => {
+  const zone = {
+    orderId: 'SO-1234',
+    positions: [
+      {
+        itemCode: 'ABB101',
+        itemName: 'Einwegpalette',
+        quantity: 12,
+        length: 800,
+        width: 600,
+        height: 144,
+        dimensionsSource: 'erpnext-field' as const,
+      },
+      {
+        itemCode: 'X-9',
+        itemName: 'Sonderteil',
+        quantity: 3,
+        dimensionsSource: 'manual' as const,
+      },
+    ],
+  };
+
+  it('переносит номер заказа, слот палитры и все позиции', () => {
+    const o = orderStateFromZone(zone, 2);
+
+    expect(o.orderId).toBe('SO-1234');
+    expect(o.colorIndex).toBe(2);
+    expect(o.positions).toHaveLength(2);
+    expect(o.key).toBeTruthy();
+  });
+
+  it('переносит имя, количество и код артикула позиции', () => {
+    const [p] = orderStateFromZone(zone, 0).positions;
+
+    expect(p.name).toBe('Einwegpalette');
+    expect(p.quantity).toBe(12);
+    expect(p.articleCode).toBe('ABB101');
+  });
+
+  it('габариты из ERPNext переносятся числами', () => {
+    const [p] = orderStateFromZone(zone, 0).positions;
+
+    expect([p.length, p.width, p.height]).toEqual([800, 600, 144]);
+  });
+
+  it('позиция без габаритов даёт пустые поля, а не нули', () => {
+    // Пустое поле — это «нужен ручной ввод»: setupValidation даёт по такой строке ошибку
+    // «укажите размеры» с адресом. Ноль был бы ЗАПОЛНЕННЫМ неверным размером и прошёл бы мимо неё.
+    const p = orderStateFromZone(zone, 0).positions[1];
+
+    expect([p.length, p.width, p.height]).toEqual(['', '', '']);
+  });
+
+  it('правила остаются умолчаниями, поля не лочатся', () => {
+    // locked описывает провенанс полей АРТИКУЛА из каталога (ADR 022), а не строку Sales Order:
+    // залочить — значит лишить логиста возможности поправить размер, неверно заполненный в ERPNext.
+    const [p] = orderStateFromZone(zone, 0).positions;
+    const d = emptyPosition();
+
+    expect(p.locked).toBeUndefined();
+    expect(p.rotation).toBe(d.rotation);
+    expect(p.state).toBe(d.state);
+    expect(p.nestingMode).toBe(d.nestingMode);
+  });
+
+  it('у позиций разные id — иначе строки склеятся в адресации сообщений', () => {
+    const [a, b] = orderStateFromZone(zone, 0).positions;
+
+    expect(a.id).not.toBe(b.id);
+  });
+
+  it('заказ без позиций даёт пустую карточку, а не падение', () => {
+    expect(orderStateFromZone({ orderId: 'SO-0', positions: [] }, 0).positions).toEqual([]);
   });
 });

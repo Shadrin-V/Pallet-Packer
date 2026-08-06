@@ -1,7 +1,7 @@
 // Состояние экрана «Настройка» без DOM (LKWkalk-5nb): типы, умолчания, персистентность, сборка
 // CargoType. Извлечено из SetupScreen.tsx дословно — поведение не менялось.
 import type { CargoType, NestingMode, NestingState, RotationRule, ForkAccess, ForkAxis, Vehicle } from '@shadrin-v/engine';
-import type { ArticleErpField } from '@shadrin-v/contracts';
+import type { ArticleErpField, OrderZone } from '@shadrin-v/contracts';
 import type { ArticleSuggestion } from '../components/ArticleCombobox';
 
 // ---- state model ----------------------------------------------------------
@@ -124,6 +124,35 @@ export const emptyOrder = (n: number, colorIndex: number = n - 1): OrderState =>
   colorIndex,
   positions: [emptyPosition()],
 });
+
+/**
+ * Импортированный из ERPNext заказ → состояние экрана (LKWkalk-s17).
+ *
+ * Пустые габариты остаются ПУСТЫМИ, а не нулями: пустое поле уже даёт по строке локальную ошибку
+ * «укажите размеры» с адресом, и «Рассчитать» к ней прыгает (`setupValidation`), тогда как ноль —
+ * это заполненный неверный размер, который мимо неё пройдёт.
+ *
+ * `dimensionsSource` в состояние не переносится: «нужен ввод» выводится из пустых габаритов, а не
+ * из тега (см. комментарий к нему в contracts/dto.ts), и второй источник той же истины разошёлся бы
+ * с первым. `locked` не выставляется — он описывает провенанс полей АРТИКУЛА из каталога (ADR 022),
+ * а не строку Sales Order.
+ */
+export function orderStateFromZone(zone: OrderZone, colorIndex: number): OrderState {
+  return {
+    key: uid(),
+    orderId: zone.orderId,
+    colorIndex,
+    positions: zone.positions.map((p) => ({
+      ...emptyPosition(),
+      name: p.itemName,
+      quantity: p.quantity,
+      length: p.length ?? '',
+      width: p.width ?? '',
+      height: p.height ?? '',
+      articleCode: p.itemCode,
+    })),
+  };
+}
 
 /** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
  *  Deleting an order frees no number for reuse while others survive it — otherwise a later
