@@ -386,6 +386,56 @@ describe('resolveGroupDrop', () => {
       expect(r.error?.details).toMatchObject({ cargoTypeId: 'p', orientation: 'wlh', loadingMode: 'rear' });
     });
   }
+
+  // LKWkalk-5iw: группа из ДВУХ РАЗНЫХ типов груза. Пробел, осознанно оставленный s9o: там обе
+  // колонны были одного типа, поэтому резолв «один раз по unique[0].cargoTypeId» и резолв на каждую
+  // участницу давали ОДИН И ТОТ ЖЕ объект cargo — мутация «вынести резолв из цикла» была
+  // неотличима от здорового кода. Здесь типы различаются и правилами, и габаритами, поэтому чужой
+  // cargo виден и в вердикте правила (тесты ниже), и в footprint участницы (последний тест).
+  const other: CargoType = {
+    ...pallet,
+    id: 'q',
+    name: 'Q',
+    length: 1000,
+    width: 600,
+    height: 900,
+    quantity: 1,
+  };
+
+  // Нарушителем всегда назначается колонна B (тип 'q'), а правило ужесточается ТОЛЬКО у 'q': тип
+  // 'p' остаётся законным. Именно это делает подстановку чужого cargo наблюдаемой — под мутацией B
+  // судится правилами 'p' и проходит.
+  const twoTypePair = (
+    order: 'AB' | 'BA',
+  ): { load: Load; layout: Layout; refs: StackRef[] } => {
+    const load: Load = { vehicle: V, cargo: [{ ...pallet, quantity: 1 }, other] };
+    const a = at(0, 0); // тип 'p', 'lwh' → footprint 1200 × 800
+    const b = { ...at(4000, 0), cargoTypeId: 'q', orientation: 'wlh' as const }; // 600 × 1000
+    const refs: StackRef[] = [
+      { cargoTypeId: 'p', x: a.x, y: a.y },
+      { cargoTypeId: 'q', x: b.x, y: b.y },
+    ];
+    return {
+      load,
+      // unplaced переопределён: файловый layoutOf зашивает cargoTypeId 'p', и на двухтипной
+      // загрузке это была бы ложь в фикстуре. resolveGroupDrop поля не читает, но фикстура не врёт.
+      layout: { ...layoutOf([a, b], 0), unplaced: [] },
+      refs: order === 'AB' ? refs : [refs[1], refs[0]],
+    };
+  };
+
+  it('не запрещает законной паре из двух типов остаться на месте (5iw)', () => {
+    // Контроль на ложный отказ: без него негативные тесты ниже неотличимы от «фикстура нелегальна
+    // сама по себе». Обе колонны в габаритах и не пересекаются, обе выбраны — нулевая дельта обязана
+    // пройти.
+    const { load, layout, refs } = twoTypePair('AB');
+
+    const r = resolveGroupDrop(load, layout, refs, { dx: 0, dy: 0 });
+
+    expect(r.ok).toBe(true);
+    expect(r.dx).toBe(0);
+    expect(r.dy).toBe(0);
+  });
 });
 
 // LKWkalk-p3p: два отсека (тягач [0, 2400) и прицеп [3400, 5800)) с физическим разрывом между ними.
