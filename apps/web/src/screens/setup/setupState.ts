@@ -1,7 +1,7 @@
 // Состояние экрана «Настройка» без DOM (LKWkalk-5nb): типы, умолчания, персистентность, сборка
 // CargoType. Извлечено из SetupScreen.tsx дословно — поведение не менялось.
 import type { CargoType, NestingMode, NestingState, RotationRule, ForkAccess, ForkAxis, Vehicle } from '@shadrin-v/engine';
-import type { ArticleErpField } from '@shadrin-v/contracts';
+import type { ArticleErpField, OrderZone } from '@shadrin-v/contracts';
 import type { ArticleSuggestion } from '../components/ArticleCombobox';
 
 // ---- state model ----------------------------------------------------------
@@ -124,6 +124,72 @@ export const emptyOrder = (n: number, colorIndex: number = n - 1): OrderState =>
   colorIndex,
   positions: [emptyPosition()],
 });
+
+/**
+ * Импортированный из ERPNext заказ → состояние экрана (LKWkalk-s17).
+ *
+ * Пустые габариты остаются ПУСТЫМИ, а не нулями: пустое поле уже даёт по строке локальную ошибку
+ * «укажите размеры» с адресом, и «Рассчитать» к ней прыгает (`setupValidation`), тогда как ноль —
+ * это заполненный неверный размер, который мимо неё пройдёт.
+ *
+ * `dimensionsSource` в состояние не переносится: «нужен ввод» выводится из пустых габаритов, а не
+ * из тега (см. комментарий к нему в contracts/dto.ts), и второй источник той же истины разошёлся бы
+ * с первым. `locked` не выставляется — он описывает провенанс полей АРТИКУЛА из каталога (ADR 022),
+ * а не строку Sales Order.
+ */
+export function orderStateFromZone(zone: OrderZone, colorIndex: number): OrderState {
+  return {
+    key: uid(),
+    orderId: zone.orderId,
+    colorIndex,
+    positions: zone.positions.map((p) => ({
+      ...emptyPosition(),
+      name: p.itemName,
+      quantity: p.quantity,
+      length: p.length ?? '',
+      width: p.width ?? '',
+      height: p.height ?? '',
+      articleCode: p.itemCode,
+    })),
+  };
+}
+
+/** Does `p` still hold exactly the values `emptyPosition()` hands out — every field except `id`
+ *  (each call mints its own)? Compares the UNION of both objects' own keys, not a hand-written
+ *  field list (F2, финальное ревью): a hardcoded list would silently stop covering a field the
+ *  moment `PositionState` grows one — the union catches both a stale template comparison AND an
+ *  optional field the position picked up (e.g. `articleCode` from an article binding) that the
+ *  bare template never had. */
+function isPristinePosition(p: PositionState): boolean {
+  const template = emptyPosition();
+  const keys = new Set<keyof PositionState>([
+    ...(Object.keys(p) as (keyof PositionState)[]),
+    ...(Object.keys(template) as (keyof PositionState)[]),
+  ]);
+  keys.delete('id');
+  for (const k of keys) {
+    if (p[k] !== template[k]) return false;
+  }
+  return true;
+}
+
+/**
+ * Ровно одна НЕТРОНУТАЯ стартовая заготовка (F2, решение владельца 2026-08-06): ровно один заказ,
+ * ровно одна позиция, все поля позиции равны умолчаниям `emptyPosition()` (кроме `id`), и `orderId`
+ * заказа не менялся с того, что дал бы свежий `emptyOrder(1)` — единственный источник такого заказа
+ * в приложении (начальное состояние `orders`, `SetupScreen.tsx`).
+ *
+ * Используется deep-link импортом заказа: логист, ни разу не тронувший форму, не должен получать
+ * пустую блокирующую карточку ПЛЮС импортированный заказ — заготовка ЗАМЕЩАЕТСЯ. Любой реальный
+ * черновик (вторая позиция, второй заказ, любая правка) по-прежнему дополняется.
+ */
+export function isPristineDraft(orders: OrderState[]): boolean {
+  if (orders.length !== 1) return false;
+  const [order] = orders;
+  if (order.orderId !== emptyOrder(1).orderId) return false;
+  if (order.positions.length !== 1) return false;
+  return isPristinePosition(order.positions[0]);
+}
 
 /** Next unused SO-n suffix: the highest existing `SO-<n>` id plus one, not `os.length + 1`.
  *  Deleting an order frees no number for reuse while others survive it — otherwise a later

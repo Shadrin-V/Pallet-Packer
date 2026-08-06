@@ -22,6 +22,10 @@ export const TRANSLATION_KEYS = [
   'setup.stack',
   'setup.vehiclePreset.custom',
   'setup.emptyOrders',
+  // Setup: deep-link импорта заказа (LKWkalk-s17)
+  'setup.import.failed',
+  'setup.import.unconfigured',
+  'setup.import.dismiss',
   'setup.demo.mixed',
   'setup.demo.mixedHint',
   'setup.demo.nesting',
