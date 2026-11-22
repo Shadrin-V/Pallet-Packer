@@ -57,10 +57,29 @@ function getSnapshot(): ThemeName {
   return isTheme(attr) ? attr : 'forest';
 }
 
-export function applyTheme(name: ThemeName): void {
+/** Палитра хоста (сборка внутри ERP): не выбор пользователя, а данность оболочки. */
+export type HostPalette = 'schaefer';
+
+// Палитра хоста запирает тему: пока она стоит, applyTheme ничего не меняет ни в атрибуте, ни в
+// хранилище (контракт §7: в сборке для ERP хранилище содержит только ключи пользователя).
+let hostPalette: HostPalette | null = null;
+
+/** Ставит палитру хоста на <html> и запирает её от applyTheme. Хранилища не касается. */
+export function applyHostPalette(name: HostPalette): void {
+  hostPalette = name;
+  document.documentElement.setAttribute('data-theme', name);
+  listeners.forEach((fn) => fn());
+}
+
+function setThemeAttribute(name: ThemeName): void {
   const root = document.documentElement;
   if (name === 'forest') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', name);
+}
+
+export function applyTheme(name: ThemeName): void {
+  if (hostPalette) return;
+  setThemeAttribute(name);
   try {
     localStorage.setItem(THEME_STORAGE_KEY, name);
   } catch {
@@ -71,8 +90,12 @@ export function applyTheme(name: ThemeName): void {
 }
 
 // Синхронизировать DOM с сохранённой темой один раз при загрузке модуля, а не при каждом монтаже
-// компонента — так атрибут выставлен ещё до первого рендера любого потребителя.
-applyTheme(readTheme());
+// компонента — так атрибут выставлен ещё до первого рендера любого потребителя. Только атрибут,
+// БЕЗ записи в хранилище: импорт не должен ничего писать (в сборке для ERP — контракт §7; в обычной
+// запись при импорте только возвращала бы то же значение). Если оболочка уже поставила schaefer —
+// не трогаем атрибут и запираем палитру, чтобы applyTheme не писал в хранилище и там.
+if (document.documentElement.getAttribute('data-theme') === 'schaefer') hostPalette = 'schaefer';
+else setThemeAttribute(readTheme());
 
 export function useTheme(): [ThemeName, (next: ThemeName) => void] {
   const theme = useSyncExternalStore(subscribe, getSnapshot);
