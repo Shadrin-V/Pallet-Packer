@@ -14,7 +14,7 @@ export type ThemeName = 'forest' | 'warm';
 
 // Литерал повторён в apps/web/index.html — инлайновый bootstrap-скрипт в <head> читает тот же
 // ключ синхронно, до первой отрисовки, чтобы у warm-пользователя не мелькал зелёный --paper
-// forest на первом кадре (applyTheme(readTheme()) ниже выполняется только после разбора этого
+// forest на первом кадре (initTheme() из main.tsx выполняется только после разбора этого
 // модуля — финальное ревью, находка 6). Меняешь ключ здесь — поменяй и там.
 export const THEME_STORAGE_KEY = 'ladungsplaner.theme';
 
@@ -89,13 +89,12 @@ export function applyTheme(name: ThemeName): void {
   listeners.forEach((fn) => fn());
 }
 
-// Синхронизировать DOM с сохранённой темой один раз при загрузке модуля, а не при каждом монтаже
-// компонента — так атрибут выставлен ещё до первого рендера любого потребителя. Только атрибут,
-// БЕЗ записи в хранилище: импорт не должен ничего писать (в сборке для ERP — контракт §7; в обычной
-// запись при импорте только возвращала бы то же значение). Если оболочка уже поставила schaefer —
-// не трогаем атрибут и запираем палитру, чтобы applyTheme не писал в хранилище и там.
-if (document.documentElement.getAttribute('data-theme') === 'schaefer') hostPalette = 'schaefer';
-else setThemeAttribute(readTheme());
+/** Синхронизирует DOM с сохранённой темой. Вызывается ЯВНО из точки входа обычной сборки
+ *  (main.tsx) до первого рендера; сборка для ERP его не вызывает и зовёт applyHostPalette. Импорт
+ *  модуля сам ничего не читает и не пишет — ни в хранилище, ни в DOM. Только атрибут, без записи. */
+export function initTheme(): void {
+  setThemeAttribute(readTheme());
+}
 
 export function useTheme(): [ThemeName, (next: ThemeName) => void] {
   const theme = useSyncExternalStore(subscribe, getSnapshot);

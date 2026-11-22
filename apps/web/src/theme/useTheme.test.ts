@@ -48,31 +48,36 @@ describe('палитра хоста (сборка для ERP)', () => {
     expect(localStorage.length).toBe(0);
   });
 
-  it('импорт модуля не пишет в хранилище и не снимает data-theme="schaefer" от оболочки', async () => {
-    document.documentElement.setAttribute('data-theme', 'schaefer');
-    await import('./useTheme');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('schaefer');
-    expect(localStorage.length).toBe(0);
-  });
-
-  it('оболочка поставила schaefer до импорта — последующий applyTheme тоже заперт', async () => {
-    document.documentElement.setAttribute('data-theme', 'schaefer');
+  it('импорт модуля и applyHostPalette не обращаются к хранилищу вообще (ни чтение, ни запись)', async () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem');
+    const set = vi.spyOn(Storage.prototype, 'setItem');
     const m = await import('./useTheme');
-    m.applyTheme('warm');
+    m.applyHostPalette('schaefer');
+    expect(get).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
     expect(document.documentElement.getAttribute('data-theme')).toBe('schaefer');
-    expect(localStorage.length).toBe(0);
+    get.mockRestore();
+    set.mockRestore();
   });
 
-  it('обычная сборка: импорт ставит атрибут по сохранённому выбору и ничего не пишет', async () => {
+  it('импорт ничего не ставит на <html>, даже при сохранённом warm', async () => {
     localStorage.setItem('ladungsplaner.theme', 'warm');
     await import('./useTheme');
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('обычная сборка: initTheme ставит атрибут по сохранённому выбору и ничего не пишет', async () => {
+    localStorage.setItem('ladungsplaner.theme', 'warm');
+    const m = await import('./useTheme');
+    m.initTheme();
     expect(document.documentElement.getAttribute('data-theme')).toBe('warm');
     expect(localStorage.getItem('ladungsplaner.theme')).toBe('warm');
     expect(localStorage.length).toBe(1);
   });
 
-  it('обычная сборка: пустое хранилище после импорта остаётся пустым', async () => {
-    await import('./useTheme');
+  it('обычная сборка: пустое хранилище после initTheme остаётся пустым', async () => {
+    const m = await import('./useTheme');
+    m.initTheme();
     expect(localStorage.length).toBe(0);
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
   });

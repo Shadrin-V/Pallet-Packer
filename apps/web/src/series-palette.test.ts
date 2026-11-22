@@ -16,6 +16,7 @@ function palettes(fullCss: string): string[][] {
   // schaefer (задача 10) — осознанно третья, своя палитра серий (три цвета Schäfer по кругу);
   // зеркало SERIES_HEX сверяется только с forest и warm, schaefer проверяет palette.test.ts.
   const cut = fullCss.indexOf(":root[data-theme='schaefer']");
+  expect(cut).toBeGreaterThan(-1);
   const css = cut === -1 ? fullCss : fullCss.slice(0, cut);
   const byToken = SERIES_HEX.map((_, i) =>
     Array.from(css.matchAll(new RegExp(`--s${i + 1}:\\s*(#[0-9a-fA-F]{6})`, 'g')), (m) =>
