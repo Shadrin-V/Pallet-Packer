@@ -2,7 +2,7 @@
 // palette per docs/design/design-system.md. Brand head + meta band + figures + top/side cutaways +
 // per-order legend. All totals live in the meta band — one source (D1). A4 landscape print (theme.css).
 // Domain invariant: the rendered layout must be geometry-valid (findGeometryViolations = []).
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   compartmentsOf,
   findGeometryViolations,
@@ -25,6 +25,8 @@ import { Button, InfoHint } from '../ui/primitives';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
+import { capacityMap } from './components/capacity';
+import { WeightNote } from './components/WeightNote';
 import { orderIndexMap, topRects } from './components/cutaway';
 import { orderBreakdown } from './components/orderBreakdown';
 import { fillTemplate } from './components/stackFormula';
@@ -202,6 +204,7 @@ export function LadeplanScreen({
   const { locale, tt } = useLocale();
   // An unknown code would be a contract drift; show the raw code rather than an empty red line.
   const editErrorText = (code: string) => (isEditErrorKey(code) ? tt(code) : code);
+  const capacity = useMemo(() => capacityMap(load), [load]);
   const orderColorMap = orderColors ? new Map(Object.entries(orderColors)) : undefined;
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
@@ -817,6 +820,8 @@ export function LadeplanScreen({
           </div>
         </div>
 
+        <WeightNote />
+
         {/* diagrams — near-full-bleed on print for maximum width.
             Order (owner's batch): side view, then top view, then the warehouse. The hold and the
             warehouse end up adjacent, which is where the work happens — stacks travel between them. */}
@@ -886,7 +891,7 @@ export function LadeplanScreen({
 
         {/* foot: the per-order breakdown. All totals live in the meta band — one source, said once (D1). */}
         <div className="flex flex-col gap-4 border-t border-line px-6 py-4 print:gap-2 print:py-2" style={{ breakInside: 'avoid' }}>
-          <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} />
+          <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} capacity={capacity} />
         </div>
       </div>
 
