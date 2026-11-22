@@ -251,4 +251,15 @@ export const de: Dictionary = {
   ERR_EDIT_ROTATION:
     'Dieser Stapel lässt sich hier nicht drehen. Kein Platz? In den Puffer ziehen, dort drehen und zurücksetzen.',
   ERR_EDIT_NOTHING_TO_PLACE: 'Von dieser Ladungsart ist nichts mehr übrig.',
+
+  ERR_NOT_LOGGED_IN: 'Deine Anmeldung im ERP ist abgelaufen.',
+  ERR_FORBIDDEN: 'Du hast keinen Zugriff auf den Ladungsplaner. Frag die Disposition.',
+  ERR_TRIP_NOT_FOUND:
+    'Reise nicht gefunden oder keine Berechtigung. Prüfe die Nummer in der LKW-Disposition.',
+  ERR_LINE_NOT_FOUND: 'Mindestens eine Bestellposition ist nicht mehr da oder für dich nicht sichtbar.',
+  ERR_ITEM_NOT_FOUND: 'Diesen Artikel gibt es im ERP nicht.',
+  ERR_VALIDATION: 'Die Eingabe wurde vom ERP abgelehnt.',
+  'erp.forbidden.hiddenOrder':
+    'In dieser Reise ist eine Bestellung, die du nicht sehen darfst. Frag die Disposition.',
+  'erp.error.generic': 'Das ERP hat nicht wie erwartet geantwortet. Bitte erneut versuchen.',
 };

@@ -260,6 +260,20 @@ export const TRANSLATION_KEYS = [
   'ERR_EDIT_FORK_ACCESS',
   'ERR_EDIT_ROTATION',
   'ERR_EDIT_NOTHING_TO_PLACE',
+
+  // Коды ошибок методов ERP (контракт erp-y6tb9 api-vertrag, §5): сервер текстов не отдаёт, перевод —
+  // на странице. «Нет» и «нельзя читать» неразличимы (§4 п. 1) — ни один текст не утверждает, что рейса
+  // или строки не существует.
+  'ERR_NOT_LOGGED_IN',
+  'ERR_FORBIDDEN',
+  'ERR_TRIP_NOT_FOUND',
+  'ERR_LINE_NOT_FOUND',
+  'ERR_ITEM_NOT_FOUND',
+  'ERR_VALIDATION',
+  // ERR_FORBIDDEN с details.doctype 'Purchase Order': рейс виден, один его заказ — нет.
+  'erp.forbidden.hiddenOrder',
+  // Неизвестный код, сбой сети или ответ не по контракту.
+  'erp.error.generic',
 ] as const;
 
 export type TranslationKey = (typeof TRANSLATION_KEYS)[number];

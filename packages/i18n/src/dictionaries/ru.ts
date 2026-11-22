@@ -247,4 +247,13 @@ export const ru: Dictionary = {
   ERR_EDIT_ROTATION:
     'Эту стопку здесь не повернуть. Не хватает места? Вытащите её в буфер, поверните там и верните обратно.',
   ERR_EDIT_NOTHING_TO_PLACE: 'Этой позиции больше не осталось.',
+
+  ERR_NOT_LOGGED_IN: 'Вход в ERP истёк.',
+  ERR_FORBIDDEN: 'У тебя нет доступа к Ladungsplaner. Спроси диспозицию.',
+  ERR_TRIP_NOT_FOUND: 'Рейс не найден или нет прав на него. Проверь номер в LKW-Disposition.',
+  ERR_LINE_NOT_FOUND: 'Как минимум одной строки заказа уже нет или она тебе не видна.',
+  ERR_ITEM_NOT_FOUND: 'Такого артикула в ERP нет.',
+  ERR_VALIDATION: 'ERP отклонил ввод.',
+  'erp.forbidden.hiddenOrder': 'В этом рейсе есть заказ, который тебе не виден. Спроси диспозицию.',
+  'erp.error.generic': 'ERP ответил не так, как ожидалось. Попробуй ещё раз.',
 };

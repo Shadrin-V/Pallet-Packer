@@ -51,6 +51,14 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
       'ERR_EDIT_FORK_ACCESS',
       'ERR_EDIT_ROTATION',
       'ERR_EDIT_NOTHING_TO_PLACE',
+      // error codes of the ERP contract (erp-y6tb9 api-vertrag, section 5) — answers of the ERP
+      // methods, translated on the page; not engine codes
+      'ERR_NOT_LOGGED_IN',
+      'ERR_FORBIDDEN',
+      'ERR_TRIP_NOT_FOUND',
+      'ERR_LINE_NOT_FOUND',
+      'ERR_ITEM_NOT_FOUND',
+      'ERR_VALIDATION',
     ]);
     for (const code of errorCodes) {
       expect(DICTIONARIES.de[code]).toBeTruthy();
