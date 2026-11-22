@@ -26,6 +26,12 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
   it('translates every engine validation error code into both locales (acceptance criterion)', () => {
     const errorCodes = TRANSLATION_KEYS.filter((key) => key.startsWith('ERR_'));
     expect(errorCodes).toEqual([
+      // why an ERP order line is not placeable (ERP contract erp-y6tb9, section 2) — server reasons
+      // shown next to the line, not engine codes
+      'ERR_LINE_UNIT_NOT_PIECES',
+      'ERR_LINE_QTY_UNKNOWN',
+      'ERR_LINE_NO_ITEM',
+      'ERR_LINE_NOTHING_OPEN',
       'ERR_INVALID_DIMENSION',
       'ERR_CARGO_EXCEEDS_VEHICLE',
       'ERR_INVALID_QUANTITY',

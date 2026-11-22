@@ -73,6 +73,15 @@ export const de: Dictionary = {
   'setup.msg.volumeOver': 'Ladevolumen übersteigt den Laderaum — es bleibt etwas stehen',
   'setup.msg.zeroQuantity': 'Menge 0 — wird nicht gerechnet',
   'setup.msg.duplicateOrderId': 'Auftrags-Nr. wiederholt sich — die Aufträge zählen als einer',
+  // {uom} подставляет экран через formatUom: «in m³: nicht planbar».
+  'ERR_LINE_UNIT_NOT_PIECES': 'in {uom}: nicht planbar',
+  'ERR_LINE_QTY_UNKNOWN': 'Nicht planbar: Umrechnung in Lagereinheiten unbekannt',
+  'ERR_LINE_NO_ITEM': 'Nicht planbar: Position ohne Artikel',
+  'ERR_LINE_NOTHING_OPEN': 'Nicht planbar: nichts mehr offen',
+  'unplaceable.unitHint': 'Wird nicht geplant: der Ladungsplaner rechnet mit Stück und Palettenmaßen.',
+  'setup.msg.dimsFromName': 'Länge und Breite aus dem Namen, bitte prüfen',
+  'uom.pieces': 'Stk',
+  'uom.cubicMeter': 'm³',
   'setup.msg.goToPosition': 'Zur Position springen',
   'setup.header.calcBlocked': 'Berechnung nicht möglich: {n} Fehler',
   // Task 7: announced by the live region below the second "Berechnen" (next to the plan), right

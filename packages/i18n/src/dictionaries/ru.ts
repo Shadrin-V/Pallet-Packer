@@ -72,6 +72,15 @@ export const ru: Dictionary = {
   'setup.msg.volumeOver': 'Объём груза больше объёма кузова — что-то останется',
   'setup.msg.zeroQuantity': 'Количество 0 — в расчёт не идёт',
   'setup.msg.duplicateOrderId': 'Auftrags-ID повторяется — заказы посчитаются как один',
+  // {uom} подставляет экран через formatUom: «в м³: не размещается».
+  'ERR_LINE_UNIT_NOT_PIECES': 'в {uom}: не размещается',
+  'ERR_LINE_QTY_UNKNOWN': 'Не размещается: пересчёт в складские единицы неизвестен',
+  'ERR_LINE_NO_ITEM': 'Не размещается: строка без артикула',
+  'ERR_LINE_NOTHING_OPEN': 'Не размещается: открытого остатка нет',
+  'unplaceable.unitHint': 'Не планируется: Ladungsplaner считает штуки и размеры поддонов.',
+  'setup.msg.dimsFromName': 'Длина и ширина из названия, проверь',
+  'uom.pieces': 'шт',
+  'uom.cubicMeter': 'м³',
   'setup.msg.goToPosition': 'Перейти к позиции',
   'setup.header.calcBlocked': 'Расчёт невозможен: ошибок — {n}',
   // Task 7: объявляется живой областью под второй кнопкой «Рассчитать» (рядом с планом) сразу после

@@ -21,7 +21,8 @@ export type LocalMessageCode =
   | 'setup.msg.tooTall'
   | 'setup.msg.volumeOver'
   | 'setup.msg.zeroQuantity'
-  | 'setup.msg.duplicateOrderId';
+  | 'setup.msg.duplicateOrderId'
+  | 'setup.msg.dimsFromName';
 
 /** Сообщение панели — либо локальная проверка, либо код движка: для экрана это одно множество. */
 export type SetupMessageCode = LocalMessageCode | ValidationErrorCode;
@@ -45,12 +46,15 @@ export interface SetupSummary {
   vehicleVolume: number;
 }
 
+/** Неразмещаемые строки ERP (`unplaceable`) не считаются нигде: в груз они не идут (`toCargoList`),
+ *  и экран показывает их отдельно. */
 export function setupSummary(orders: OrderState[], vehicle: Vehicle): SetupSummary {
   let positions = 0;
   let units = 0;
   let cargoVolume = 0;
   for (const o of orders) {
     for (const p of o.positions) {
+      if (p.unplaceable) continue;
       positions += 1;
       const q = numOr0(p.quantity);
       units += q;
@@ -74,6 +78,8 @@ export function setupMessages(orders: OrderState[], vehicle: Vehicle): SetupMess
   const warnings: SetupMessage[] = [];
   for (const o of orders) {
     for (const p of o.positions) {
+      // Неразмещаемая строка ERP в груз не идёт — проверять в ней нечего, адресовать некуда.
+      if (p.unplaceable) continue;
       const at = { where: { orderKey: o.key, positionId: p.id }, orderId: o.orderId, name: p.name };
       if (!dimsComplete(p)) errors.push({ code: 'setup.msg.dimsMissing', level: 'error', ...at });
       if (stepInvalid(p.state, activeStep(p), p.height))
@@ -83,6 +89,8 @@ export function setupMessages(orders: OrderState[], vehicle: Vehicle): SetupMess
       // Обнулить количество — законный способ временно исключить позицию, не удаляя её (§6).
       if (numOr0(p.quantity) === 0)
         warnings.push({ code: 'setup.msg.zeroQuantity', level: 'warning', ...at });
+      // Длина и ширина из названия артикула — предложение, а не подтверждённый размер.
+      if (p.dimsFromName) warnings.push({ code: 'setup.msg.dimsFromName', level: 'warning', ...at });
     }
   }
   // Дубль Auftrags-ID (LKWkalk-pkm): движок группирует груз в зоны по orderId, легенда и цвета —
@@ -90,10 +98,12 @@ export function setupMessages(orders: OrderState[], vehicle: Vehicle): SetupMess
   // Дубль почти всегда опечатка → предупреждение на каждой карточке после первой (решение
   // владельца 2026-07-30: не ошибка — расчёт с дублем корректен, зоны законно объединяются).
   // trim: «SO-1» и « SO-1 » — один заказ и для движка, которому ID достаётся как есть из формы.
+  // Адрес — первая РАЗМЕЩАЕМАЯ строка: неразмещаемым сообщения не адресуются, а карточка из одних
+  // неразмещаемых строк груза не даёт и с соседом в движке не слипается.
   const seenIds = new Set<string>();
   for (const o of orders) {
     const id = o.orderId.trim();
-    const first = o.positions[0];
+    const first = o.positions.find((p) => !p.unplaceable);
     if (seenIds.has(id) && first) {
       warnings.push({
         code: 'setup.msg.duplicateOrderId',
