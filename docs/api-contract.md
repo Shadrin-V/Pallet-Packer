@@ -217,6 +217,31 @@ interface Report {
 }
 ```
 
+### CapacityOptions, RoomLeft (вместимость, 0.19.0, [ADR 027](adr/027-erp-embedded-artifact.md))
+```ts
+interface CapacityOptions {      // контекст упаковки для maxUnitsInVehicle — те же поля, что в Load
+  loadingMode?: LoadingMode;     // default 'combined'
+  clearance?: number;            // мм, равномерный зазор; default 0
+}
+
+interface RoomLeft {             // «Platz für N weitere Stück» — груз ровно из одного типа
+  cargoTypeId: string;
+  max: number;                   // = maxUnitsInVehicle(тип, load.vehicle, { loadingMode, clearance } из Load)
+  placed: number;                // размещений этого типа в ПЕРЕДАННОЙ раскладке (в т.ч. правленной вручную)
+  free: number;                  // max − placed, всегда > 0
+}
+```
+
+`maxUnitsInVehicle(cargo, vehicle, options?)` — один вызов `calculateLayout` с этим типом как
+единственной позицией `fill: true` (`quantity` и `orderId` игнорируются): число — то, что реально
+ставит упаковщик при правилах вращения/штабелирования/вложения/доступа вилами типа и отсеках кузова,
+а не оценка по объёму. Вход, не прошедший валидацию, или груз, не входящий ни в одной ориентации,
+→ `0`. Чистая, детерминированная, вход не мутирует.
+
+`roomLeft(load, layout)` считает `placed` по переданной раскладке, не пересчитывая её — поэтому
+годится для раскладки после ручных правок. `null`, если в `load.cargo` не ровно один тип или
+`free ≤ 0` (места нет).
+
 ## 2. Операции (= будущие MCP-инструменты)
 
 | Операция            | Вход                 | Выход             | Назначение                              |
