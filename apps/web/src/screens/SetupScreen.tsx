@@ -13,6 +13,7 @@ import { HeroHeader } from '../ui/HeroHeader';
 import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
+import { removeStored } from '../lib/draftStorage';
 import { orderParam, urlWithoutOrderParam } from './setup/orderDeepLink';
 import type { Article } from '@shadrin-v/contracts';
 import { OrderCard } from './setup/OrderCard';
@@ -342,7 +343,7 @@ export function SetupScreen({
     setVehicle(defaultVehicle());
     setOrders([emptyOrder(1)]);
     try {
-      globalThis.localStorage?.removeItem(SETUP_STORAGE_KEY);
+      removeStored(SETUP_STORAGE_KEY);
     } catch {
       /* ignore */
     }

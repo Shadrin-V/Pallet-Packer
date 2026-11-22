@@ -30,6 +30,7 @@ import { orderBreakdown } from './components/orderBreakdown';
 import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
+import { readStored, writeStored } from '../lib/draftStorage';
 import { snap, type StackSel } from './components/editLayout';
 import { StackShape } from './components/StackShape';
 import { WarehouseFloor, CLICK_SLOP_PX, sameOrder } from './components/WarehouseFloor';
@@ -42,14 +43,14 @@ import { reconcileYardOrder, yardOrderKey } from './components/yardOrder';
 const YARD_GROUPING_STORAGE_KEY = 'ladungsplaner.yardGrouping';
 function readYardGrouping(): boolean {
   try {
-    return globalThis.localStorage?.getItem(YARD_GROUPING_STORAGE_KEY) === 'true';
+    return readStored(YARD_GROUPING_STORAGE_KEY) === 'true';
   } catch {
     return false;
   }
 }
 function writeYardGrouping(on: boolean): void {
   try {
-    globalThis.localStorage?.setItem(YARD_GROUPING_STORAGE_KEY, String(on));
+    writeStored(YARD_GROUPING_STORAGE_KEY, String(on));
   } catch {
     /* ignore */
   }
@@ -61,14 +62,14 @@ function writeYardGrouping(on: boolean): void {
 const SHOW_TRUCK_STORAGE_KEY = 'ladungsplaner.showTruck';
 function readShowTruck(): boolean {
   try {
-    return globalThis.localStorage?.getItem(SHOW_TRUCK_STORAGE_KEY) !== 'false';
+    return readStored(SHOW_TRUCK_STORAGE_KEY) !== 'false';
   } catch {
     return true;
   }
 }
 function writeShowTruck(on: boolean): void {
   try {
-    globalThis.localStorage?.setItem(SHOW_TRUCK_STORAGE_KEY, String(on));
+    writeStored(SHOW_TRUCK_STORAGE_KEY, String(on));
   } catch {
     /* ignore */
   }

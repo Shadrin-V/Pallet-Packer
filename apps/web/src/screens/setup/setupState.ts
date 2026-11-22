@@ -3,6 +3,7 @@
 import type { CargoType, NestingMode, NestingState, RotationRule, ForkAccess, ForkAxis, Vehicle } from '@shadrin-v/engine';
 import type { ArticleErpField, OrderZone } from '@shadrin-v/contracts';
 import type { ArticleSuggestion } from '../components/ArticleCombobox';
+import { readStored, writeStored } from '../../lib/draftStorage';
 
 // ---- state model ----------------------------------------------------------
 export type Num = number | '';
@@ -61,7 +62,7 @@ export interface PersistedSetup {
 }
 export function loadSetup(): PersistedSetup | null {
   try {
-    const raw = globalThis.localStorage?.getItem(SETUP_STORAGE_KEY);
+    const raw = readStored(SETUP_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSetup;
     if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) {
@@ -88,7 +89,7 @@ export function loadSetup(): PersistedSetup | null {
 }
 export function saveSetup(s: PersistedSetup): void {
   try {
-    globalThis.localStorage?.setItem(SETUP_STORAGE_KEY, JSON.stringify(s));
+    writeStored(SETUP_STORAGE_KEY, JSON.stringify(s));
   } catch {
     /* ignore */
   }

@@ -13,6 +13,7 @@ import { LocaleProvider } from './i18n/LocaleContext';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 import { EmptyPlan } from './screens/components/EmptyPlan';
+import { readStored, removeStored, writeStored } from './lib/draftStorage';
 
 const LOAD_STORAGE_KEY = 'ladungsplaner.load';
 // Stable orderId→palette slot, persisted separately so the Load format stays unchanged (QA #2).
@@ -28,7 +29,7 @@ const STRATEGY_STORAGE_KEY = 'ladungsplaner.strategy';
  *  возьмёт стратегию последнего плана, а её нет — умолчания контракта. */
 function loadPersistedStrategy(): { loadingMode?: LoadingMode; orderGrouping?: OrderGrouping } {
   try {
-    const raw = globalThis.localStorage?.getItem(STRATEGY_STORAGE_KEY);
+    const raw = readStored(STRATEGY_STORAGE_KEY);
     if (!raw) return {};
     const v = JSON.parse(raw) as { loadingMode?: string; orderGrouping?: string };
     return {
@@ -43,7 +44,7 @@ function loadPersistedStrategy(): { loadingMode?: LoadingMode; orderGrouping?: O
 /** Rebuild the last computed plan from the persisted Load (layout is derived, not stored). */
 function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Record<string, number> } | null {
   try {
-    const raw = globalThis.localStorage?.getItem(LOAD_STORAGE_KEY);
+    const raw = readStored(LOAD_STORAGE_KEY);
     if (!raw) return null;
     const load = JSON.parse(raw) as Load;
     const layout = calculateLayout(load);
@@ -54,7 +55,7 @@ function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Reco
     if (findGeometryViolations(load, layout).length > 0) return null;
     let orderColors: Record<string, number> | undefined;
     try {
-      const rc = globalThis.localStorage?.getItem(ORDER_COLORS_STORAGE_KEY);
+      const rc = readStored(ORDER_COLORS_STORAGE_KEY);
       if (rc) orderColors = JSON.parse(rc) as Record<string, number>;
     } catch {
       /* ignore */
@@ -95,7 +96,7 @@ export function App() {
    *  перезагрузку, и его стратегия не должна тоже. Слияние — с сохранённым выбором, не с state. */
   const saveStrategyChoice = (patch: Partial<{ loadingMode: LoadingMode; orderGrouping: OrderGrouping }>) => {
     try {
-      globalThis.localStorage?.setItem(
+      writeStored(
         STRATEGY_STORAGE_KEY,
         JSON.stringify({ ...loadPersistedStrategy(), ...patch }),
       );
@@ -121,12 +122,12 @@ export function App() {
     try {
       if (result?.transient) return; // preview: leave the previously saved plan untouched
       if (result) {
-        globalThis.localStorage?.setItem(LOAD_STORAGE_KEY, JSON.stringify(result.load));
-        if (result.orderColors) globalThis.localStorage?.setItem(ORDER_COLORS_STORAGE_KEY, JSON.stringify(result.orderColors));
-        else globalThis.localStorage?.removeItem(ORDER_COLORS_STORAGE_KEY);
+        writeStored(LOAD_STORAGE_KEY, JSON.stringify(result.load));
+        if (result.orderColors) writeStored(ORDER_COLORS_STORAGE_KEY, JSON.stringify(result.orderColors));
+        else removeStored(ORDER_COLORS_STORAGE_KEY);
       } else {
-        globalThis.localStorage?.removeItem(LOAD_STORAGE_KEY);
-        globalThis.localStorage?.removeItem(ORDER_COLORS_STORAGE_KEY);
+        removeStored(LOAD_STORAGE_KEY);
+        removeStored(ORDER_COLORS_STORAGE_KEY);
       }
     } catch {
       /* ignore */
@@ -162,7 +163,7 @@ export function App() {
     setOrderGrouping('strict');
     // Забыть и сохранённый выбор: иначе перезагрузка после сброса вернула бы прежнюю стратегию.
     try {
-      globalThis.localStorage?.removeItem(STRATEGY_STORAGE_KEY);
+      removeStored(STRATEGY_STORAGE_KEY);
     } catch {
       /* ignore */
     }
