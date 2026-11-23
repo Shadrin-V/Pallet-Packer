@@ -103,6 +103,20 @@ describe('PositionRow', () => {
       expect(hint).toHaveTextContent('Höhe fehlt');
     });
 
+    it('каталог при неполных габаритах → не «gespeichert», а «Maße fehlen»', () => {
+      renderRow({ dimsFromCatalog: true, height: '' }, {}, ERP_HOST);
+      const hint = screen.getByTestId('dims-hint');
+      expect(hint).not.toHaveTextContent('Maße am Artikel gespeichert');
+      expect(hint).toHaveTextContent('Maße fehlen');
+    });
+
+    it('правка любого размера снимает метку каталога', async () => {
+      const { onChange } = renderRow({ dimsFromCatalog: true }, {}, ERP_HOST);
+      await userEvent.type(screen.getByLabelText('Höhe'), '1');
+      expect(onChange).toHaveBeenLastCalledWith({ height: 19001, dimsFromCatalog: undefined });
+      expect(Object.keys(onChange.mock.lastCall![0])).toEqual(['height', 'dimsFromCatalog']);
+    });
+
     it('без габаритов и без метки названия → «Maße fehlen» с пояснением', () => {
       renderRow({ length: '', width: '', height: '' }, {}, ERP_HOST);
       expect(screen.getByTestId('dims-hint')).toHaveTextContent('Maße fehlen');

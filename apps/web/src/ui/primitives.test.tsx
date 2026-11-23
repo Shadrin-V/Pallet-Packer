@@ -57,4 +57,9 @@ describe('Button', () => {
     await userEvent.click(btn);
     expect(clicks).toBe(1); // решает обработчик экрана, примитив нажатие не глотает
   });
+
+  it.each(['primary', 'secondary', 'ghost', 'danger'] as const)('ariaDisabled (%s): наведение не меняет вид', (variant) => {
+    render(<Button variant={variant} ariaDisabled>Berechnen</Button>);
+    expect(screen.getByRole('button', { name: 'Berechnen' }).className).not.toMatch(/(^|\s)hover:/);
+  });
 });

@@ -13,6 +13,7 @@ import { formatUom } from '../../lib/uomLabel';
 import { formatSourceQuantity } from '../../erp/quantityFormat';
 import { ruleChip } from './positionRules';
 import { activeStep, applySuggestion, dimsComplete, numOr0, toCargo, type PositionState } from './setupState';
+import type { DimField } from './setupValidation';
 
 /** Stable id of the rules panel (wide `<aside>` or narrow drawer — SetupScreen.tsx renders exactly
  *  one of the two at a time), so the row's chip can point `aria-controls` at whichever is mounted
@@ -44,11 +45,13 @@ export interface PositionRowProps {
    *  закрытии drawer), поле имени — Task 7 (фокус на соседнюю строку после удаления позиции). */
   chipRef?: (el: HTMLButtonElement | null) => void;
   nameRef?: (el: HTMLInputElement | null) => void;
+  /** Поля размеров — экран ERP уводит фокус в первое пустое, когда расчёт заблокирован. */
+  dimRef?: (field: DimField, el: HTMLInputElement | null) => void;
 }
 
 export function PositionRow({
   position: p, index, vehicle, selected, panelMounted, onSelect, onDeselect, onChange, armed, onArm, onRemove,
-  chipRef, nameRef,
+  chipRef, nameRef, dimRef,
 }: PositionRowProps) {
   // One translation source for the whole row — the dominant pattern in this repo (ArticleCombobox,
   // WarehouseFloor, Legend, HeroHeader, EmptyPlan, ...). Threading `tt` down as a prop is a
@@ -72,8 +75,11 @@ export function PositionRow({
   // на поле ввода и кнопках делал их неразличимыми для скринридера и неоднозначными для getByRole.
   // Четыре хинта строки делят одно имя намеренно — они объясняют одну и ту же привязку.
   const lockedHint = fillTemplate(tt('article.lockedHint'), { code: p.articleCode ?? '' });
-  // Правка длины или ширины — это проверка предложения из названия: метка снимается.
+  // Правка длины или ширины — это проверка предложения из названия: метка снимается. Правка любого
+  // размера расходится с сохранённым у артикула — снимается и метка каталога (до следующего
+  // сохранения). Ключ попадает в патч, только если метка была: патч обычной строки прежний.
   const clearsNameOrigin = p.dimsFromName ? { dimsFromName: undefined } : {};
+  const clearsCatalogOrigin = p.dimsFromCatalog ? { dimsFromCatalog: undefined } : {};
   const hints = erp ? dimsHints(p) : [];
   const showSourceQuantity =
     erp && p.sourceQuantity !== undefined && p.sourceQuantity !== numOr0(p.quantity);
@@ -116,15 +122,15 @@ export function PositionRow({
             the per-dimension hint SetupScreen.test.tsx already pinned ("the locked-field hint names the
             bound article", Finding 3) — restored here, same pattern as the name field above. */}
         <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length, ...clearsNameOrigin })} readOnly={!!p.locked?.length} />
+          <Measure ariaLabel={tt('field.length')} value={p.length} onChange={(length) => onChange({ length, ...clearsNameOrigin, ...clearsCatalogOrigin })} inputRef={dimRef && ((el) => dimRef('length', el))} readOnly={!!p.locked?.length} />
           {p.locked?.length && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
         </span>
         <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width, ...clearsNameOrigin })} readOnly={!!p.locked?.width} />
+          <Measure ariaLabel={tt('field.width')} value={p.width} onChange={(width) => onChange({ width, ...clearsNameOrigin, ...clearsCatalogOrigin })} inputRef={dimRef && ((el) => dimRef('width', el))} readOnly={!!p.locked?.width} />
           {p.locked?.width && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
         </span>
         <span className="inline-flex w-24 items-center gap-1">
-          <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height })} readOnly={!!p.locked?.height} />
+          <Measure ariaLabel={tt('field.height')} value={p.height} onChange={(height) => onChange({ height, ...clearsCatalogOrigin })} inputRef={dimRef && ((el) => dimRef('height', el))} readOnly={!!p.locked?.height} />
           {p.locked?.height && <InfoHint ariaLabel={tt('article.lockedHintLabel')} text={lockedHint} />}
         </span>
         <span className="w-20"><Measure ariaLabel={tt('field.quantity')} unit="×" value={p.quantity} onChange={(quantity) => onChange({ quantity })} align="left" /></span>

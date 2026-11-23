@@ -132,6 +132,8 @@ export const TRANSLATION_KEYS = [
   'position.dimsMissing',
   'position.dimsMissingHint',
   'setup.blocked',
+  'setup.blockedOne',
+  'setup.blockedUnnamed',
   'setup.blockedItem',
   'setup.blockedEmpty',
   'position.sourceQuantity',

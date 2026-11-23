@@ -128,6 +128,8 @@ export const ru: Dictionary = {
   'position.dimsMissing': 'Нет размеров',
   'position.dimsMissingHint': 'В названии нет размера. Введи один раз: ERP запомнит размеры у артикула.',
   'setup.blocked': 'Пока не рассчитать: у {n} позиций нет размеров.',
+  'setup.blockedOne': 'Пока не рассчитать: у 1 позиции нет размеров.',
+  'setup.blockedUnnamed': 'Позиция {n}',
   'setup.blockedItem': '{name}: {fields}.',
   'setup.blockedEmpty': 'Пока не рассчитать: нет ни одной позиции в штуках.',
   'position.sourceQuantity': '{exact} {uom}, в плане {planned}',

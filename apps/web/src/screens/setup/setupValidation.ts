@@ -184,16 +184,19 @@ export type DimField = 'length' | 'width' | 'height';
 
 /** Размещаемые позиции с неполными габаритами и недостающие поля каждой — в порядке черновика.
  *  Причина блокировки расчёта в сборке для ERP (макет, блок 3); неразмещаемые строки сюда не входят:
- *  у них габаритов нет намеренно. */
+ *  у них габаритов нет намеренно. `ordinal` — номер позиции среди размещаемых строк экрана (с 1):
+ *  им называется позиция без имени. Поля `missing` — в порядке длина, ширина, высота. */
 export function missingDims(
   orders: OrderState[],
-): Array<{ positionId: string; name: string; missing: DimField[] }> {
-  const out: Array<{ positionId: string; name: string; missing: DimField[] }> = [];
+): Array<{ positionId: string; name: string; ordinal: number; missing: DimField[] }> {
+  const out: Array<{ positionId: string; name: string; ordinal: number; missing: DimField[] }> = [];
+  let ordinal = 0;
   for (const o of orders) {
     for (const p of o.positions) {
       if (p.unplaceable) continue;
+      ordinal += 1;
       const missing = (['length', 'width', 'height'] as const).filter((f) => numOr0(p[f]) <= 0);
-      if (missing.length > 0) out.push({ positionId: p.id, name: p.name, missing });
+      if (missing.length > 0) out.push({ positionId: p.id, name: p.name, ordinal, missing });
     }
   }
   return out;

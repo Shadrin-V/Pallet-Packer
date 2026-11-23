@@ -139,6 +139,9 @@ export function SetupScreen({
   // this to return focus to a sibling row after a position delete instead of evicting it onto
   // "+ Auftrag hinzufügen" (see removePosition below).
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
+  // Поля размеров строк, ключ `${positionId}:${field}`: в ERP заблокированный расчёт ведёт фокус в
+  // первое пустое из них (круг исправлений 1).
+  const dimRefs = useRef(new Map<string, HTMLInputElement>());
   // Сам drawer: фокус после «Рассчитать» с ошибкой должен уезжать ВНУТРЬ него (спека §7). На 375px
   // панель занимает весь экран, и прежний фокус в поле артикула строки оставлял каретку и системную
   // клавиатуру за непрозрачной панелью — набранное уходило в невидимое поле (финальное ревью, I3).
@@ -531,6 +534,16 @@ export function SetupScreen({
   };
 
   const handleCalculate = () => {
+    // ERP, не хватает размеров: фокус — в первое пустое поле размера первой такой позиции (длина,
+    // ширина, высота), а не в поле артикула. Набор в поле артикула отвязал бы строку от артикула ERP.
+    // Фокус переводится сразу, без кадра ожидания: поле уже на экране. Drawer (узкий экран) закрываем,
+    // чтобы он не закрыл собой поле.
+    if (calcBlocked && gaps.length > 0) {
+      const g = gaps[0];
+      if (!wide) setSelection(null);
+      dimRefs.current.get(`${g.positionId}:${g.missing[0]}`)?.focus();
+      return;
+    }
     // Кнопка не гаснет (§6): погашенная не фокусируется и не объявляется скринридером, то есть
     // молча прячет и причину, и адрес ошибки. Нажатие при ошибках не считает, а ведёт к первой
     // ошибочной строке; предупреждения (количество 0, объём, высота) расчёт не блокируют.
@@ -686,6 +699,10 @@ export function SetupScreen({
                 if (el) nameRefs.current.set(pid, el);
                 else nameRefs.current.delete(pid);
               }}
+              onDimRef={(pid, field, el) => {
+                if (el) dimRefs.current.set(`${pid}:${field}`, el);
+                else dimRefs.current.delete(`${pid}:${field}`);
+              }}
             />
           ))}
           {erp && (
@@ -810,12 +827,14 @@ export function SetupScreen({
           <div id={CALC_BLOCKED_ID} data-testid="calc-blocked" className="max-w-prose text-center text-caption text-warning">
             {gaps.length > 0 ? (
               <>
-                <p className="font-semibold">{fillTemplate(tt('setup.blocked'), { n: gaps.length })}</p>
+                <p className="font-semibold">
+                  {gaps.length === 1 ? tt('setup.blockedOne') : fillTemplate(tt('setup.blocked'), { n: gaps.length })}
+                </p>
                 <ul>
                   {gaps.map((g) => (
                     <li key={g.positionId}>
                       {fillTemplate(tt('setup.blockedItem'), {
-                        name: g.name,
+                        name: g.name.trim() || fillTemplate(tt('setup.blockedUnnamed'), { n: g.ordinal }),
                         fields: g.missing.map((f) => tt(`field.${f}`)).join(', '),
                       })}
                     </li>

@@ -158,7 +158,7 @@ describe('SetupScreen в ERP — количество и происхожден�
     renderSetupErp([orderStateFromZone(board, 0)], onCalculate);
     expect(screen.getByText('Länge und Breite aus dem Namen, bitte prüfen')).toBeInTheDocument();
     expect(screen.getByText('Höhe fehlt')).toBeInTheDocument();
-    expect(screen.getByText('Noch nicht berechenbar: bei 1 Positionen fehlen Maße.')).toBeInTheDocument();
+    expect(screen.getByText('Noch nicht berechenbar: bei 1 Position fehlen Maße.')).toBeInTheDocument();
     expect(screen.getByText('Schnittholz 22x100x1200: Höhe.')).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: 'Berechnen' })[0]);
     expect(onCalculate).not.toHaveBeenCalled();
@@ -222,7 +222,7 @@ describe('SetupScreen в ERP — блокировка расчёта', () => {
     for (const b of screen.getAllByRole('button', { name: 'Berechnen' })) {
       const id = b.getAttribute('aria-describedby');
       expect(id).toBeTruthy();
-      expect(document.getElementById(id!)).toHaveTextContent('Noch nicht berechenbar: bei 1 Positionen fehlen Maße.');
+      expect(document.getElementById(id!)).toHaveTextContent('Noch nicht berechenbar: bei 1 Position fehlen Maße.');
       expect(b).toHaveAccessibleDescription(/Schnittholz 22x100x1200: Höhe\./);
     }
   });
@@ -239,6 +239,55 @@ describe('SetupScreen в ERP — блокировка расчёта', () => {
     expect(screen.getAllByRole('button', { name: 'Berechnen' })[0]).not.toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(screen.getAllByRole('button', { name: 'Berechnen' })[0]);
     expect(onCalculate.mock.calls[0][0].cargo[0]).toMatchObject({ rotation: 'none', state: 'verschachtelt', nesting: { stepHeight: 22 } });
+  });
+});
+
+describe('SetupScreen в ERP — круг исправлений 1', () => {
+  const savedDraft = () => JSON.parse(globalThis.localStorage.getItem(SETUP_STORAGE_KEY)!) as { orders: OrderState[] };
+
+  it('нажатие при пробелах ведёт фокус в первое пустое поле размера, а не в поле артикула', async () => {
+    renderSetupErp([orderStateFromZone(board, 0)], onCalculate);
+    await userEvent.click(screen.getAllByRole('button', { name: 'Berechnen' })[0]);
+    expect(rowField('Höhe')).toHaveFocus();
+    await nextFrame(); // и позже фокус никто не перехватывает
+    expect(rowField('Höhe')).toHaveFocus();
+    await userEvent.keyboard('22');
+    expect(rowField('Höhe')).toHaveValue(22);
+    expect(screen.getByDisplayValue('Schnittholz 22x100x1200')).toBeInTheDocument();
+    const p = savedDraft().orders[0].positions[0];
+    expect(p.articleCode).toBe('MAT0099');
+    expect(p.name).toBe('Schnittholz 22x100x1200');
+    expect(onCalculate).not.toHaveBeenCalled();
+  });
+
+  it('порядок полей: длина, ширина, высота — без всех размеров фокус в длине', async () => {
+    const blank: OrderZone = { orderId: 'PUR-ORD-3', positions: [{ itemCode: 'DIS101', itemName: 'Display-Halbpalette Typ H1', quantity: 204, uom: 'Nos', lineRef: 'd1', dimensionsSource: 'manual' }] };
+    renderSetupErp([orderStateFromZone(blank, 0)], onCalculate);
+    await userEvent.click(screen.getAllByRole('button', { name: 'Berechnen' })[1]);
+    expect(rowField('Länge')).toHaveFocus();
+  });
+
+  it('правка размера снимает «Maße am Artikel gespeichert»; следующее сохранение возвращает', async () => {
+    const cat: OrderZone = { orderId: 'PUR-ORD-4', positions: [{ itemCode: 'EUR104', itemName: 'Europalette 1200x800 gebraucht', quantity: 204, uom: 'Nos',
+      lineRef: 'c1', length: 1200, width: 800, height: 144, dimensionsSource: 'catalog' }] };
+    const upsertArticle = vi.fn(async (a: ArticleInput) => ({ ...a, source: 'erp', updatedAt: 'x', erpFields: ['name'] }) as Article);
+    renderSetupErp([orderStateFromZone(cat, 0)], onCalculate, { upsertArticle } as unknown as DataProvider);
+    expect(screen.getByText('Maße am Artikel gespeichert')).toBeInTheDocument();
+    await userEvent.type(rowField('Höhe'), '0');
+    expect(screen.queryByText('Maße am Artikel gespeichert')).toBeNull();
+    await userEvent.click(screen.getByTestId('rule-chip'));
+    await userEvent.click(screen.getByRole('button', { name: 'Artikel aktualisieren' }));
+    expect(upsertArticle).toHaveBeenCalledWith(expect.objectContaining({ itemCode: 'EUR104', height: 1440 }));
+    expect(await screen.findByText('Maße am Artikel gespeichert')).toBeInTheDocument();
+  });
+
+  it('позиция без имени в причине — «Position n»; при двух позициях — множественное число', async () => {
+    renderSetupErp([orderStateFromZone(board, 0)], onCalculate);
+    await userEvent.click(screen.getByRole('button', { name: '+ Position hinzufügen' }));
+    expect(screen.getByText('Noch nicht berechenbar: bei 2 Positionen fehlen Maße.')).toBeInTheDocument();
+    expect(screen.getByText('Schnittholz 22x100x1200: Höhe.')).toBeInTheDocument();
+    expect(screen.getByText('Position 2: Länge, Breite, Höhe.')).toBeInTheDocument();
+    expect(screen.getByTestId('calc-blocked').textContent).not.toMatch(/(^|\.)\s*:/);
   });
 });
 

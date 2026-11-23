@@ -10,6 +10,7 @@ import { useT } from '../../i18n/LocaleContext';
 import { useHost } from '../../host/HostContext';
 import { PositionRow } from './PositionRow';
 import type { OrderState, PositionState } from './setupState';
+import type { DimField } from './setupValidation';
 
 export interface OrderCardProps {
   order: OrderState;
@@ -41,6 +42,8 @@ export interface OrderCardProps {
   /** Same registration, for the row's article-name input — Task 7 (LKWkalk-78x) uses this to return
    *  focus to a sibling row after a position delete instead of evicting it from the card. */
   onNameRef?: (pid: string, el: HTMLInputElement | null) => void;
+  /** То же для полей размеров строки (фокус при заблокированном расчёте в ERP). */
+  onDimRef?: (pid: string, field: DimField, el: HTMLInputElement | null) => void;
 }
 
 export function OrderCard({
@@ -64,6 +67,7 @@ export function OrderCard({
   onDeselectPosition,
   onChipRef,
   onNameRef,
+  onDimRef,
 }: OrderCardProps) {
   const tt = useT();
   const erp = useHost().kind === 'erp';
@@ -160,6 +164,7 @@ export function OrderCard({
             onRemove={() => onRemovePosition(p.id)}
             chipRef={onChipRef ? (el) => onChipRef(p.id, el) : undefined}
             nameRef={onNameRef ? (el) => onNameRef(p.id, el) : undefined}
+            dimRef={onDimRef ? (field, el) => onDimRef(p.id, field, el) : undefined}
           />
         ))}
       </div>

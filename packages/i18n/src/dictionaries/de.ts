@@ -129,6 +129,8 @@ export const de: Dictionary = {
   'position.dimsMissing': 'Maße fehlen',
   'position.dimsMissingHint': 'Im Namen steht kein Maß. Einmal eintragen: das ERP merkt sich die Maße am Artikel.',
   'setup.blocked': 'Noch nicht berechenbar: bei {n} Positionen fehlen Maße.',
+  'setup.blockedOne': 'Noch nicht berechenbar: bei 1 Position fehlen Maße.',
+  'setup.blockedUnnamed': 'Position {n}',
   'setup.blockedItem': '{name}: {fields}.',
   'setup.blockedEmpty': 'Noch nicht berechenbar: keine Position in Stück.',
   'position.sourceQuantity': '{exact} {uom}, geplant {planned}',
