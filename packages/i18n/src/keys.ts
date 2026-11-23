@@ -25,12 +25,14 @@ export const TRANSLATION_KEYS = [
   'erp.step.select',
   'erp.step.setup',
   'erp.step.plan',
+  'erp.step.done',
   'erp.empty.title',
   'erp.empty.text',
   'erp.empty.action',
   'erp.action.changePositions',
   'erp.label.orders',
   'erp.label.calculate',
+  'erp.label.emptyHint',
 
   // Setup screen (order/position editor)
   'setup.orders',

@@ -56,6 +56,13 @@ describe('App: оболочка экранов сборки для ERP', () => {
     expect(screen.getByRole('link', { name: /Positionen wählen/ })).toHaveAttribute('aria-current', 'step');
   });
 
+  it('подсказка пустого плана в ERP называет кнопку «Ladeplan berechnen» и «Positionen»', () => {
+    renderAppErp();
+    const empty = screen.getByTestId('empty-plan');
+    expect(empty).toHaveTextContent('Positionen wählen, Maße prüfen und «Ladeplan berechnen» drücken.');
+    expect(empty).not.toHaveTextContent('Aufträge');
+  });
+
   it('в ERP нет Demo и ручного номера заказа; подписи макета', async () => {
     renderAppErp({ draft: draftWithOrder('BE-40388') });
     expect(screen.queryByRole('button', { name: 'Demo' })).toBeNull();
@@ -114,6 +121,7 @@ describe('App: оболочка экранов сборки для ERP', () => {
     expect(screen.getAllByText('Aufträge').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Berechnen' }).length).toBeGreaterThan(0);
     expect(screen.queryByText('Noch keine Positionen im LKW')).toBeNull();
+    expect(screen.getByTestId('empty-plan')).toHaveTextContent('Aufträge ausfüllen und «Berechnen» drücken');
     expect(screen.getByLabelText('Auftrags-ID')).not.toHaveAttribute('readonly');
   });
 });

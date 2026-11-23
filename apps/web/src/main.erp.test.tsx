@@ -177,13 +177,14 @@ describe('main.erp — точка входа сборки для ERP', () => {
     stubFetch({ sitzung: () => ok(SESSION), bestellpositionen: () => ok([]), reise: () => new Response('{}', { status: 401 }) });
     await import('./main.erp');
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
-    // Программа смонтирована — иначе проверка «после сигнала кнопки нет» ничего не доказывала бы.
-    expect(screen.getAllByRole('button', { name: 'Ladeplan berechnen' }).length).toBeGreaterThan(0);
+    // Программа смонтирована (при пустом черновике экран Einrichten показывает пустое состояние, а не
+    // кнопку расчёта) — иначе проверка «после сигнала программы нет» ничего не доказывала бы.
+    expect(screen.getByTestId('erp-empty-state')).toBeInTheDocument();
     await act(async () => {
       await expect(theProvider().loadTrip('LKW-2026-00412')).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
     });
     expect(screen.getByRole('link', { name: 'Neu anmelden' })).toBeInTheDocument();
-    expect(screen.queryAllByRole('button', { name: 'Ladeplan berechnen' })).toHaveLength(0);
+    expect(screen.queryByTestId('erp-empty-state')).not.toBeInTheDocument();
   });
 
   it('сигнал «вошёл другой пользователь» провайдера доходит до корня: экран перезагрузки', async () => {
@@ -240,9 +241,7 @@ describe('main.erp — точка входа сборки для ERP', () => {
     expect(logged.map((x) => (x instanceof Error ? `${x.message} ${x.stack}` : String(x))).join('\n')).not.toContain(SESSION.csrfToken);
   });
 
-  // Включается после задач 11, 16, 17: экраны «Reise laden», высоты позиции и «Nicht im LKW» в этой
-  // рабочей копии ещё не написаны (решение контролёра о порядке задач).
-  it.skip('сквозной сценарий ERP: рейс → высота → «Ladeplan berechnen» → таблица и «Nicht im LKW» с 12,4 m³', async () => {
+  it('сквозной сценарий ERP: рейс → высота → «Ladeplan berechnen» → таблица и «Nicht im LKW» с 12,4 m³', async () => {
     stubFetch({ sitzung: () => ok(SESSION), reise: () => ok(readFixture('reise-LKW-2026-00412.json').message), bestellpositionen: () => ok([]) });
     await import('./main.erp');
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
@@ -251,12 +250,15 @@ describe('main.erp — точка входа сборки для ERP', () => {
     await userEvent.clear(trip);
     await userEvent.type(trip, 'LKW-2026-00412');
     await userEvent.click(screen.getByRole('button', { name: 'Reise laden' }));
-    const row = (await screen.findByText('HAN0412')).closest('[data-testid="position-row"]') as HTMLElement;
-    const height = within(row).getByRole('textbox', { name: 'Höhe' });
+    // Артикул в строке показан названием (код HAN0412 в разметке не выводится); поле «Höhe» берём в карточке
+    // заказа с этой позицией (второе «Höhe» на странице — высота кузова в шапке).
+    const article = await screen.findByDisplayValue('Einwegpalette 1200x800');
+    const height = within(article.closest('section') as HTMLElement).getByRole('spinbutton', { name: 'Höhe' });
     await userEvent.clear(height);
     await userEvent.type(height, '144');
     await userEvent.click(screen.getAllByRole('button', { name: 'Ladeplan berechnen' })[0]);
-    expect(await screen.findByRole('table')).toBeInTheDocument();
+    // таблица плана — с подписью «Positionen» (вторая таблица страницы — открытые строки заказов в выборе груза)
+    expect(await screen.findByRole('table', { name: 'Positionen' })).toBeInTheDocument();
     expect(within(screen.getByTestId('not-in-truck')).getByText('12,4 m³')).toBeInTheDocument();
   });
 });

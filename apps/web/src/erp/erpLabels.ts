@@ -7,4 +7,5 @@ export const ERP_KEY_OVERRIDES: Partial<Record<TranslationKey, TranslationKey>> 
   'setup.summary.orders': 'erp.label.orders',
   'ladeplan.orders': 'erp.label.orders',
   'action.calculate': 'erp.label.calculate',
+  'ladeplan.emptyHint': 'erp.label.emptyHint',
 };

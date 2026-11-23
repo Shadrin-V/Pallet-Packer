@@ -74,6 +74,7 @@ export function ErpSteps(props: ErpStepsProps): JSX.Element {
                 {done ? <CheckIcon /> : isCurrent ? <span className="h-2 w-2 rounded-pill bg-brand" /> : null}
               </span>
               <span>{tt(label)}</span>
+              {done && <span className="sr-only">{tt('erp.step.done')}</span>}
             </a>
           </li>
         );

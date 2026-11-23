@@ -16,6 +16,14 @@ describe('ErpSteps', () => {
     expect(screen.getByRole('link', { name: /Ladeplan/ })).toHaveAttribute('href', '#lp-plan');
   });
 
+  it('пройденный шаг несёт скрытый текст для экранного чтения, текущий и будущий — нет', () => {
+    render(<LocaleProvider initial="de" persist={false}><ErpSteps positions={3} hasPlan={false} /></LocaleProvider>);
+    expect(screen.getByRole('link', { name: 'Positionen wählen erledigt' })).toHaveAttribute('data-done');
+    expect(screen.getByRole('link', { name: 'Einrichten' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ladeplan' })).toBeInTheDocument();
+    expect(screen.getAllByText('erledigt')).toHaveLength(1);
+  });
+
   it('у списка шагов есть имя; шаг выбора ведёт к секции выбора груза; непройденный шаг без отметки', () => {
     expect(ERP_STEP_ANCHORS.select).toBe(PICKER_SECTION_ID);
     render(<LocaleProvider initial="de" persist={false}><ErpSteps positions={0} hasPlan={false} /></LocaleProvider>);
@@ -33,5 +41,6 @@ describe('ErpSteps', () => {
     expect(screen.getByRole('link', { name: /Выбор позиций/ })).toHaveAttribute('data-done');
     expect(screen.getByRole('link', { name: /Настройка/ })).toHaveAttribute('data-done');
     expect(screen.getByRole('link', { name: /План погрузки/ })).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByRole('link', { name: 'Выбор позиций выполнено' })).toBeInTheDocument();
   });
 });
