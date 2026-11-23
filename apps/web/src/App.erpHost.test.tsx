@@ -92,7 +92,7 @@ describe('App: контекст плана (сборка для ERP)', () => {
         ...emptyOrder(1),
         orderId: 'BE-1',
         partner: 'Beispiel Paletten SIA',
-        positions: [{ ...emptyPosition(), id: 'p1', name: 'Box', length: 1000, width: 1000, height: 1000, quantity: 3, articleCode: 'EUR101' }],
+        positions: [{ ...emptyPosition(), id: 'p1', name: 'Box', length: 1000, width: 1000, height: 1000, quantity: 3, articleCode: 'EUR101', fromTrip: 'LKW-12866' }],
       };
       writeStored('ladungsplaner.setup', JSON.stringify({ vehicle: load.vehicle, orders: [order], trip: context.trip }));
       render(<HostProvider value={{ kind: 'erp', session: SESSION, source: fake() }}><App /></HostProvider>);
@@ -102,6 +102,34 @@ describe('App: контекст плана (сборка для ERP)', () => {
       expect(within(screen.getAllByRole('table').at(-1)!).getByText('EUR101')).toBeInTheDocument();
       const stored: unknown = JSON.parse(readStored('ladungsplaner.planContext') ?? 'null');
       expect(stored).toMatchObject({ trip: context.trip, orders: { 'BE-1': { partner: 'Beispiel Paletten SIA' } }, items: { p1: { itemCode: 'EUR101' } } });
+    } finally {
+      cleanup();
+      localStorage.clear();
+      unbindDrafts();
+    }
+  });
+
+  // Итоговое ревью, P1: смешанный план (два рейса) и черновик старого вида рейсом не подписываются —
+  // ни в заголовке плана, ни в сохранённом контексте (из него же экспорт-картинка и печать).
+  it.each([
+    ['позиции двух рейсов', ['LKW-12800', 'LKW-12866']],
+    ['черновик старого вида: у позиций нет происхождения', [undefined, undefined]],
+  ])('«Berechnen»: %s → номера рейса на плане нет', async (_label, origins) => {
+    bindDraftsToUser(SESSION.user);
+    try {
+      const box = (id: string, fromTrip: string | undefined) => ({
+        ...emptyPosition(), id, name: 'Box', length: 1000, width: 1000, height: 1000, quantity: 1,
+        ...(fromTrip ? { fromTrip } : {}),
+      });
+      const order = { ...emptyOrder(1), orderId: 'BE-1', positions: [box('p1', origins[0]), box('p2', origins[1])] };
+      writeStored('ladungsplaner.setup', JSON.stringify({ vehicle: load.vehicle, orders: [order], trip: context.trip }));
+      render(<HostProvider value={{ kind: 'erp', session: SESSION, source: fake() }}><App /></HostProvider>);
+      await userEvent.click(screen.getAllByRole('button', { name: 'Ladeplan berechnen' })[0]);
+      expect(screen.getAllByRole('table').length).toBeGreaterThan(0);
+      expect(screen.queryByText(/LKW-12866/)).toBeNull();
+      const stored = JSON.parse(readStored('ladungsplaner.planContext') ?? 'null') as PlanContext;
+      expect(stored).not.toBeNull();
+      expect(stored).not.toHaveProperty('trip');
     } finally {
       cleanup();
       localStorage.clear();

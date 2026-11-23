@@ -11,7 +11,7 @@ import { LocaleProvider } from '../i18n/LocaleContext';
 import { HostProvider } from '../host/HostContext';
 import type { ErpSource } from '../data/ErpSource';
 import { FrappeDataProvider } from '../data/FrappeDataProvider';
-import { readStored } from '../lib/draftStorage';
+import { readStored, writeStored } from '../lib/draftStorage';
 import { SetupScreen } from '../screens/SetupScreen';
 import { orderStateFromZone, type OrderState } from '../screens/setup/setupState';
 import { ErpCargoPicker, PICKER_MAX_SELECTION, PICKER_SECTION_ID, PICKER_TRIP_INPUT_ID } from './ErpCargoPicker';
@@ -202,6 +202,54 @@ describe('ErpCargoPicker — Reise laden', () => {
     const saved = JSON.parse(readStored('ladungsplaner.setup')!);
     expect(saved.trip).toBeUndefined();
     vi.restoreAllMocks();
+  });
+
+  // Итоговое ревью, P1: номер рейса — только у плана, все позиции которого пришли из этого рейса.
+  const tripB = (): TripImport => ({
+    tripId: 'LKW-2026-00500', loadingDate: '2026-11-26', zones: [
+      { orderId: 'PUR-ORD-2026-00900', partner: 'Muster Holz Sp. z o.o.', positions: [
+        { itemCode: 'EUR104', itemName: 'Europalette 1200x800 gebraucht', quantity: 30, uom: 'Nos', lineRef: 'zB1', length: 1200, width: 800, height: 144, dimensionsSource: 'catalog' },
+      ] },
+    ],
+  });
+
+  it('рейс A, затем рейс B: строки рейса нет — план своя подборка, а не рейс B', async () => {
+    fake.loadTrip.mockResolvedValueOnce(fixtureTrip()).mockResolvedValueOnce(tripB());
+    renderSetupWithPicker();
+    await loadTripBy('LKW-2026-00412');
+    expect(await screen.findByTestId('trip-line')).toHaveTextContent(/^Reise LKW-2026-00412/);
+    await loadTripBy('LKW-2026-00500');
+    await screen.findByDisplayValue('PUR-ORD-2026-00900');
+    expect(screen.getByDisplayValue('PUR-ORD-2026-00871')).toBeInTheDocument();
+    expect(screen.queryByTestId('trip-line')).toBeNull();
+    expect(screen.queryByText(/LKW-2026-00500 ·/)).toBeNull();
+    const saved = JSON.parse(readStored('ladungsplaner.setup')!) as { orders: OrderState[] };
+    expect(saved.orders.flatMap((o) => o.positions).map((p) => p.fromTrip)).toEqual(['LKW-2026-00412', 'LKW-2026-00412', 'LKW-2026-00500']);
+  });
+
+  it('рейс, затем отдельные строки: строки рейса нет', async () => {
+    fake.loadTrip.mockResolvedValue(fixtureTrip());
+    fake.listOpenLines.mockResolvedValue([lineA]);
+    fake.importLines.mockResolvedValue([{ ...zoneAB, positions: [zoneAB.positions[0]] }]);
+    renderSetupWithPicker();
+    await loadTripBy('LKW-2026-00412');
+    expect(await screen.findByTestId('trip-line')).toBeInTheDocument();
+    await userEvent.click(checkboxOf('Europalette 1200x800 gebraucht'));
+    await userEvent.click(screen.getByRole('button', { name: '1 Positionen in den LKW legen' }));
+    expect(await screen.findByDisplayValue('BE-40388')).toBeInTheDocument();
+    expect(screen.queryByTestId('trip-line')).toBeNull();
+  });
+
+  it('черновик старого вида (рейс есть, у позиций нет происхождения): после восстановления строки рейса нет', () => {
+    const legacy = orderStateFromZone(fixtureTrip().zones[0], 0);
+    writeStored('ladungsplaner.setup', JSON.stringify({
+      vehicle: { id: 'v', name: 'LKW', length: 13600, width: 2450, height: 2700 },
+      orders: [legacy],
+      trip: { tripId: 'LKW-2026-00412', loadingDate: '2026-11-24' },
+    }));
+    renderSetupWithPicker();
+    expect(screen.getByDisplayValue('PUR-ORD-2026-00871')).toBeInTheDocument();
+    expect(screen.queryByTestId('trip-line')).toBeNull();
   });
 
   it('демо замещает черновик: строки рейса над его заказами нет', async () => {

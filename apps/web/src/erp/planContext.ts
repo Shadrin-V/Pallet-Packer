@@ -26,9 +26,24 @@ export interface PlanContext {
   unplaceable: PlanContextUnplaceable[];
 }
 
+/**
+ * Рейс, которым можно подписать план черновика: `trip`, только если КАЖДАЯ позиция пришла из него
+ * (`fromTrip`). Груз двух рейсов, рейс с добавленными строками или ручными позициями, черновик старого
+ * вида (позиции без происхождения) и пустой черновик — своя подборка: номера рейса нет нигде (заголовок
+ * плана, строка рейса над заказами, экспорт-картинка, печать). Иначе план груза рейсов A и B был бы
+ * подписан последним загруженным рейсом.
+ */
+export function draftTrip(orders: OrderState[], trip?: TripRef): TripRef | undefined {
+  if (!trip) return undefined;
+  const positions = orders.flatMap((o) => o.positions);
+  return positions.length > 0 && positions.every((p) => p.fromTrip === trip.tripId) ? trip : undefined;
+}
+
+/** `trip` — последний загруженный рейс черновика; в контекст он попадает только по правилу `draftTrip`. */
 export function planContextFrom(orders: OrderState[], trip?: TripRef): PlanContext {
+  const shownTrip = draftTrip(orders, trip);
   const ctx: PlanContext = {
-    ...(trip ? { trip } : {}),
+    ...(shownTrip ? { trip: shownTrip } : {}),
     orders: {},
     items: {},
     positionOrder: [],

@@ -69,6 +69,18 @@ describe('mergeZonesIntoDraft', () => {
   });
 });
 
+describe('mergeZonesIntoDraft — происхождение позиций', () => {
+  it('позиции рейса помечены его номером, строки из списка — без пометки; прежние позиции не трогаются', () => {
+    const fromA = mergeZonesIntoDraft([emptyOrder(1)], [zone({ lineRef: 'a' })], 'LKW-A');
+    expect(fromA.orders[0].positions.map((p) => p.fromTrip)).toEqual(['LKW-A']);
+    const plusLines = mergeZonesIntoDraft(fromA.orders, [zone({ lineRef: 'l' }), zone({ lineRef: 'm' }, { orderId: 'PUR-ORD-2' })]);
+    expect(plusLines.orders.flatMap((o) => o.positions).map((p) => p.fromTrip)).toEqual(['LKW-A', undefined, undefined]);
+    expect(plusLines.orders[1].positions[0]).not.toHaveProperty('fromTrip');
+    const plusB = mergeZonesIntoDraft(fromA.orders, [zone({ lineRef: 'b' })], 'LKW-B');
+    expect(plusB.orders[0].positions.map((p) => p.fromTrip)).toEqual(['LKW-A', 'LKW-B']);
+  });
+});
+
 describe('draftLineRefs', () => {
   it('собирает lineRef всех позиций черновика', () => {
     const orders = [orderStateFromZone(zone({}), 0), orderStateFromZone(zone({ lineRef: 'q' }, { orderId: 'B' }), 1), emptyOrder(3)];

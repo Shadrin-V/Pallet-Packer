@@ -17,6 +17,10 @@ export function draftLineRefs(orders: OrderState[]): Set<string> {
   return refs;
 }
 
+/** Пометить позиции новой карточки рейсом, из которого они пришли. */
+const markOrigin = (o: OrderState, tripId: string | undefined): OrderState =>
+  tripId === undefined ? o : { ...o, positions: o.positions.map((p) => ({ ...p, fromTrip: tripId })) };
+
 /**
  * Дописывает зоны ответа ERP в черновик.
  *
@@ -28,10 +32,13 @@ export function draftLineRefs(orders: OrderState[]): Set<string> {
  *   её слот; если добавить нечего, заготовка остаётся.
  * - Порядок зон и строк — как в ответе (контракт §4 п. 8); зона без оставшихся строк ничего не
  *   добавляет. Нетронутые карточки возвращаются теми же объектами; без добавлений — тот же массив.
+ * - `tripId` — зоны пришли из этого рейса: добавленные позиции помечаются им (`fromTrip`). Без него
+ *   (строки из списка) — без пометки. Уже бывшие в черновике позиции не перемечаются.
  */
 export function mergeZonesIntoDraft(
   orders: OrderState[],
   zones: OrderZone[],
+  tripId?: string,
 ): { orders: OrderState[]; addedPositions: number; skippedLineRefs: string[] } {
   const seen = draftLineRefs(orders);
   const skippedLineRefs: string[] = [];
@@ -56,11 +63,11 @@ export function mergeZonesIntoDraft(
     const at = out.findIndex((o) => o.orderId.trim() === id);
     if (at === -1) {
       const slot = pristine && out.length === 0 ? orders[0].colorIndex : nextColorIndex(out);
-      out.push(orderStateFromZone({ ...zone, positions }, slot));
+      out.push(markOrigin(orderStateFromZone({ ...zone, positions }, slot), tripId));
       continue;
     }
     const card = out[at];
-    const added = orderStateFromZone({ ...zone, positions }, card.colorIndex);
+    const added = markOrigin(orderStateFromZone({ ...zone, positions }, card.colorIndex), tripId);
     out[at] = {
       ...card,
       ...(card.partner === undefined && added.partner !== undefined ? { partner: added.partner } : {}),

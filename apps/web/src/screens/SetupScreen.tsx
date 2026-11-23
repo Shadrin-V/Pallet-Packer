@@ -19,7 +19,7 @@ import { orderParam, urlWithoutOrderParam } from './setup/orderDeepLink';
 import type { Article, OrderZone } from '@shadrin-v/contracts';
 import { draftLineRefs, mergeZonesIntoDraft } from '../erp/zoneDraft';
 import { formatIsoDate } from '../erp/dateFormat';
-import { planContextFrom, type PlanContext } from '../erp/planContext';
+import { draftTrip, planContextFrom, type PlanContext } from '../erp/planContext';
 import { ErpEmptyState, focusTripInput } from '../erp/ErpEmptyState';
 import { ERP_STEP_ANCHORS } from '../erp/ErpSteps';
 import { OrderCard } from './setup/OrderCard';
@@ -47,7 +47,8 @@ export {
 /** Дверь шага выбора груза (сборка для ERP) в черновик экрана. */
 export interface DraftImportApi {
   /** Дописать зоны ответа ERP в черновик (`mergeZonesIntoDraft` от текущего состояния); `trip` —
-   *  рейс, из которого они пришли: сохраняется с черновиком. Строки, уже бывшие в черновике,
+   *  рейс, из которого они пришли: сохраняется с черновиком, им помечаются добавленные позиции
+   *  (`fromTrip`). Строки, уже бывшие в черновике,
    *  пропускаются — их `lineRef` в `skippedLineRefs`. */
   addZones(zones: OrderZone[], trip?: TripRef): { addedPositions: number; skippedLineRefs: string[] };
   /** `lineRef` строк, которые уже в черновике. */
@@ -430,7 +431,7 @@ export function SetupScreen({
   // Шаг выбора груза (ERP): слияние считается синхронно — вызывающему нужны счётчики сразу.
   const lineRefs = useMemo(() => draftLineRefs(orders), [orders]);
   const addZones: DraftImportApi['addZones'] = (zones, nextTrip) => {
-    const merged = mergeZonesIntoDraft(ordersRef.current, zones);
+    const merged = mergeZonesIntoDraft(ordersRef.current, zones, nextTrip?.tripId);
     if (merged.orders !== ordersRef.current) {
       ordersRef.current = merged.orders;
       setOrders(merged.orders);
@@ -557,6 +558,8 @@ export function SetupScreen({
   // в м³). Кнопка не гаснет (`aria-disabled`, а не `disabled`): остаётся в порядке фокуса и
   // объявляется скринридером. В обычной сборке блокировки нет — там правит прежний гейт сообщений.
   const erp = host.kind === 'erp';
+  // Номер рейса над заказами — только если весь черновик пришёл из этого рейса (`draftTrip`).
+  const shownTrip = erp ? draftTrip(orders, trip) : undefined;
   const gaps = erp ? missingDims(orders) : [];
   const noPlaceable = erp && !orders.some((o) => o.positions.some((p) => !p.unplaceable));
   const calcBlocked = erp && (gaps.length > 0 || noPlaceable);
@@ -734,11 +737,11 @@ export function SetupScreen({
       {/* Строка рейса над карточками (макет, блок 3): сколько заказов, штучных и неразмещаемых позиций.
           Заказы считаются все, включая те, что карточки не получили (только неразмещаемые строки):
           их строки видны в списке неразмещаемого ниже. */}
-      {erp && trip && (
+      {erp && shownTrip && (
         <p data-testid="trip-line" className="mb-3 text-caption text-muted">
           {fillTemplate(tt('setup.tripLine'), {
-            tripId: trip.tripId,
-            date: trip.loadingDate ? formatIsoDate(trip.loadingDate, locale) : '—',
+            tripId: shownTrip.tripId,
+            date: shownTrip.loadingDate ? formatIsoDate(shownTrip.loadingDate, locale) : '—',
             orders: orders.length,
             pieces: orders.reduce((n, o) => n + o.positions.filter((p) => !p.unplaceable).length, 0),
             other: orders.reduce((n, o) => n + o.positions.filter((p) => p.unplaceable).length, 0),
