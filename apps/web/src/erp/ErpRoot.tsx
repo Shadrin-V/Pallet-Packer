@@ -7,6 +7,11 @@
 // другому пользователю в этой вкладке нет вовсе: `bindDraftsToUser` снимает замок, а смонтированные
 // экраны прежнего пользователя записали бы его черновик под ключом нового. Новый пользователь —
 // только через перезагрузку страницы.
+//
+// То же для сервера (контракт §1, «Смена пользователя»): уходя из программы, корень закрывает
+// провайдер (`source.close`) — запоздавшие цепочки размонтированных экранов в ERP не попадают; а если
+// чужого пользователя первым увидел сам провайдер (новый CSRF после 400, перепроверка после 403), он
+// закрывается сам и сообщает через `subscribeChanged`.
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { flushSync } from 'react-dom';
 import type { ErpSession } from '@shadrin-v/contracts';
@@ -17,12 +22,21 @@ import type { ErpSource } from '../data/ErpSource';
 import { HostProvider, type Host } from '../host/HostContext';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { bindDraftsToUser, isForeignUserKey, lockDrafts } from '../lib/draftStorage';
-import { isSessionExpired } from './erpErrors';
+import { isSessionChanged, isSessionExpired } from './erpErrors';
 import { ErpBootErrorScreen, SessionChangedScreen, SessionExpiredScreen, SessionLoadingScreen } from './SessionScreens';
 
+type SessionEnd = 'expired' | 'changed';
+
+/** Источник, который оболочка закрывает при выходе из программы (`FrappeDataProvider.close`). */
+export interface ClosableErpSource extends DataProvider, ErpSource {
+  close(reason: SessionEnd): void;
+}
+
 export interface ErpRootProps {
-  source: DataProvider & ErpSource;
+  source: ClosableErpSource;
   subscribeExpired: (fn: () => void) => () => void;
+  /** Провайдер увидел в `sitzung` другого пользователя (контракт §1). */
+  subscribeChanged: (fn: () => void) => () => void;
 }
 
 type Language = ErpSession['language'];
@@ -37,23 +51,29 @@ type State =
 
 const languageOf = (s: State): Language | undefined => (s.kind === 'ready' ? s.session.language : s.language);
 
-export function ErpRoot({ source, subscribeExpired }: ErpRootProps): JSX.Element {
+export function ErpRoot({ source, subscribeExpired, subscribeChanged }: ErpRootProps): JSX.Element {
   const [state, setState] = useState<State>({ kind: 'loading' });
   // Пользователь работающей программы; null — программы нет. Ref, а не производное от `state`:
   // слушатели смены учётки ниже стоят с монтирования и обязаны видеть `ready` уже в тот момент, когда
   // программа смонтирована, — эффект, перевешиваемый после её отрисовки, оставлял бы окно без проверки.
   const readyUser = useRef<string | null>(null);
 
-  /** Уйти из программы: замок хранения раньше размонтирования. `changed` сильнее `expired`. */
-  const leave = useCallback((kind: 'expired' | 'changed') => {
-    readyUser.current = null;
-    lockDrafts();
-    flushSync(() => {
-      setState((prev) => (prev.kind === 'changed' ? prev : { kind, language: languageOf(prev) }));
-    });
-  }, []);
+  /** Уйти из программы: замок хранения и закрытие провайдера раньше размонтирования. `changed`
+   *  сильнее `expired`. */
+  const leave = useCallback(
+    (kind: SessionEnd) => {
+      readyUser.current = null;
+      lockDrafts();
+      source.close(kind);
+      flushSync(() => {
+        setState((prev) => (prev.kind === 'changed' ? prev : { kind, language: languageOf(prev) }));
+      });
+    },
+    [source],
+  );
 
   useEffect(() => subscribeExpired(() => leave('expired')), [subscribeExpired, leave]);
+  useEffect(() => subscribeChanged(() => leave('changed')), [subscribeChanged, leave]);
 
   // Вход: до ответа сессии хранение заперто — ни один модуль не пишет, пока пользователь неизвестен.
   useEffect(() => {
@@ -70,6 +90,7 @@ export function ErpRoot({ source, subscribeExpired }: ErpRootProps): JSX.Element
       },
       (error: unknown) => {
         if (!live) return;
+        if (isSessionExpired(error)) source.close('expired');
         setState(isSessionExpired(error) ? { kind: 'expired' } : { kind: 'bootError', error });
       },
     );
@@ -89,7 +110,9 @@ export function ErpRoot({ source, subscribeExpired }: ErpRootProps): JSX.Element
           if (readyUser.current === user && s.user !== user) leave('changed');
         },
         (error: unknown) => {
-          if (readyUser.current === user && isSessionExpired(error)) leave('expired');
+          if (readyUser.current !== user) return;
+          if (isSessionChanged(error)) leave('changed');
+          else if (isSessionExpired(error)) leave('expired');
           // прочие сбои проверки не мешают работать
         },
       );

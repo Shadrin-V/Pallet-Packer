@@ -59,6 +59,9 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
       'ERR_LINE_NOT_FOUND',
       'ERR_ITEM_NOT_FOUND',
       'ERR_VALIDATION',
+      // the page's own code (ERP contract, section 1, "user change"): another user logged in to the ERP
+      // in this browser; not sent by the ERP
+      'ERR_SESSION_CHANGED',
     ]);
     for (const code of errorCodes) {
       expect(DICTIONARIES.de[code]).toBeTruthy();

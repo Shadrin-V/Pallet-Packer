@@ -3,13 +3,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ErpSession } from '@shadrin-v/contracts';
 import { ErpRoot } from './ErpRoot';
-import { sessionExpiredSignal } from './sessionSignal';
+import { sessionExpiredSignal, sessionSignal } from './sessionSignal';
 import { deskUrl, loginUrl } from './erpUrls';
 import { writeStored } from '../lib/draftStorage';
 import { emptyOrder } from '../screens/setup/setupState';
 import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 import type { DataProvider } from '../data/DataProvider';
 import type { ErpSource } from '../data/ErpSource';
+import { FrappeDataProvider } from '../data/FrappeDataProvider';
 
 const SESSION: ErpSession = {
   user: 'anna@firma.de',
@@ -20,7 +21,8 @@ const SESSION: ErpSession = {
 };
 const anyPresetVehicle = vehicleFromPreset(VEHICLE_PRESETS[0]);
 
-type FakeSource = { [K in keyof (DataProvider & ErpSource)]: ReturnType<typeof vi.fn> } & DataProvider & ErpSource;
+type Closable = { close(reason: 'expired' | 'changed'): void };
+type FakeSource = { [K in keyof (DataProvider & ErpSource & Closable)]: ReturnType<typeof vi.fn> } & DataProvider & ErpSource & Closable;
 
 function fakeSource(): FakeSource {
   return {
@@ -37,18 +39,23 @@ function fakeSource(): FakeSource {
     searchOrders: vi.fn(),
     searchArticles: vi.fn(),
     upsertArticle: vi.fn(),
+    close: vi.fn(),
   } as unknown as FakeSource;
 }
 
 let source: FakeSource;
 let signal: ReturnType<typeof sessionExpiredSignal>;
+let changed: ReturnType<typeof sessionSignal>;
 
 beforeEach(() => {
   source = fakeSource();
   signal = sessionExpiredSignal();
+  changed = sessionSignal();
 });
 
-const renderRoot = () => render(<ErpRoot source={source} subscribeExpired={signal.subscribe} />);
+const renderRoot = () => render(<ErpRoot source={source} subscribeExpired={signal.subscribe} subscribeChanged={changed.subscribe} />);
+/** Признак смонтированной программы: кнопка расчёта в шапке «Настройки». */
+const appMounted = () => screen.queryAllByRole('button', { name: 'Berechnen' }).length > 0;
 const ladungsplanerKeys = () => Object.keys(localStorage).filter((k) => k.startsWith('ladungsplaner.'));
 
 describe('ErpRoot', () => {
@@ -96,10 +103,15 @@ describe('ErpRoot', () => {
     source.session.mockResolvedValue(SESSION);
     renderRoot();
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    const noToken = () => {
+      for (const k of Object.keys(localStorage)) expect(localStorage.getItem(k)).not.toContain(SESSION.csrfToken);
+      expect(document.documentElement.outerHTML).not.toContain(SESSION.csrfToken);
+      expect(location.href).not.toContain(SESSION.csrfToken);
+    };
+    expect(appMounted()).toBe(true);
+    noToken(); // разметка работающей программы
     act(() => signal.notify());
-    for (const k of Object.keys(localStorage)) expect(localStorage.getItem(k)).not.toContain(SESSION.csrfToken);
-    expect(document.documentElement.outerHTML).not.toContain(SESSION.csrfToken);
-    expect(location.href).not.toContain(SESSION.csrfToken);
+    noToken(); // и экрана после выхода
   });
 
   it('сессия истекла посреди работы: экран со ссылкой на вход, черновик цел', async () => {
@@ -111,7 +123,12 @@ describe('ErpRoot', () => {
     act(() => signal.notify());
     expect(screen.getByText('Deine Anmeldung im ERP ist abgelaufen')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Neu anmelden' })).toHaveAttribute('href', loginUrl(location.origin, '/ladungsplaner'));
-    expect(screen.queryByRole('link', { name: 'Zurück zum ERP' })).toBeNull();
+    // Полоса макета (блок 5): логотип и «Zurück zum ERP», но без имени и аватара — сессии уже нет.
+    expect(screen.getByRole('link', { name: 'Zurück zum ERP' })).toHaveAttribute('href', deskUrl(location.origin));
+    expect(screen.queryByText('Anna Muster')).toBeNull();
+    expect(screen.queryByText('AM')).toBeNull();
+    expect(appMounted()).toBe(false); // настройка и план размонтированы
+    expect(source.close).toHaveBeenCalledWith('expired');
     expect(localStorage.getItem('ladungsplaner.u.anna%40firma.de.setup')).toBe('{"x":1}');
     writeStored('ladungsplaner.setup', '{"x":"late"}'); // запоздалая запись размонтированного экрана
     expect(localStorage.getItem('ladungsplaner.u.anna%40firma.de.setup')).toBe('{"x":1}');
@@ -131,6 +148,9 @@ describe('ErpRoot', () => {
     fireEvent.focus(window);
     expect(await screen.findByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
     expect(screen.queryByText('Anna Muster')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Zurück zum ERP' })).toBeInTheDocument();
+    expect(appMounted()).toBe(false);
+    expect(source.close).toHaveBeenCalledWith('changed');
     // Запоздалое сохранение экрана Анны после смены учётки не ложится ни под какой ключ.
     writeStored('ladungsplaner.setup', '{"anna":"late"}');
     for (const k of Object.keys(localStorage)) expect(localStorage.getItem(k)).not.toContain('late');
@@ -170,7 +190,7 @@ describe('ErpRoot', () => {
     window.dispatchEvent(new StorageEvent('storage', { key: 'ladungsplaner.u.boris%40firma.de.setup', newValue: '{"boris":1}' }));
     expect(screen.getByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument(); // без ожидания: синхронно
     expect(screen.queryByText('Anna Muster')).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Zurück zum ERP' })).toBeNull(); // App (настройка и план) размонтирован
+    expect(appMounted()).toBe(false); // App (настройка и план) размонтирован
     writeStored('ladungsplaner.setup', '{"anna":"late"}'); // запоздалая запись страницы Анны (первая копия модуля)
     expect(localStorage.getItem('ladungsplaner.u.anna%40firma.de.setup')).toBeNull();
     expect(localStorage.getItem('ladungsplaner.u.boris%40firma.de.setup')).toBe('{"boris":1}');
@@ -215,5 +235,94 @@ describe('ErpRoot', () => {
     renderRoot();
     await userEvent.click(await screen.findByRole('button', { name: 'Erneut versuchen' }));
     expect(await screen.findByRole('link', { name: 'Zurück zum ERP' })).toBeInTheDocument();
+  });
+
+  it('сигнал «сессия сменилась» от провайдера → экран «другой пользователь», провайдер закрыт', async () => {
+    source.session.mockResolvedValue(SESSION);
+    renderRoot();
+    await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    act(() => changed.notify());
+    expect(screen.getByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
+    expect(appMounted()).toBe(false);
+    expect(source.close).toHaveBeenCalledWith('changed');
+  });
+
+  it('перепроверка при фокусе отклонена кодом смены сессии → экран «другой пользователь»', async () => {
+    source.session.mockResolvedValueOnce(SESSION).mockRejectedValueOnce({ code: 'ERR_SESSION_CHANGED' });
+    renderRoot();
+    await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    fireEvent.focus(window);
+    expect(await screen.findByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
+  });
+
+  it('обратный адрес входа не уводит на другой хост', async () => {
+    history.replaceState(null, '', '/a/..//evil.example/x?y=1');
+    expect(location.pathname).toBe('//evil.example/x');
+    source.session.mockRejectedValue({ code: 'ERR_NOT_LOGGED_IN' });
+    renderRoot();
+    const href = (await screen.findByRole('link', { name: 'Neu anmelden' })).getAttribute('href') ?? '';
+    expect(new URL(href).searchParams.get('redirect-to')).toBe('/evil.example/x?y=1');
+    history.replaceState(null, '', '/ladungsplaner');
+  });
+});
+
+// Тот же сценарий на настоящем провайдере и настоящих `Response` (контракт §1, «Смена пользователя»).
+describe('ErpRoot + FrappeDataProvider: другой пользователь вошёл в этом браузере', () => {
+  const ok = (message: unknown, status = 200) => new Response(JSON.stringify({ message }), { status });
+  const bare = (status: number) => new Response('{"exc_type":"CSRFTokenError"}', { status });
+  const BORIS = { ...SESSION, user: 'boris@firma.de', fullName: 'Boris Beispiel', csrfToken: 'tok-boris' };
+
+  function mount(f: ReturnType<typeof vi.fn>) {
+    const expired = sessionSignal();
+    const changedSig = sessionSignal();
+    const dp = new FrappeDataProvider({ fetchImpl: f as unknown as typeof fetch, onSessionExpired: expired.notify, onSessionChanged: changedSig.notify });
+    render(<ErpRoot source={dp} subscribeExpired={expired.subscribe} subscribeChanged={changedSig.subscribe} />);
+    return dp;
+  }
+  const posts = (f: ReturnType<typeof vi.fn>) => f.mock.calls.filter(([, init]) => init.method === 'POST');
+
+  it('POST → 400 без кода → sitzung Бориса: второго POST нет, токен Бориса не используется, экран «другой пользователь»', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(ok(SESSION)) // вход
+      .mockResolvedValueOnce(bare(400)) // POST с токеном Анны
+      .mockResolvedValueOnce(ok(BORIS)) // за новым токеном — а там Борис
+      .mockImplementation(() => Promise.resolve(ok([])));
+    const dp = mount(f);
+    await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    await act(async () => {
+      await expect(dp.importLines(['a1'])).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
+    });
+    expect(screen.getByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
+    expect(appMounted()).toBe(false);
+    expect(posts(f)).toHaveLength(1);
+    expect(posts(f)[0][1].headers['X-Frappe-CSRF-Token']).toBe(SESSION.csrfToken);
+    // запоздавший вызов размонтированного экрана Анны в сеть не уходит
+    const calls = f.mock.calls.length;
+    await expect(dp.upsertArticle({ itemCode: 'A', name: 'A', rules: { state: 'ent', nestingMode: 'pairwise', rotation: 'none' } } as never)).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
+    expect(f.mock.calls.length).toBe(calls);
+  });
+
+  it('403 без кода → перепроверка отдала Бориса: экран «другой пользователь», дальше в сеть не ходим', async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(new Response('{}', { status: 403 })).mockResolvedValueOnce(ok(BORIS));
+    const dp = mount(f);
+    await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    await act(async () => {
+      await expect(dp.listOpenLines()).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
+    });
+    expect(screen.getByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
+    await expect(dp.loadTrip('LKW-1')).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
+    expect(f).toHaveBeenCalledTimes(3);
+  });
+
+  it('после истечения сессии провайдер закрыт: запоздавший вызов в сеть не уходит', async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    const dp = mount(f);
+    await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    await act(async () => {
+      await expect(dp.loadTrip('LKW-1')).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
+    });
+    expect(screen.getByRole('link', { name: 'Neu anmelden' })).toBeInTheDocument();
+    await expect(dp.importLines(['a1'])).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
+    expect(f).toHaveBeenCalledTimes(2);
   });
 });

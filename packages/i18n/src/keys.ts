@@ -284,6 +284,8 @@ export const TRANSLATION_KEYS = [
   'ERR_LINE_NOT_FOUND',
   'ERR_ITEM_NOT_FOUND',
   'ERR_VALIDATION',
+  // код самой страницы (контракт ERP §1, «Смена пользователя»), ERP его не присылает
+  'ERR_SESSION_CHANGED',
   // ERR_FORBIDDEN с details.doctype 'Purchase Order': рейс виден, один его заказ — нет.
   'erp.forbidden.hiddenOrder',
   // Неизвестный код, сбой сети или ответ не по контракту.

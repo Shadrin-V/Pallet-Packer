@@ -414,3 +414,74 @@ describe('FrappeDataProvider — каталог и неподдерживаем�
     expect(f).not.toHaveBeenCalled();
   });
 });
+
+// Контракт §1, «Смена пользователя»: на общем компьютере экран прежнего сотрудника не пишет в ERP
+// от имени нового. Ответы — настоящие `Response`, свежие на каждый вызов.
+describe('FrappeDataProvider — смена пользователя (контракт §1)', () => {
+  const BORIS = { ...SESSION, user: 'boris@firma.de', fullName: 'Boris Beispiel', csrfToken: 'tok-boris' };
+  const CHANGED = { code: 'ERR_SESSION_CHANGED' };
+
+  it('устаревший CSRF, а sitzung отдал другого пользователя → второго POST нет, токен не заменён, колбэк один раз', async () => {
+    const onSessionChanged = vi.fn();
+    const f = vi.fn()
+      .mockResolvedValueOnce(ok(SESSION))
+      .mockResolvedValueOnce(bare(400, '{"exc_type":"CSRFTokenError"}'))
+      .mockResolvedValueOnce(ok(BORIS))
+      .mockImplementation(() => Promise.resolve(ok([])));
+    const dp = new FrappeDataProvider({ fetchImpl: f, onSessionChanged });
+    await dp.session();
+    await expect(dp.importLines(['a1'])).rejects.toEqual(CHANGED);
+    const posts = f.mock.calls.filter(([, init]) => init.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0][1].headers['X-Frappe-CSRF-Token']).toBe('tok-1');
+    expect(f.mock.calls.some(([, init]) => init.headers['X-Frappe-CSRF-Token'] === 'tok-boris')).toBe(false);
+    expect(onSessionChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('403 без кода, перепроверка отдала другого пользователя → смена сессии, а не общий отказ', async () => {
+    const onSessionChanged = vi.fn();
+    const onSessionExpired = vi.fn();
+    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(bare(403)).mockResolvedValueOnce(ok(BORIS));
+    const dp = new FrappeDataProvider({ fetchImpl: f, onSessionChanged, onSessionExpired });
+    await dp.session();
+    await expect(dp.listOpenLines()).rejects.toEqual(CHANGED);
+    expect(onSessionChanged).toHaveBeenCalledTimes(1);
+    expect(onSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it('явная перепроверка session() с другим пользователем → отказ, а провайдер закрыт: дальше в сеть не ходит', async () => {
+    const onSessionChanged = vi.fn();
+    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(ok(BORIS)).mockImplementation(() => Promise.resolve(ok([])));
+    const dp = new FrappeDataProvider({ fetchImpl: f, onSessionChanged });
+    await dp.session();
+    await expect(dp.session()).rejects.toEqual(CHANGED);
+    await expect(dp.importLines(['a1'])).rejects.toEqual(CHANGED);
+    await expect(dp.loadTrip('LKW-1')).rejects.toEqual(CHANGED);
+    await expect(dp.session()).rejects.toEqual(CHANGED);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(onSessionChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('тот же пользователь при перепроверке — как раньше: новый токен берётся', async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(ok({ ...SESSION, csrfToken: 'tok-2' })).mockResolvedValueOnce(ok([]));
+    const dp = new FrappeDataProvider({ fetchImpl: f });
+    await dp.session();
+    await dp.session();
+    await dp.importLines(['a1']);
+    expect(f.mock.calls[2][1].headers['X-Frappe-CSRF-Token']).toBe('tok-2');
+  });
+
+  it('close(): запоздавший вызов в сеть не уходит; цепочка, начатая до закрытия, не шлёт POST после него', async () => {
+    let answerSitzung: (r: Response) => void = () => {};
+    const onSessionExpired = vi.fn();
+    const f = vi.fn().mockImplementationOnce(() => new Promise<Response>((r) => { answerSitzung = r; }));
+    const dp = new FrappeDataProvider({ fetchImpl: f, onSessionExpired });
+    const inFlight = dp.importLines(['a1']); // сначала sitzung за токеном, потом POST
+    dp.close('expired');
+    answerSitzung(ok(SESSION));
+    await expect(inFlight).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
+    await expect(dp.listOpenLines()).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(onSessionExpired).not.toHaveBeenCalled(); // закрытие не порождает новый сигнал
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '@shadrin-v/i18n';
-import { ERP_ERROR_CODES, erpErrorKey, errorCodeOf, isSessionExpired } from './erpErrors';
+import { ERP_ERROR_CODES, erpErrorKey, errorCodeOf, isSessionChanged, isSessionExpired } from './erpErrors';
 
 describe('erpErrors', () => {
   it('неизвестный код, строка и Error → общий текст; известный код → он же', () => {
@@ -47,5 +47,15 @@ describe('erpErrors', () => {
     expect(t('ERR_TRIP_NOT_FOUND', 'de')).toContain('keine Berechtigung');
     expect(t('ERR_LINE_NOT_FOUND', 'de')).toContain('nicht sichtbar');
     expect(t('ERR_TRIP_NOT_FOUND', 'ru')).toContain('нет прав');
+  });
+
+  it('смена сессии (код программы, контракт §1): свой текст и свой признак', () => {
+    expect(erpErrorKey({ code: 'ERR_SESSION_CHANGED' })).toBe('ERR_SESSION_CHANGED');
+    expect(isSessionChanged({ code: 'ERR_SESSION_CHANGED' })).toBe(true);
+    expect(isSessionChanged({ code: 'ERR_NOT_LOGGED_IN' })).toBe(false);
+    expect(isSessionChanged('ERR_SESSION_CHANGED')).toBe(false);
+    expect(isSessionExpired({ code: 'ERR_SESSION_CHANGED' })).toBe(false);
+    expect(t('ERR_SESSION_CHANGED', 'de')).toContain('anderer Benutzer');
+    expect(t('ERR_SESSION_CHANGED', 'ru')).toContain('другой пользователь');
   });
 });

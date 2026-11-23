@@ -1,12 +1,14 @@
 // Верхняя полоса страницы /ladungsplaner внутри ERP (макет, блок 2): логотип, имя программы, шаги
 // (их заполняет задача 17), «Zurück zum ERP» и пользователь ERP. На печати её нет — печатается план.
+// Без `fullName` (экраны «сессия истекла» и «вошёл другой пользователь», макет, блок 5) полоса без имени
+// и аватара: сессии уже нет, и личность в памяти не держим.
 import type { JSX, ReactNode } from 'react';
 import { useT } from '../i18n/LocaleContext';
 import { logoUrl } from '../lib/logoUrl';
 import { deskUrl } from './erpUrls';
 
 export interface ErpTopBarProps {
-  fullName: string;
+  fullName?: string;
   steps?: ReactNode;
 }
 
@@ -27,7 +29,7 @@ const SECONDARY_LINK =
 
 export function ErpTopBar({ fullName, steps }: ErpTopBarProps): JSX.Element {
   const tt = useT();
-  const short = initials(fullName);
+  const short = fullName === undefined ? '' : initials(fullName);
   return (
     <nav
       aria-label={tt('erp.topbar.label')}
@@ -40,14 +42,16 @@ export function ErpTopBar({ fullName, steps }: ErpTopBarProps): JSX.Element {
         <a className={SECONDARY_LINK} href={deskUrl(location.origin)}>
           {tt('erp.backToErp')}
         </a>
-        <span className="flex items-center gap-2 text-caption text-ink">
-          {short !== '' && (
-            <span aria-hidden className="grid h-8 w-8 place-items-center rounded-pill bg-brand text-caption font-semibold text-brand-ink">
-              {short}
-            </span>
-          )}
-          {fullName}
-        </span>
+        {fullName !== undefined && (
+          <span className="flex items-center gap-2 text-caption text-ink">
+            {short !== '' && (
+              <span aria-hidden className="grid h-8 w-8 place-items-center rounded-pill bg-brand text-caption font-semibold text-brand-ink">
+                {short}
+              </span>
+            )}
+            {fullName}
+          </span>
+        )}
       </div>
     </nav>
   );

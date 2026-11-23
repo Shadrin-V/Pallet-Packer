@@ -13,6 +13,12 @@ export const ERP_ERROR_CODES = [
 ] as const;
 export type ErpErrorCode = (typeof ERP_ERROR_CODES)[number];
 
+/**
+ * Код самой страницы, не ERP (контракт §1, «Смена пользователя»): `sitzung` вернул другого
+ * пользователя, чем при входе. Провайдер после него закрыт — вкладка в ERP больше не обращается.
+ */
+export const ERR_SESSION_CHANGED = 'ERR_SESSION_CHANGED';
+
 const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 
@@ -29,6 +35,7 @@ export function errorCodeOf(err: unknown): string | undefined {
  */
 export function erpErrorKey(err: unknown): TranslationKey {
   const code = errorCodeOf(err);
+  if (code === ERR_SESSION_CHANGED) return ERR_SESSION_CHANGED;
   if (code === undefined || !isErpErrorCode(code)) return 'erp.error.generic';
   if (code === 'ERR_FORBIDDEN') {
     const details = (err as { details?: unknown }).details;
@@ -40,4 +47,9 @@ export function erpErrorKey(err: unknown): TranslationKey {
 /** Сессия ERP истекла: страница показывает «сессия истекла» со ссылкой на вход (контракт §5). */
 export function isSessionExpired(err: unknown): boolean {
   return errorCodeOf(err) === 'ERR_NOT_LOGGED_IN';
+}
+
+/** В ERP этого браузера вошёл другой пользователь: страница показывает «вошёл другой пользователь». */
+export function isSessionChanged(err: unknown): boolean {
+  return errorCodeOf(err) === ERR_SESSION_CHANGED;
 }

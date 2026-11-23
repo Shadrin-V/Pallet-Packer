@@ -273,6 +273,7 @@ export const de: Dictionary = {
   ERR_LINE_NOT_FOUND: 'Mindestens eine Bestellposition ist nicht mehr da oder für dich nicht sichtbar.',
   ERR_ITEM_NOT_FOUND: 'Diesen Artikel gibt es im ERP nicht.',
   ERR_VALIDATION: 'Die Eingabe wurde vom ERP abgelehnt.',
+  ERR_SESSION_CHANGED: 'Im ERP ist jetzt ein anderer Benutzer angemeldet. Lade die Seite neu.',
   'erp.forbidden.hiddenOrder':
     'In dieser Reise ist eine Bestellung, die du nicht sehen darfst. Frag die Disposition.',
   'erp.error.generic': 'Das ERP hat nicht wie erwartet geantwortet. Bitte erneut versuchen.',

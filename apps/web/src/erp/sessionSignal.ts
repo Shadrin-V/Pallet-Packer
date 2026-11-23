@@ -1,7 +1,13 @@
-// Сигнал «сессия ERP истекла»: провайдер данных зовёт `notify` на каждый итоговый
-// `ERR_NOT_LOGGED_IN` (опция `onSessionExpired` у FrappeDataProvider), оболочка подписывается.
-// Создаётся до провайдера и до корня — поэтому отдельный объект, а не поле одного из них.
-export function sessionExpiredSignal(): { notify: () => void; subscribe: (fn: () => void) => () => void } {
+// Сигналы сессии ERP от провайдера данных к оболочке: «сессия истекла» (`onSessionExpired` у
+// FrappeDataProvider, на каждый итоговый `ERR_NOT_LOGGED_IN`) и «вошёл другой пользователь»
+// (`onSessionChanged`). Создаются до провайдера и до корня — поэтому отдельные объекты, а не поле
+// одного из них.
+export interface SessionSignal {
+  notify: () => void;
+  subscribe: (fn: () => void) => () => void;
+}
+
+export function sessionSignal(): SessionSignal {
   const listeners = new Set<() => void>();
   return {
     notify: () => {
@@ -14,4 +20,9 @@ export function sessionExpiredSignal(): { notify: () => void; subscribe: (fn: ()
       };
     },
   };
+}
+
+/** Сигнал «сессия истекла» (имя из интерфейса задачи 9; устроен как любой `sessionSignal`). */
+export function sessionExpiredSignal(): SessionSignal {
+  return sessionSignal();
 }

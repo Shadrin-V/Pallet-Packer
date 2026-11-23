@@ -9,6 +9,12 @@
 // - POST с ответом 400 без кода — устаревший CSRF: один `sitzung` за новым токеном и один повтор;
 //   второй такой отказ — общий сбой.
 // - CSRF-токен живёт только в поле этого объекта: ни в localStorage, ни в sessionStorage, ни в cookie.
+// - Смена пользователя: провайдер запоминает `user` первой полученной сессии. Любой следующий `sitzung`
+//   с ДРУГИМ `user` (явная перепроверка, новый токен после 400, перепроверка после 403): токен не берётся,
+//   запрос не повторяется, вызывающий получает `ERR_SESSION_CHANGED`, `onSessionChanged` — один раз, и
+//   провайдер закрыт: дальше всё отклоняется тем же кодом без сети. Иначе на общем компьютере экран
+//   прежнего сотрудника записал бы в ERP от имени нового. Оболочка закрывает провайдер и сама (`close`),
+//   уходя из программы, — запоздавшие цепочки размонтированных экранов до сервера не доходят.
 // Количество, единицы и порядок провайдер не трогает — это решает сервер (§4 п. 2–3, 8).
 import {
   isOpenLine,
@@ -34,7 +40,7 @@ import {
 import { FORK_ACCESS, FORK_AXES, NESTING_MODES, NESTING_STATES, ROTATION_RULES } from '@shadrin-v/engine';
 import type { DataProvider } from './DataProvider';
 import type { ErpSource, OpenLinesQuery } from './ErpSource';
-import { isSessionExpired } from '../erp/erpErrors';
+import { ERR_SESSION_CHANGED, isSessionChanged, isSessionExpired } from '../erp/erpErrors';
 
 export const ERP_API_PREFIX = '/api/method/schaefer_erp.ladungsplaner.api.';
 
@@ -42,7 +48,13 @@ export interface FrappeDataProviderOptions {
   fetchImpl?: typeof fetch;
   /** Вызывается ровно один раз на каждый итоговый `ERR_NOT_LOGGED_IN`. */
   onSessionExpired?: () => void;
+  /** Вызывается один раз: `sitzung` вернул другого пользователя, чем первая сессия. */
+  onSessionChanged?: () => void;
 }
+
+/** Почему оболочка закрывает провайдер; закрытый отклоняет всё кодом причины, в сеть не ходит. */
+export type SessionEnd = 'expired' | 'changed';
+const CLOSED_CODE: Record<SessionEnd, string> = { expired: 'ERR_NOT_LOGGED_IN', changed: ERR_SESSION_CHANGED };
 
 /** Предел строк поиска и списка строк (контракт §3, §4 п. 7). */
 const MAX_QUERY = 140;
@@ -161,16 +173,33 @@ interface Reply {
 export class FrappeDataProvider implements DataProvider, ErpSource {
   private readonly fetchImpl: typeof fetch;
   private readonly onSessionExpired?: () => void;
+  private readonly onSessionChanged?: () => void;
   /** Только в памяти (контракт §1). */
   private csrfToken: string | undefined;
+  /** Пользователь первой полученной сессии. */
+  private user: string | undefined;
+  /** Код, которым закрытый провайдер отклоняет всё; undefined — открыт. */
+  private closedCode: string | undefined;
 
   constructor(opts: FrappeDataProviderOptions = {}) {
     // Через globalThis: браузер требует `window` получателем `fetch` (LKWkalk-7wb).
     this.fetchImpl = opts.fetchImpl ?? ((...args) => globalThis.fetch(...args));
     this.onSessionExpired = opts.onSessionExpired;
+    this.onSessionChanged = opts.onSessionChanged;
+  }
+
+  /** Закрыть провайдер: все дальнейшие вызовы — отказ без сети. Повторное закрытие причину не меняет. */
+  close(reason: SessionEnd): void {
+    this.closedCode ??= CLOSED_CODE[reason];
+  }
+
+  private closedError(): ApiError {
+    return { code: this.closedCode ?? ERR_SESSION_CHANGED };
   }
 
   private async send(method: string, call: Call): Promise<Reply> {
+    // И здесь, а не только на входе публичного метода: цепочка, начатая до закрытия, после него не шлёт.
+    if (this.closedCode !== undefined) throw this.closedError();
     const headers: Record<string, string> = { Accept: 'application/json' };
     let url = ERP_API_PREFIX + method;
     const init: RequestInit = { method: call.method, credentials: 'same-origin', headers };
@@ -215,6 +244,7 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
       await this.fetchSession();
     } catch (e) {
       if (isSessionExpired(e)) return { code: 'ERR_NOT_LOGGED_IN' };
+      if (isSessionChanged(e)) return e as ApiError;
     }
     return { code: 'ERR_HTTP', details: { status: 403 } };
   }
@@ -222,16 +252,26 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
   private async fetchSession(): Promise<ErpSession> {
     const s = parseErpSession(await this.call('sitzung', { method: 'GET' }));
     if (!s) throw badResponse();
+    if (this.closedCode !== undefined) throw this.closedError();
+    if (this.user !== undefined && s.user !== this.user) {
+      // Чужой токен не берётся; запрос, ради которого шли за сессией, не повторяется.
+      this.closedCode = ERR_SESSION_CHANGED;
+      this.onSessionChanged?.();
+      throw this.closedError();
+    }
+    this.user = s.user;
     this.csrfToken = s.csrfToken;
     return s;
   }
 
   /** Граница публичного метода: итоговый `ERR_NOT_LOGGED_IN` сообщается ровно один раз. */
   private async run<T>(work: () => Promise<T>): Promise<T> {
+    if (this.closedCode !== undefined) throw this.closedError();
     try {
       return await work();
     } catch (e) {
-      if (isSessionExpired(e)) this.onSessionExpired?.();
+      // Отказ закрытого провайдера — не новое истечение: сигнал уже был (или его заменила смена).
+      if (isSessionExpired(e) && this.closedCode === undefined) this.onSessionExpired?.();
       throw e;
     }
   }
