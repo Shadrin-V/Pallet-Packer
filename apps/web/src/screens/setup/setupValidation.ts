@@ -180,6 +180,25 @@ export function allMessages(orders: OrderState[], vehicle: Vehicle): SetupMessag
   ];
 }
 
+export type DimField = 'length' | 'width' | 'height';
+
+/** Размещаемые позиции с неполными габаритами и недостающие поля каждой — в порядке черновика.
+ *  Причина блокировки расчёта в сборке для ERP (макет, блок 3); неразмещаемые строки сюда не входят:
+ *  у них габаритов нет намеренно. */
+export function missingDims(
+  orders: OrderState[],
+): Array<{ positionId: string; name: string; missing: DimField[] }> {
+  const out: Array<{ positionId: string; name: string; missing: DimField[] }> = [];
+  for (const o of orders) {
+    for (const p of o.positions) {
+      if (p.unplaceable) continue;
+      const missing = (['length', 'width', 'height'] as const).filter((f) => numOr0(p[f]) <= 0);
+      if (missing.length > 0) out.push({ positionId: p.id, name: p.name, missing });
+    }
+  }
+  return out;
+}
+
 /** Первая ошибка, к которой есть куда вести. Это и есть адрес, куда прыгает «Рассчитать» (§6). */
 export function firstError(messages: SetupMessage[]): SetupMessage | null {
   return messages.find((m) => m.level === 'error' && m.where) ?? null;

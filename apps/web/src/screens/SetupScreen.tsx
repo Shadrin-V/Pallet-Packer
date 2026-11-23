@@ -24,7 +24,8 @@ import { SetupHeader } from './setup/SetupHeader';
 import { RULES_PANEL_ID } from './setup/PositionRow';
 import { useIsWide } from './setup/useIsWide';
 import { useStickyCompact } from './setup/useStickyCompact';
-import { allMessages, firstError, setupSummary, type SetupMessageWhere } from './setup/setupValidation';
+import { UnplaceableList } from './setup/UnplaceableList';
+import { allMessages, firstError, missingDims, setupSummary, type SetupMessageWhere } from './setup/setupValidation';
 
 import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
@@ -65,6 +66,9 @@ export interface SetupScreenProps {
    *  общий родитель и делает sticky сквозным; setup-части несут print:hidden сами. */
   children?: ReactNode;
 }
+
+/** Причина блокировки расчёта в сборке для ERP — цель `aria-describedby` обеих кнопок расчёта. */
+const CALC_BLOCKED_ID = 'setup-calc-blocked';
 
 /** How long an armed delete waits before disarming itself (ADR 022). */
 const ARM_TIMEOUT_MS = 4000;
@@ -365,14 +369,24 @@ export function SetupScreen({
       ),
     );
 
+  /** Рисуется ли заказ карточкой. В ERP заказ, все строки которого неразмещаемые, карточки не
+   *  получает (макет, блок 3): его строки — в списке неразмещаемого, и каждая сама называет заказ и
+   *  поставщика. Пустой заказ в обычной сборке рисуется как раньше. */
+  const shownAsCard = (o: OrderState) =>
+    host.kind !== 'erp' || o.positions.length === 0 || o.positions.some((p) => !p.unplaceable);
+  const cards = orders.filter(shownAsCard);
+
   const addOrder = () =>
     setOrders((os) => [...os, emptyOrder(nextOrderNumber(os), nextColorIndex(os))]);
   // Reorder an order in the list. List order = order priority → zones (strict) and packing queue
   // (densityFirst) follow it; the engine/contract are untouched (ADR 017). 4bj.11.
+  // Скрытые карточки (ERP: заказ только из неразмещаемых строк) перескакиваются: иначе шаг на
+  // невидимого соседа выглядел бы как «ничего не произошло». В обычной сборке скрытых нет.
   const moveOrder = (key: string, dir: -1 | 1) =>
     setOrders((os) => {
       const i = os.findIndex((o) => o.key === key);
-      const j = i + dir;
+      let j = i + dir;
+      while (j >= 0 && j < os.length && !shownAsCard(os[j])) j += dir;
       if (i < 0 || j < 0 || j >= os.length) return os;
       const next = [...os];
       [next[i], next[j]] = [next[j], next[i]];
@@ -409,9 +423,12 @@ export function SetupScreen({
     // `selection` value itself should not go on carrying a stale positionId either).
     if (selection?.positionId === pid) setSelection(null);
     const order = orders.find((o) => o.key === okey);
-    const i = order?.positions.findIndex((p) => p.id === pid) ?? -1;
-    const neighbour =
-      order && order.positions.length > 1 ? (order.positions[i + 1] ?? order.positions[i - 1]) : undefined;
+    // Соседи — только строки карточки: неразмещаемые строки ERP живут в отдельном списке, поля имени у
+    // них нет. Убранная из того списка строка соседа в карточке не ищет — фокус уходит на кнопку ниже.
+    const removed = order?.positions.find((p) => p.id === pid);
+    const rows = removed && !removed.unplaceable ? (order?.positions.filter((p) => !p.unplaceable) ?? []) : [];
+    const i = rows.findIndex((p) => p.id === pid);
+    const neighbour = rows.length > 1 ? (rows[i + 1] ?? rows[i - 1]) : undefined;
     setOrders((os) => {
       // Drop-if-now-empty applies only to the order being edited (`okey`) — filtering ALL orders
       // would also delete an unrelated order that happened to already be empty (Finding 4; not
@@ -469,6 +486,14 @@ export function SetupScreen({
   const summary = setupSummary(orders, vehicle);
   const messages = allMessages(orders, vehicle);
   const errorCount = messages.filter((m) => m.level === 'error').length;
+  // Сборка для ERP (макет, блок 3; спека программы §6): расчёт недоступен с причиной рядом с кнопкой —
+  // пока у размещаемых позиций нет габаритов или размещаемых позиций нет вовсе (рейс только из строк
+  // в м³). Кнопка не гаснет (`aria-disabled`, а не `disabled`): остаётся в порядке фокуса и
+  // объявляется скринридером. В обычной сборке блокировки нет — там правит прежний гейт сообщений.
+  const erp = host.kind === 'erp';
+  const gaps = erp ? missingDims(orders) : [];
+  const noPlaceable = erp && !orders.some((o) => o.positions.some((p) => !p.unplaceable));
+  const calcBlocked = erp && (gaps.length > 0 || noPlaceable);
   const [compact, sentinelRef] = useStickyCompact();
   // Куда уводить фокус, когда «Рассчитать» отказал по причине без адреса строки (p3p.16): ошибки
   // кузова, отсеков и пустой заявки строкой не адресуются, панель — единственная поверхность,
@@ -520,6 +545,8 @@ export function SetupScreen({
       showReasons();
       return;
     }
+    // Причина блокировки ERP уже стоит рядом с кнопкой; расчёта нет.
+    if (calcBlocked) return;
     // Пересчёт строит раскладку с нуля и выбрасывает ручные правки стопок. Спрашиваем только когда
     // терять действительно есть что — и только после гейта: переспрашивать о потере правок, когда
     // расчёт всё равно запрещён, бессмысленно.
@@ -572,6 +599,8 @@ export function SetupScreen({
         onDemo={handleDemo}
         onReset={handleReset}
         onCalculate={handleCalculate}
+        calcBlocked={calcBlocked}
+        calcBlockedReasonId={calcBlocked ? CALC_BLOCKED_ID : undefined}
       />
       <main className="mx-auto max-w-[1120px] px-5 pb-6 sm:px-6 print:hidden">
       {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать». */}
@@ -628,15 +657,15 @@ export function SetupScreen({
             (row divider ≈ 0, header 10px) by enough to be seen without counting — 32px does, 16px
             did not. Scale value, not a hand-picked number. */}
         <div className="flex min-w-0 flex-1 flex-col gap-8">
-          {orders.map((o, oi) => (
+          {cards.map((o, oi) => (
             <OrderCard
               key={o.key}
               order={o}
               index={o.colorIndex}
               vehicle={vehicle}
-              reorderable={orders.length > 1}
+              reorderable={cards.length > 1}
               canMoveUp={oi > 0}
-              canMoveDown={oi < orders.length - 1}
+              canMoveDown={oi < cards.length - 1}
               onMove={(dir) => moveOrder(o.key, dir)}
               onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
               onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
@@ -659,6 +688,14 @@ export function SetupScreen({
               }}
             />
           ))}
+          {erp && (
+            <UnplaceableList
+              orders={orders}
+              armed={armed}
+              onArm={(a) => setArmed(a)}
+              onRemove={removePosition}
+            />
+          )}
         </div>
         {wide && (
           // `id` (review finding 3, final wave): stable target for the chip's `aria-controls`
@@ -760,8 +797,36 @@ export function SetupScreen({
           either one reintroduces the complaint the other was added to fix. `variant="primary"`
           matches the header button — both are primary by the owner's explicit call, not "the real
           one plus a secondary echo". */}
-      <div className="mt-3 flex justify-center">
-        <Button variant="primary" onClick={handleCalculate}>{tt('action.calculate')}</Button>
+      <div className="mt-3 flex flex-col items-center gap-2">
+        <Button
+          variant="primary"
+          onClick={handleCalculate}
+          ariaDisabled={calcBlocked || undefined}
+          ariaDescribedBy={calcBlocked ? CALC_BLOCKED_ID : undefined}
+        >
+          {tt('action.calculate')}
+        </Button>
+        {calcBlocked && (
+          <div id={CALC_BLOCKED_ID} data-testid="calc-blocked" className="max-w-prose text-center text-caption text-warning">
+            {gaps.length > 0 ? (
+              <>
+                <p className="font-semibold">{fillTemplate(tt('setup.blocked'), { n: gaps.length })}</p>
+                <ul>
+                  {gaps.map((g) => (
+                    <li key={g.positionId}>
+                      {fillTemplate(tt('setup.blockedItem'), {
+                        name: g.name,
+                        fields: g.missing.map((f) => tt(`field.${f}`)).join(', '),
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="font-semibold">{tt('setup.blockedEmpty')}</p>
+            )}
+          </div>
+        )}
       </div>
       {/* Live region for the result (Task 7): proximity to the plan only helps a sighted user — a
           keyboard/screen-reader press is otherwise silent, since the plan updates further down the

@@ -126,6 +126,17 @@ export const TRANSLATION_KEYS = [
   'article.lockedHint',
   'article.lockedHintLabel',
   'article.saveError',
+  'position.dimsSaved',
+  'position.dimsFromName',
+  'position.heightMissing',
+  'position.dimsMissing',
+  'position.dimsMissingHint',
+  'setup.blocked',
+  'setup.blockedItem',
+  'setup.blockedEmpty',
+  'position.sourceQuantity',
+  'erp.order.directTo',
+  'erp.rules.savedAtArticle',
   'article.renameInErp',
 
   // Ladeplan / result screen

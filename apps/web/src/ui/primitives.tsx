@@ -187,10 +187,16 @@ export const Button = forwardRef<
     variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
     type?: 'button' | 'submit';
     disabled?: boolean;
+    /** Недоступна, но не погашена: остаётся в порядке фокуса и объявляется скринридером, нажатие
+     *  отклоняет сам обработчик (спека программы §6). Без пропа разметка прежняя. */
+    ariaDisabled?: boolean;
+    /** id текста причины, который озвучивается вместе с кнопкой. */
+    ariaDescribedBy?: string;
   }
->(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false }, ref) {
+>(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false, ariaDisabled, ariaDescribedBy }, ref) {
   const base =
-    'rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed';
+    'rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed' +
+    (ariaDisabled ? ' opacity-50 cursor-not-allowed' : '');
   const styles = {
     primary: 'bg-brand text-brand-ink hover:bg-brand-strong',
     secondary: 'border border-line-strong bg-card text-ink hover:border-brand hover:text-brand',
@@ -198,7 +204,15 @@ export const Button = forwardRef<
     danger: 'bg-danger text-[color:var(--danger-ink)] hover:opacity-90',
   }[variant];
   return (
-    <button ref={ref} type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
+    <button
+      ref={ref}
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      aria-disabled={ariaDisabled ? true : undefined}
+      aria-describedby={ariaDescribedBy}
+      className={`${base} ${styles}`}
+    >
       {children}
     </button>
   );

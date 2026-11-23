@@ -7,6 +7,7 @@ import { fillTemplate } from '../components/stackFormula';
 import { OrderSwatch } from '../../lib/swatch';
 import { TextField } from '../../ui/primitives';
 import { useT } from '../../i18n/LocaleContext';
+import { useHost } from '../../host/HostContext';
 import { PositionRow } from './PositionRow';
 import type { OrderState, PositionState } from './setupState';
 
@@ -65,6 +66,10 @@ export function OrderCard({
   onNameRef,
 }: OrderCardProps) {
   const tt = useT();
+  const erp = useHost().kind === 'erp';
+  // Неразмещаемые строки ERP строкой карточки не рисуются: экран показывает их отдельным списком
+  // (UnplaceableList). Обычная сборка рисует все строки, как раньше.
+  const rows = erp ? order.positions.filter((p) => !p.unplaceable) : order.positions;
   const colorVar = `var(--s${((index % 8) + 1)})`;
   return (
     <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
@@ -75,11 +80,18 @@ export function OrderCard({
       <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
         <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
         <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
+        {/* Шапка заказа ERP (макет, блок 3): поставщик и, при прямой поставке, покупатель. */}
+        {erp && order.partner && <span className="text-caption text-muted">{order.partner}</span>}
+        {erp && order.customer && (
+          <span className="text-caption text-muted">
+            {fillTemplate(tt('erp.order.directTo'), { customer: order.customer })}
+          </span>
+        )}
         {/* Счётчик — целиком из словаря (LKWkalk-5gi п.3): конкатенация в коде отдавала переводчику
             только слово, а порядок и разделитель зашивала намертво. */}
         <span className="ml-auto text-caption text-muted">
           {fillTemplate(tt('setup.positionCount'), {
-            count: order.positions.length,
+            count: rows.length,
             label: tt('cargoType.label'),
           })}
         </span>
@@ -132,7 +144,7 @@ export function OrderCard({
       </div>
 
       <div className="divide-y divide-line">
-        {order.positions.map((p) => (
+        {rows.map((p) => (
           <PositionRow
             key={p.id}
             position={p}
