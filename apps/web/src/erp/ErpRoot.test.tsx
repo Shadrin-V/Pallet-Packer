@@ -358,6 +358,7 @@ describe('ErpRoot + FrappeDataProvider: другой пользователь в
     });
     expect(screen.getByRole('link', { name: 'Neu anmelden' })).toBeInTheDocument();
     expect(callsTo(f, 'GET reise')).toHaveLength(1);
+    expect(callsTo(f, 'GET sitzung')).toHaveLength(1); // после 401 повторной проверки сессии нет
     const calls = f.mock.calls.length;
     await expect(dp.importLines(['a1'])).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
     expect(f.mock.calls.length).toBe(calls);

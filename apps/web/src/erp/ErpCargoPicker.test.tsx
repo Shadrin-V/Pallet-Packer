@@ -106,7 +106,7 @@ describe('ErpCargoPicker — Reise laden', () => {
     expect(within(region).getByText('offene Positionen der Bestellungen, auch Direktlieferungen an Kunden')).toBeInTheDocument();
     expect(region.className).toMatch(/print:hidden/);
     await waitFor(() => expect(fake.listOpenLines).toHaveBeenCalledTimes(1));
-    expect(fake.listOpenLines).toHaveBeenCalledWith({});
+    expect(fake.listOpenLines).toHaveBeenCalledWith({ limit: 200 });
   });
 
   it('рейс «не найден или нет прав», скрытый заказ в рейсе, нет роли — три текста, ни один не утверждает «не существует»', async () => {
@@ -193,6 +193,36 @@ describe('ErpCargoPicker — Reise laden', () => {
     expect(await screen.findByTestId('trip-line')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Demo' }));
     expect(screen.queryByTestId('trip-line')).toBeNull();
+  });
+
+  it('пока рейс грузится: кнопка aria-disabled и aria-busy, повторное нажатие второго запроса не шлёт', async () => {
+    let resolveTrip!: (t: TripImport) => void;
+    fake.loadTrip.mockReturnValue(new Promise<TripImport>((r) => { resolveTrip = r; }));
+    renderSetupWithPicker();
+    await userEvent.type(screen.getByLabelText('Reise'), 'LKW-2026-00412');
+    const btn = screen.getByRole('button', { name: 'Reise laden' });
+    expect(btn).not.toHaveAttribute('aria-busy');
+    await userEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    expect(btn).not.toBeDisabled(); // остаётся в порядке фокуса
+    await userEvent.click(btn);
+    await userEvent.type(screen.getByLabelText('Reise'), '{Enter}');
+    expect(fake.loadTrip).toHaveBeenCalledTimes(1);
+    resolveTrip(fixtureTrip());
+    expect(await screen.findByDisplayValue('PUR-ORD-2026-00871')).toBeInTheDocument();
+    expect(btn).not.toHaveAttribute('aria-disabled');
+    expect(btn).not.toHaveAttribute('aria-busy');
+  });
+
+  it('пустое поле рейса: нажатие ставит фокус в поле, запроса нет; плейсхолдер по макету', async () => {
+    renderSetupWithPicker();
+    const input = screen.getByLabelText('Reise');
+    expect(input).toHaveAttribute('placeholder', 'LKW-Nummer');
+    await userEvent.type(input, '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Reise laden' }));
+    expect(input).toHaveFocus();
+    expect(fake.loadTrip).not.toHaveBeenCalled();
   });
 
   it('истёкшая сессия и смена пользователя: ни текста ошибки, ни повтора — экраны сессии показывает оболочка', async () => {
@@ -349,23 +379,23 @@ describe('ErpCargoPicker — Bestellpositionen wählen', () => {
     const date = screen.getByLabelText('Liefertermin bis');
     expect(date).toHaveAttribute('type', 'date');
     fireEvent.change(date, { target: { value: '2026-11-26' } });
-    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: '', dueBefore: '2026-11-26' }));
+    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: '', dueBefore: '2026-11-26', limit: 200 }));
     await userEvent.type(search, 'H');
-    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'H', dueBefore: '2026-11-26' }));
+    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'H', dueBefore: '2026-11-26', limit: 200 }));
     await userEvent.type(search, 'AN');
-    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'HAN', dueBefore: '2026-11-26' }));
+    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'HAN', dueBefore: '2026-11-26', limit: 200 }));
     expect(await screen.findByText('Treffer HAN')).toBeInTheDocument();
     resolveH([{ ...lineA, itemName: 'Veraltet H' }]);
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByText('Veraltet H')).toBeNull();
     expect(screen.getByText('Treffer HAN')).toBeInTheDocument();
-    expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'HAN', dueBefore: '2026-11-26' });
+    expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'HAN', dueBefore: '2026-11-26', limit: 200 });
   });
 
   it('поиск с задержкой: быстрый набор — один запрос', async () => {
     renderSetupWithPicker();
     await userEvent.type(screen.getByLabelText('Lieferant oder Artikel'), 'Muster');
-    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'Muster' }));
+    await waitFor(() => expect(fake.listOpenLines).toHaveBeenLastCalledWith({ query: 'Muster', limit: 200 }));
     expect(fake.listOpenLines).toHaveBeenCalledTimes(2); // монтирование + один после паузы
   });
 
@@ -386,5 +416,29 @@ describe('ErpCargoPicker — Bestellpositionen wählen', () => {
     expect(screen.queryByText('Deine Anmeldung im ERP ist abgelaufen.')).toBeNull();
     expect(fake.importLines).toHaveBeenCalledTimes(1);
     expect(checkboxOf('Europalette 1200x800 gebraucht')).toBeChecked();
+  });
+
+  it.each([
+    [PICKER_MAX_SELECTION, true],
+    [PICKER_MAX_SELECTION - 1, false],
+  ])('ответ из %i строк: подсказка «показаны первые N» — %s', async (count, shown) => {
+    fake.listOpenLines.mockResolvedValue(Array.from({ length: count }, (_, i): OpenLine => ({ ...lineA, lineRef: `t${i}`, itemName: `Zeile ${i}` })));
+    renderSetupWithPicker();
+    await screen.findByText('Zeile 0');
+    expect(!!screen.queryByText('Es werden die ersten 200 Positionen gezeigt. Suche oder Liefertermin eingrenzen.')).toBe(shown);
+  });
+
+  it('отказ свежего запроса: прежние строки и отметки убраны, видно только сообщение об ошибке', async () => {
+    fake.listOpenLines.mockResolvedValueOnce([lineA, lineB]).mockRejectedValueOnce({ code: 'ERR_FORBIDDEN' });
+    renderSetupWithPicker();
+    await screen.findByText('Europalette 1200x800 gebraucht');
+    await userEvent.click(checkboxOf('Europalette 1200x800 gebraucht'));
+    expect(screen.getByText('Σ ausgewählt: 1 Positionen · 204 Stk')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Lieferant oder Artikel'), 'X');
+    expect(await screen.findByText('Du hast keinen Zugriff auf den Ladungsplaner. Frag die Disposition.')).toBeInTheDocument();
+    expect(screen.queryByText('Europalette 1200x800 gebraucht')).toBeNull();
+    expect(within(screen.getByRole('table')).queryAllByRole('checkbox')).toHaveLength(0);
+    expect(screen.getByText('Σ ausgewählt: 0 Positionen · 0 Stk')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '0 Positionen in den LKW legen' })).toBeDisabled();
   });
 });

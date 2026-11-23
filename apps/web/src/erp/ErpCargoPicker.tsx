@@ -7,7 +7,7 @@
 // `ErpRoot`: она сама уводит на свой экран. Здесь такие отказы не показываются ошибкой и не повторяются.
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { OpenLine, TripImport } from '@shadrin-v/contracts';
-import type { Locale, TranslationKey } from '@shadrin-v/i18n';
+import type { TranslationKey } from '@shadrin-v/i18n';
 import { useLocale, useT } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
 import { fillTemplate } from '../screens/components/stackFormula';
@@ -16,6 +16,7 @@ import type { ErpSource, OpenLinesQuery } from '../data/ErpSource';
 import { formatUom } from '../lib/uomLabel';
 import { errorCodeOf, erpErrorKey, isSessionChanged, isSessionExpired } from './erpErrors';
 import { formatSourceQuantity } from './quantityFormat';
+import { formatIsoDate } from './dateFormat';
 
 export const PICKER_SEARCH_DEBOUNCE_MS = 300;
 /** Предел строк одного добавления (контракт §3, `positionen`: 1…200). */
@@ -24,17 +25,6 @@ export const PICKER_TRIP_INPUT_ID = 'lp-trip-input';
 export const PICKER_SECTION_ID = 'lp-select';
 /** Предел строки поиска (контракт §3). */
 const SEARCH_MAX_LENGTH = 140;
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const INTL_TAG: Readonly<Record<Locale, string>> = { de: 'de-DE', ru: 'ru-RU' };
-
-/** ISO-дата ERP `ГГГГ-ММ-ДД` в формате локали (`24.11.2026`); не дата — как пришла. Без часового пояса:
- *  дата календарная, сдвиг на сутки в браузере западнее UTC недопустим. */
-export function formatIsoDate(iso: string, locale: Locale): string {
-  const m = ISO_DATE.exec(iso);
-  if (!m) return iso;
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return new Intl.DateTimeFormat(INTL_TAG[locale], { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(d);
-}
 
 /** Отказ, который показывает оболочка, а не этот шаг. */
 const isShellError = (e: unknown) => isSessionExpired(e) || isSessionChanged(e);
@@ -65,7 +55,10 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
   // ---- Reise laden ----
   const [tripName, setTripName] = useState('');
   const [tripStatus, setTripStatus] = useState<TripStatus | null>(null);
+  // Ref — защита от второго запроса в том же такте; состояние — для разметки (aria-busy).
   const tripBusy = useRef(false);
+  const [tripLoading, setTripLoading] = useState(false);
+  const tripInputRef = useRef<HTMLInputElement>(null);
 
   // `api` меняется каждым рендером экрана; запрос отвечает позже — берём ту, что актуальна сейчас.
   const apiRef = useRef(api);
@@ -73,9 +66,14 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
 
   const loadTrip = async (e?: FormEvent) => {
     e?.preventDefault();
+    if (tripBusy.current) return;
     const name = tripName.trim();
-    if (!name || tripBusy.current) return;
+    if (!name) {
+      tripInputRef.current?.focus();
+      return;
+    }
     tripBusy.current = true;
+    setTripLoading(true);
     setTripStatus(null);
     try {
       const trip: TripImport = await source.loadTrip(name);
@@ -88,6 +86,7 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
       if (!isShellError(err)) setTripStatus(tripFailure(err, name));
     } finally {
       tripBusy.current = false;
+      setTripLoading(false);
     }
   };
 
@@ -116,13 +115,16 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
       },
       (err: unknown) => {
         if (seq !== listSeq.current || isShellError(err)) return;
+        // Прежние строки под новый фильтр не подходят: ни их, ни отметок на них не оставляем.
+        setLines([]);
+        setSelected(new Set());
         setLinesError(erpErrorKey(err));
       },
     );
   };
 
   useEffect(() => {
-    fetchLines({});
+    fetchLines({ limit: PICKER_MAX_SELECTION });
     return () => clearTimeout(debounce.current);
     // Только при монтировании и смене источника: фильтры шлют свои запросы сами (`refilter`).
   }, [source]);
@@ -130,7 +132,7 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
   const refilter = (nextQuery: string, nextDue: string) => {
     clearTimeout(debounce.current);
     debounce.current = setTimeout(
-      () => fetchLines({ query: nextQuery, ...(nextDue ? { dueBefore: nextDue } : {}) }),
+      () => fetchLines({ query: nextQuery, ...(nextDue ? { dueBefore: nextDue } : {}), limit: PICKER_MAX_SELECTION }),
       PICKER_SEARCH_DEBOUNCE_MS,
     );
   };
@@ -141,6 +143,8 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
   const chosen = lines.filter((l, i) => selectable(l) && selected.has(l.lineRef) && lines.findIndex((x) => x.lineRef === l.lineRef) === i);
   const atLimit = chosen.length >= PICKER_MAX_SELECTION;
   const chosenQty = chosen.reduce((n, l) => n + (l.openQuantity ?? 0), 0);
+  // Сервер не говорит, есть ли строки сверх `limit`: полный ответ — повод сузить фильтр.
+  const truncated = lines.length >= PICKER_MAX_SELECTION;
   const hasM3 = lines.some((l) => !l.placeable && l.reason === 'ERR_LINE_UNIT_NOT_PIECES');
 
   const toggle = (ref: string) =>
@@ -182,7 +186,9 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
             <span className="text-caption font-semibold text-muted">{tt('picker.trip.label')}</span>
             <input
               id={PICKER_TRIP_INPUT_ID}
+              ref={tripInputRef}
               type="text"
+              placeholder={tt('picker.trip.placeholder')}
               autoComplete="off"
               value={tripName}
               onChange={(e) => setTripName(e.target.value)}
@@ -192,7 +198,19 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
               }`}
             />
           </label>
-          <Button type="submit" variant="secondary">{tt('picker.trip.load')}</Button>
+          {/* Вид кнопки — как `Button variant="secondary"`, но с `aria-busy`, которого у примитива нет. Пока
+              рейс грузится, кнопка недоступна без `disabled`: фокус с неё не слетает, повтор отсекает
+              `tripBusy`. */}
+          <button
+            type="submit"
+            aria-disabled={tripLoading || undefined}
+            aria-busy={tripLoading || undefined}
+            className={`rounded-ctl border border-line-strong bg-card px-3.5 py-2 text-caption font-semibold text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint ${
+              tripLoading ? 'cursor-not-allowed opacity-50' : 'hover:border-brand hover:text-brand'
+            }`}
+          >
+            {tt('picker.trip.load')}
+          </button>
         </form>
         {tripStatus?.kind === 'loaded' && (
           <p role="status" className="flex flex-wrap gap-x-2 text-caption text-muted">
@@ -322,6 +340,9 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
           </table>
         </div>
         {hasM3 && <p className="text-caption text-muted">{tt('picker.lines.m3Note')}</p>}
+        {truncated && (
+          <p className="text-caption text-muted">{fillTemplate(tt('picker.lines.truncated'), { n: PICKER_MAX_SELECTION })}</p>
+        )}
         {atLimit && <p className="text-caption text-warning">{tt('picker.limit')}</p>}
         <div className="flex flex-wrap items-center justify-end gap-3">
           <span className="text-caption text-muted">

@@ -18,7 +18,7 @@ import { removeStored } from '../lib/draftStorage';
 import { orderParam, urlWithoutOrderParam } from './setup/orderDeepLink';
 import type { Article, OrderZone } from '@shadrin-v/contracts';
 import { draftLineRefs, mergeZonesIntoDraft } from '../erp/zoneDraft';
-import { formatIsoDate } from '../erp/ErpCargoPicker';
+import { formatIsoDate } from '../erp/dateFormat';
 import { OrderCard } from './setup/OrderCard';
 import { LoadSummary } from './setup/LoadSummary';
 import { RulesPanel } from './setup/RulesPanel';
