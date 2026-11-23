@@ -462,6 +462,50 @@ describe('FrappeDataProvider — смена пользователя (контр
     expect(onSessionChanged).toHaveBeenCalledTimes(1);
   });
 
+  it('GET, начатый во время перепроверки сессии, при смене пользователя в сеть не уходит', async () => {
+    const onSessionChanged = vi.fn();
+    let answerRecheck: (r: Response) => void = () => {};
+    const f = vi.fn()
+      .mockResolvedValueOnce(ok(SESSION))
+      .mockImplementationOnce(() => new Promise<Response>((r) => { answerRecheck = r; }))
+      .mockImplementation(() => Promise.resolve(ok([])));
+    const dp = new FrappeDataProvider({ fetchImpl: f, onSessionChanged });
+    await dp.session();
+    const recheck = dp.session(); // возврат во вкладку: sitzung ещё не ответил
+    const lines = dp.listOpenLines();
+    const trip = dp.loadTrip('LKW-1');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(f).toHaveBeenCalledTimes(2); // пока идёт перепроверка — ни одного нового запроса
+    answerRecheck(ok(BORIS));
+    await expect(recheck).rejects.toEqual(CHANGED);
+    await expect(lines).rejects.toEqual(CHANGED);
+    await expect(trip).rejects.toEqual(CHANGED);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(f.mock.calls.map(([url]) => url)).toEqual([API + 'sitzung', API + 'sitzung']);
+    expect(onSessionChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET, начатый во время перепроверки, при том же пользователе уходит после её ответа', async () => {
+    let answerRecheck: (r: Response) => void = () => {};
+    const f = vi.fn()
+      .mockResolvedValueOnce(ok(SESSION))
+      .mockImplementationOnce(() => new Promise<Response>((r) => { answerRecheck = r; }))
+      .mockImplementation(() => Promise.resolve(ok([])));
+    const dp = new FrappeDataProvider({ fetchImpl: f });
+    await dp.session();
+    const recheck = dp.session();
+    const lines = dp.listOpenLines();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(f).toHaveBeenCalledTimes(2);
+    answerRecheck(ok({ ...SESSION, csrfToken: 'tok-2' }));
+    await expect(recheck).resolves.toMatchObject({ user: SESSION.user });
+    await expect(lines).resolves.toEqual([]);
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(f.mock.calls[2][0]).toBe(API + 'bestellpositionen');
+  });
+
   it('тот же пользователь при перепроверке — как раньше: новый токен берётся', async () => {
     const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(ok({ ...SESSION, csrfToken: 'tok-2' })).mockResolvedValueOnce(ok([]));
     const dp = new FrappeDataProvider({ fetchImpl: f });

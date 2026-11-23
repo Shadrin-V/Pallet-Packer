@@ -15,6 +15,10 @@
 //   провайдер закрыт: дальше всё отклоняется тем же кодом без сети. Иначе на общем компьютере экран
 //   прежнего сотрудника записал бы в ERP от имени нового. Оболочка закрывает провайдер и сама (`close`),
 //   уходя из программы, — запоздавшие цепочки размонтированных экранов до сервера не доходят.
+// - Пока идёт любая проверка сессии (`sitzung`: перепроверка при возврате во вкладку, новый токен после 400,
+//   перепроверка после 403), новые запросы в сеть не уходят — ждут её исхода. Тот же пользователь — уходят;
+//   другой — отклоняются `ERR_SESSION_CHANGED` без сети. Иначе быстрый GET старой вкладки успел бы прочитать
+//   данные под сессией нового сотрудника до перехода на экран «вошёл другой пользователь».
 // Количество, единицы и порядок провайдер не трогает — это решает сервер (§4 п. 2–3, 8).
 import {
   isOpenLine,
@@ -182,6 +186,8 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
   private user: string | undefined;
   /** Код, которым закрытый провайдер отклоняет всё; undefined — открыт. */
   private closedCode: string | undefined;
+  /** Идущие проверки сессии (исход не важен — только «закончилась»); пока они есть, новые запросы ждут. */
+  private readonly sessionChecks = new Set<Promise<unknown>>();
 
   constructor(opts: FrappeDataProviderOptions = {}) {
     // Через globalThis: браузер требует `window` получателем `fetch` (LKWkalk-7wb).
@@ -200,6 +206,10 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
   }
 
   private async send(method: string, call: Call): Promise<Reply> {
+    // Сам `sitzung` не ждёт — он и есть проверка. Без идущей проверки — без лишнего ожидания.
+    if (method !== 'sitzung') {
+      while (this.sessionChecks.size > 0) await Promise.all(this.sessionChecks);
+    }
     // И здесь, а не только на входе публичного метода: цепочка, начатая до закрытия, после него не шлёт.
     if (this.closedCode !== undefined) throw this.closedError();
     const headers: Record<string, string> = { Accept: 'application/json' };
@@ -251,7 +261,16 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
     return { code: 'ERR_HTTP', details: { status: 403 } };
   }
 
-  private async fetchSession(): Promise<ErpSession> {
+  /** Проверка сессии, на время которой новые запросы придержаны (см. `send`). */
+  private fetchSession(): Promise<ErpSession> {
+    const check = this.readSession();
+    const settled = check.catch(() => undefined);
+    this.sessionChecks.add(settled);
+    void settled.then(() => this.sessionChecks.delete(settled));
+    return check;
+  }
+
+  private async readSession(): Promise<ErpSession> {
     const s = parseErpSession(await this.call('sitzung', { method: 'GET' }));
     if (!s) throw badResponse();
     if (this.closedCode !== undefined) throw this.closedError();
