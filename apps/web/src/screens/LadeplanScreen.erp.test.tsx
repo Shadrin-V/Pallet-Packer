@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, type CargoType, type Layout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, findGeometryViolations, maxUnitsInVehicle, type CargoType, type Layout, type Load } from '@shadrin-v/engine';
 import type { ErpSession } from '@shadrin-v/contracts';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { HostProvider, type Host } from '../host/HostContext';
@@ -174,16 +174,28 @@ describe('LadeplanScreen — сборка для ERP (макет, блок 4)', 
   });
 
   it('в машине больше «максимума одного артикула» (ручная правка) — строки «Platz für …» нет', () => {
-    // 9 единиц при максимуме 8: девятая положена руками поверх (раскладка построена вручную).
-    const base = calculateLayout(overLoad);
-    const extra = { ...base.placements[0], x: 1000, y: 1000, z: 2000, tier: 3 };
-    const edited: Layout = { ...base, placements: [...base.placements, extra], unplaced: [{ cargoTypeId: 'c1', count: 1 }] };
-    renderPlanErp(overLoad, edited, ctxFor(overLoad));
+    // «max.» — то, что кладёт упаковщик в пустой кузов, а руками можно уложить плотнее. Кузов
+    // 2×2 м в один ярус, плита 1200×800 с поворотом: упаковщик кладёт 2, «мельница» из четырёх
+    // плит (две вдоль, две поперёк) — 4, и это честная геометрия, без наложений и выхода за кузов.
+    const flatV = { id: 'v2', name: 'LKW Flach', length: 2000, width: 2000, height: 1000 };
+    const slab: CargoType = { ...cube('c1', 5, 'BE-40371', 'Platte'), length: 1200, width: 800, rotation: 'yawOnly' };
+    const pinLoad: Load = { vehicle: flatV, cargo: [slab] };
+    const base = calculateLayout(pinLoad);
+    expect(maxUnitsInVehicle(slab, flatV)).toBe(2);
+    const at = (x: number, y: number, orientation: 'lwh' | 'wlh') => ({ ...base.placements[0], x, y, z: 0, tier: 1, orientation });
+    const edited: Layout = {
+      ...base,
+      placements: [at(0, 0, 'lwh'), at(1200, 0, 'wlh'), at(800, 1200, 'lwh'), at(0, 800, 'wlh')],
+      unplaced: [{ cargoTypeId: 'c1', count: 1 }],
+    };
+    expect(findGeometryViolations(pinLoad, edited)).toEqual([]);
+    renderPlanErp(pinLoad, edited, ctxFor(pinLoad));
+    expect(document.querySelector('main')!.getAttribute('data-violations')).toBe('0');
     expect(screen.queryByText(/Platz für/)).toBeNull();
     expect(screen.queryByText(/In diesen LKW passen/)).toBeNull();
     expect(screen.queryByText(/(^|\s)[-−]\d/)).toBeNull();
     const cells = within(within(screen.getByRole('table')).getAllByRole('row')[1]).getAllByRole('cell');
-    expect(cells.map((c) => c.textContent).slice(2)).toEqual(['10', '9', '1 nicht im LKW', '8']);
+    expect(cells.map((c) => c.textContent).slice(2)).toEqual(['5', '4', '1 nicht im LKW', '2']);
   });
 
   it('смешанный рейс — строки «Platz für …» нет', () => {
@@ -294,9 +306,9 @@ describe('LadeplanScreen — сборка для ERP (макет, блок 4)', 
     await userEvent.click(screen.getByRole('button', { name: 'Als Bild speichern' }));
     expect(spy).toHaveBeenCalledTimes(1);
     const opts = spy.mock.calls[0][1];
-    expect(opts.legend).toHaveLength(3); // по строке на позицию; знаки добавляет задача 15
-    expect(opts.legend[0].label).toBe(`BE-40371 — EUR101 Alpha ×0 (${moved} nicht im LKW)`);
-    expect(opts.legend[2].label).toBe('BE-40397 — EUR101 Gamma ×4 (2 nicht im LKW)');
+    expect(opts.legend).toHaveLength(3); // по строке на позицию, первым словом — знак позиции
+    expect(opts.legend[0].label).toBe(`A BE-40371 — EUR101 Alpha ×0 (${moved} nicht im LKW)`);
+    expect(opts.legend[2].label).toBe('C BE-40397 — EUR101 Gamma ×4 (2 nicht im LKW)');
     const notes = opts.notes!.flatMap((n) => [n.title, ...n.lines]).join('\n');
     expect(notes).toContain('Nicht im LKW');
     expect(notes).toContain('12,4 m³');

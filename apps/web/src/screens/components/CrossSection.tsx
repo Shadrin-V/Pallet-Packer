@@ -36,6 +36,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { selectionBadge } from './selectionBadge';
+import { markGlyph } from './positionMark';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
 import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
@@ -94,6 +95,7 @@ export function CrossSection({
   onCarry,
   onCarryEnd,
   showTruck = true,
+  marks,
 }: {
   load: Load;
   layout: Layout;
@@ -139,6 +141,9 @@ export function CrossSection({
    *  выключение — осознанный выбор пользователя, а не состояние по умолчанию. Линеек и рамки кузова
    *  не касается. */
   showTruck?: boolean;
+  /** Сборка для ERP: id позиции (= cargoTypeId) → знак позиции без цвета (`positionMarks`). Знак
+   *  стоит в левом верхнем углу КАЖДОЙ стопки обоих видов; без карты разметка прежняя. */
+  marks?: ReadonlyMap<string, string>;
 }) {
   const tt = useT();
   const { length, width, height } = load.vehicle;
@@ -569,6 +574,7 @@ export function CrossSection({
               key={i}
               // A stable handle on this particular floor column: the render index is not one.
               data-stack-ref={view === 'top' ? refKey(ref) : undefined}
+              data-cargo-type={r.cargoTypeId}
               transform={tf}
               onPointerDown={draggable ? onDown(r) : undefined}
               style={draggable ? { cursor: 'grab' } : undefined}
@@ -597,6 +603,31 @@ export function CrossSection({
                       </text>
                     )}
                   </>
+                );
+              })()}
+              {(() => {
+                // Знак позиции (ERP): тёмный по светлой обводке-подложке — читается поверх
+                // штриховки и в ч/б печати. Не скрыт от печати: лист читают без цвета.
+                const mark = marks?.get(r.cargoTypeId);
+                if (!mark) return null;
+                const g = markGlyph(r, countFont);
+                return (
+                  <text
+                    data-mark={mark}
+                    x={g.x}
+                    y={g.y}
+                    fill="var(--ink)"
+                    fontSize={g.fontSize}
+                    fontWeight={700}
+                    stroke="var(--card)"
+                    strokeWidth={g.strokeWidth}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                    dominantBaseline="central"
+                    pointerEvents="none"
+                  >
+                    {mark}
+                  </text>
                 );
               })()}
               {isSelected && (

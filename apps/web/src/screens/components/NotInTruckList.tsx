@@ -6,6 +6,7 @@
 import type { Layout, Load } from '@shadrin-v/engine';
 import { useLocale } from '../../i18n/LocaleContext';
 import { notInTruckRows } from '../../erp/erpPlanExport';
+import { fillTemplate } from './stackFormula';
 import type { PlanContext } from '../../erp/planContext';
 
 export interface NotInTruckListProps {
@@ -38,9 +39,12 @@ export function NotInTruckList({ load, layout, context, marks }: NotInTruckListP
             <span className="flex min-w-0 flex-col gap-0.5 text-body">
               <span className="flex flex-wrap items-baseline gap-x-2">
                 {r.mark && (
-                  <span data-testid="position-mark" className="font-bold text-ink">
-                    {r.mark}
-                  </span>
+                  <>
+                    <span className="sr-only">{fillTemplate(tt('plan.mark.sr'), { mark: r.mark })}</span>
+                    <span data-testid="position-mark" aria-hidden="true" className="font-bold text-ink">
+                      {r.mark}
+                    </span>
+                  </>
                 )}
                 {r.amount && <b className="font-semibold tabular-nums">{r.amount}</b>}
                 <span>{r.stacks ? `${r.item} · ${r.stacks}` : r.item}</span>

@@ -31,6 +31,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
+import { markGlyph } from './positionMark';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
@@ -62,6 +63,7 @@ export function WarehouseFloor({
   onBayOrderChange,
   showTruck = true,
   dropTarget = false,
+  marks,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -95,6 +97,9 @@ export function WarehouseFloor({
   /** Рисуется ли обвес на разрезах. Двор повторяет это значение, чтобы ширина его внешнего viewBox
    *  совпадала с разрезом — на этом равенстве держится масштаб 1:1. */
   showTruck?: boolean;
+  /** Сборка для ERP: id позиции (= cargoTypeId) → знак позиции без цвета (`positionMarks`) — тот
+   *  же, что на грузе в кузове. Без карты разметка прежняя. */
+  marks?: ReadonlyMap<string, string>;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -373,6 +378,10 @@ export function WarehouseFloor({
               //     pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
               const realIndex =
                 phantomAt && pt.srcIndex > phantomAt.index ? pt.srcIndex - 1 : pt.srcIndex;
+              const mark = marks?.get(cargo.id);
+              // Имя плитки для экранного чтения начинается со знака позиции (ERP): на плитке он
+              // нарисован, и без текста человек со скринридером его бы не получил.
+              const tileName = `${mark ? `${fillTemplate(tt('plan.mark.sr'), { mark })} · ` : ''}${cargo.name} ×${pt.tile.units}`;
               return (
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}
@@ -384,7 +393,7 @@ export function WarehouseFloor({
                   data-units={pt.tile.units}
                   role="button"
                   tabIndex={0}
-                  aria-label={`${cargo.name} ×${pt.tile.units}`}
+                  aria-label={tileName}
                   opacity={dragging === realIndex ? 0.3 : undefined}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) => {
@@ -406,7 +415,7 @@ export function WarehouseFloor({
                     }
                   }}
                 >
-                  <title>{`${cargo.name} ×${pt.tile.units}`}</title>
+                  <title>{tileName}</title>
                   <StackShape x={pt.x} y={pt.y} w={pt.dx} h={pt.dy} series={series} hatchSpacing={180} backing />
                   {/* Имя артикула над количеством (ayg) — та же пара, что в виде сверху. Имя тише
                       числа и пропадает первым, когда плитка мала: stackLabel решает, что влезло. */}
@@ -444,6 +453,28 @@ export function WarehouseFloor({
                       </>
                     );
                   })()}
+                  {mark &&
+                    (() => {
+                      const g = markGlyph({ x: pt.x, y: pt.y, w: pt.dx, h: pt.dy }, countFont);
+                      return (
+                        <text
+                          data-mark={mark}
+                          x={g.x}
+                          y={g.y}
+                          fill="var(--ink)"
+                          fontSize={g.fontSize}
+                          fontWeight={700}
+                          stroke="var(--card)"
+                          strokeWidth={g.strokeWidth}
+                          strokeLinejoin="round"
+                          paintOrder="stroke"
+                          dominantBaseline="central"
+                          pointerEvents="none"
+                        >
+                          {mark}
+                        </text>
+                      );
+                    })()}
                   {sel === realIndex && (
                     <>
                       <rect

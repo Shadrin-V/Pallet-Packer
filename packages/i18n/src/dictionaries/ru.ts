@@ -220,6 +220,8 @@ export const ru: Dictionary = {
   'plan.notInTruck.title': 'Не в LKW',
   'plan.notInTruck.stacks': '{stacks} стопки по {per}',
   'plan.notInTruck.noRoom': 'нет места',
+  'plan.positions.title': 'Позиции',
+  'plan.mark.sr': 'Позиция {mark}',
   'ladeplan.rotateStack': 'Повернуть стопку',
   'ladeplan.selection.count': 'Выделено стопок: {n}',
   'ladeplan.slideHint': 'Стрелки: прижать к упору',

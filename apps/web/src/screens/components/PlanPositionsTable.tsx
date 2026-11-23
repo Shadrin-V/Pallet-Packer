@@ -30,11 +30,15 @@ const TD = 'px-2 py-1.5';
 export function PlanPositionsTable({ load, layout, context, capacity, orderColors, marks }: PlanPositionsTableProps) {
   const { locale, tt } = useLocale();
   const num = (n: number) => formatSourceQuantity(n, locale);
+  // Габарит «L × W × H mm»: все три числа — записью длины (`formatLength`), единица — один раз, в конце.
+  const unitMm = ` ${tt('unit.mm')}`;
+  const lengthNum = (mm: number) => formatLength(mm, locale).slice(0, -unitMm.length);
   const quantityOf = new Map(load.cargo.map((c) => [c.id, c.quantity]));
   const orders = orderBreakdown(load, layout, orderColors);
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-caption">
+        <caption className="sr-only">{tt('plan.positions.title')}</caption>
         <thead>
           <tr className="text-left">
             <th scope="col" className={TH}>{tt('plan.col.order')}</th>
@@ -76,15 +80,18 @@ export function PlanPositionsTable({ load, layout, context, capacity, orderColor
                     <span className="flex flex-col gap-0.5">
                       <span className="flex flex-wrap items-baseline gap-x-1.5">
                         {mark && (
-                          <span data-testid="position-mark" className="font-bold text-ink">
-                            {mark}
-                          </span>
+                          <>
+                            <span className="sr-only">{fillTemplate(tt('plan.mark.sr'), { mark })}</span>
+                            <span data-testid="position-mark" aria-hidden="true" className="font-bold text-ink">
+                              {mark}
+                            </span>
+                          </>
                         )}
                         {itemCode && <span className="font-semibold tabular-nums">{itemCode}</span>}
                         <span>{it.name}</span>
                       </span>
                       <span className="tabular-nums text-faint">
-                        {`${num(it.length)} × ${num(it.width)} × ${formatLength(it.height, locale)}`}
+                        {`${lengthNum(it.length)} × ${lengthNum(it.width)} × ${formatLength(it.height, locale)}`}
                       </span>
                     </span>
                   </td>

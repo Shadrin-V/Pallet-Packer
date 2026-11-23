@@ -224,6 +224,8 @@ export const de: Dictionary = {
   'plan.notInTruck.title': 'Nicht im LKW',
   'plan.notInTruck.stacks': '{stacks} Stapel zu {per}',
   'plan.notInTruck.noRoom': 'kein Platz',
+  'plan.positions.title': 'Positionen',
+  'plan.mark.sr': 'Position {mark}',
   'ladeplan.rotateStack': 'Stapel drehen',
   'ladeplan.selection.count': '{n} Stapel ausgewählt',
   'ladeplan.slideHint': 'Pfeiltasten: an den Anschlag schieben',

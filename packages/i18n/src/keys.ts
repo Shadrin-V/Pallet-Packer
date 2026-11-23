@@ -227,6 +227,8 @@ export const TRANSLATION_KEYS = [
   'plan.notInTruck.title',
   'plan.notInTruck.stacks',
   'plan.notInTruck.noRoom',
+  'plan.positions.title',
+  'plan.mark.sr',
   'ladeplan.rotateStack',
   'ladeplan.selection.count',
   'ladeplan.slideHint',

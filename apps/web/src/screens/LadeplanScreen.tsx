@@ -36,6 +36,7 @@ import { capacityMap } from './components/capacity';
 import { WeightNote } from './components/WeightNote';
 import { orderIndexMap, topRects } from './components/cutaway';
 import { orderBreakdown } from './components/orderBreakdown';
+import { positionMarks } from './components/positionMark';
 import { fillTemplate } from './components/stackFormula';
 import { orderColorToken } from '../lib/orderColor';
 import { exportPlanJson, exportPlanPng } from '../lib/exportPlan';
@@ -218,6 +219,15 @@ export function LadeplanScreen({
   // An unknown code would be a contract drift; show the raw code rather than an empty red line.
   const editErrorText = (code: string) => (isEditErrorKey(code) ? tt(code) : code);
   const capacity = useMemo(() => capacityMap(load), [load]);
+  // Знак позиции без цвета (ERP, условие утверждения макета): буква по порядку позиций рейса —
+  // размещаемых и неразмещаемых вместе (`positionOrder`), поэтому и строка в м³, которой в `Load`
+  // нет, получает свою. Id размещаемой позиции = `CargoType.id`, так что одна карта служит и
+  // стопкам, и строкам. Позиции `Load`, которых в контексте нет (старый план без контекста),
+  // дописываются следом — знак есть у каждой. Обычная сборка знаков не несёт.
+  const marks = useMemo(
+    () => (erp ? positionMarks([...(context?.positionOrder ?? []), ...load.cargo.map((c) => c.id)]) : undefined),
+    [erp, load, context],
+  );
   const orderColorMap = orderColors ? new Map(Object.entries(orderColors)) : undefined;
   // Editable copy for manual stack edits (drag, rotate); reset whenever a fresh layout is computed.
   const [edited, setEdited] = useState<Layout>(layout);
@@ -737,7 +747,7 @@ export function LadeplanScreen({
     // ERP: легенда — по строке на позицию, под ней «Nicht im LKW» и заметка о весе; всё по `edited`
     // и ровно то, что на листе (без «max.», которой нет и в печати).
     const erpParts = erp
-      ? erpExportParts({ load, layout: edited, context, orderColors: orderColorMap, tt, locale })
+      ? erpExportParts({ load, layout: edited, context, marks, orderColors: orderColorMap, tt, locale })
       : null;
     try {
       await exportPlanPng(v.name, {
@@ -874,7 +884,7 @@ export function LadeplanScreen({
             warehouse end up adjacent, which is where the work happens — stacks travel between them. */}
         <div className="plan-figures flex flex-col gap-5 px-2 py-5 print:gap-2 print:px-1 print:py-2">
           <div className="cut" style={{ breakInside: 'avoid' }}>
-            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} showTruck={showTruck} />
+            <CrossSection load={load} layout={edited} view="side" label={tt('ladeplan.side')} orderColors={orderColorMap} showTruck={showTruck} marks={marks} />
           </div>
 
           <div className="cut" style={{ breakInside: 'avoid' }}>
@@ -886,6 +896,7 @@ export function LadeplanScreen({
               label={tt('ladeplan.top')}
               orderColors={orderColorMap}
               showTruck={showTruck}
+              marks={marks}
               onMoveStack={onMoveStack}
               onMoveStacks={onMoveStacks}
               onRotateStack={onRotateStack}
@@ -935,6 +946,7 @@ export function LadeplanScreen({
                 // извне, и его граница работает как управляющий элемент. Перестановка внутри двора
                 // (`dragTile`) сюда не входит — там цель не зона, а место в ряду.
                 dropTarget={!!carry}
+                marks={marks}
               />
             )}
             {editError && (
@@ -949,7 +961,7 @@ export function LadeplanScreen({
         <div className="flex flex-col gap-4 border-t border-line px-6 py-4 print:gap-2 print:py-2" style={{ breakInside: 'avoid' }}>
           {erp ? (
             <>
-              <PlanPositionsTable load={load} layout={edited} context={context} capacity={capacity} orderColors={orderColorMap} />
+              <PlanPositionsTable load={load} layout={edited} context={context} capacity={capacity} orderColors={orderColorMap} marks={marks} />
               {/* «Platz für …» и сноска держатся на «max.» — экранные, как и сама колонка. */}
               <div className="flex flex-col gap-2 print:hidden">
                 {room && (
@@ -966,7 +978,7 @@ export function LadeplanScreen({
                 )}
                 <p className="text-caption text-faint">{fillTemplate(tt('plan.max.note'), { vehicle: v.name })}</p>
               </div>
-              <NotInTruckList load={load} layout={edited} context={context} />
+              <NotInTruckList load={load} layout={edited} context={context} marks={marks} />
             </>
           ) : (
             <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} capacity={capacity} />
