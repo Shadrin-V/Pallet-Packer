@@ -3,21 +3,26 @@
 //   npm run verify:erp                  — сдача в ERP и CI: дерево обязано быть чистым (dirty: false)
 //   npm run verify:erp -- --allow-dirty — только проверка до коммита
 //
-// Собирает `build:erp` ДВАЖДЫ и требует: оба прогона побайтово равны (ERP пересобирает сама и сравнивает
-// побайтово); в `apps/web/dist-erp` ровно три файла артефакта и `HERKUNFT.json`, без `.html`; sha256 в
-// паспорте — от файлов на диске; сканеры запретов пусты; паспорт годен (`checkHerkunft`), его коммит —
-// текущий HEAD, версия движка — из собранного пакета. Иначе — exit 1 с перечнем нарушений.
+// Собирает `build:erp` ДВАЖДЫ — вторую с заведомо «враждебным» окружением (`hostileBuildEnv`: dev-режим,
+// чужие браузеры, сетка autoprefixer) — и требует: обе сборки побайтово равны (ERP пересобирает на своей
+// машине и сравнивает побайтово); в `apps/web/dist-erp` ровно три обычных файла артефакта и `HERKUNFT.json`,
+// без `.html`, ссылок и подкаталогов; размеры — в пределах ERP; паспорт — в канонической форме, годен
+// (`checkHerkunft`, правила `pruefe` ERP), его коммит — текущий HEAD, версия движка — из собранного пакета,
+// sha256 — от файлов на диске; сканеры запретов пусты. Иначе — exit 1 с перечнем нарушений.
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ERP_ARTIFACT_FILES,
   HERKUNFT_FILE,
   checkHerkunft,
+  diffBuilds,
   findCssForbidden,
   findDynamicCode,
   findRootAbsoluteLiterals,
+  hostileBuildEnv,
+  serializeHerkunft,
   sha256Hex,
   type Herkunft,
 } from './erpArtifact';
@@ -25,68 +30,81 @@ import {
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const OUT = path.join(REPO, 'apps/web/dist-erp');
 const allowDirty = process.argv.includes('--allow-dirty');
+/** Пределы `pruefe` в ERP: паспорт — 64 КиБ, файл артефакта — 8 МиБ. */
+const MAX_HERKUNFT = 64 * 1024;
+const MAX_FILE = 8 * 1024 * 1024;
 
 type Snapshot = Map<string, Buffer>;
 
-function buildOnce(run: number): Snapshot {
-  console.log(`\n=== verify:erp — сборка ${run} из 2 ===`);
-  execFileSync('npm', ['run', 'build:erp'], { cwd: REPO, stdio: 'inherit' });
+function buildOnce(label: string, env: NodeJS.ProcessEnv, problems: string[]): Snapshot {
+  console.log(`\n=== verify:erp — ${label} ===`);
+  execFileSync('npm', ['run', 'build:erp'], { cwd: REPO, stdio: 'inherit', env });
   const snap: Snapshot = new Map();
   for (const name of readdirSync(OUT).sort()) {
     const full = path.join(OUT, name);
-    snap.set(name, statSync(full).isFile() ? readFileSync(full) : Buffer.alloc(0));
+    if (!lstatSync(full).isFile()) {
+      problems.push(`dist-erp: ${name} — не обычный файл (ссылка или каталог)`);
+      continue;
+    }
+    snap.set(name, readFileSync(full));
   }
   return snap;
 }
 
-function parseHerkunft(snap: Snapshot, problems: string[]): Herkunft | undefined {
+/** Разобранный паспорт; каноническая форма (`serializeHerkunft`) исключает и повтор ключей. */
+function parseHerkunft(snap: Snapshot, problems: string[]): Record<string, unknown> | undefined {
   const raw = snap.get(HERKUNFT_FILE);
   if (!raw) {
     problems.push(`нет ${HERKUNFT_FILE}`);
     return undefined;
   }
+  let parsed: unknown;
   try {
-    return JSON.parse(raw.toString('utf8')) as Herkunft;
+    parsed = JSON.parse(raw.toString('utf8'));
   } catch {
     problems.push(`${HERKUNFT_FILE} — не JSON`);
     return undefined;
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    problems.push(`${HERKUNFT_FILE} — не JSON-объект`);
+    return undefined;
+  }
+  if (raw.toString('utf8') !== serializeHerkunft(parsed as Herkunft)) problems.push(`${HERKUNFT_FILE} — не в канонической форме`);
+  return parsed as Record<string, unknown>;
 }
 
 async function main(): Promise<number> {
-  const first = buildOnce(1);
-  const second = buildOnce(2);
   const problems: string[] = [];
+  const first = buildOnce('сборка 1 из 2 (окружение как есть)', process.env, problems);
+  const second = buildOnce('сборка 2 из 2 (враждебное окружение: NODE_ENV=development, BROWSERSLIST, AUTOPREFIXER_GRID)', hostileBuildEnv(process.env), problems);
 
-  // 1. Воспроизводимость: те же имена, те же байты, тот же паспорт.
-  const names1 = [...first.keys()];
-  const names2 = [...second.keys()];
-  if (names1.join('\n') !== names2.join('\n')) problems.push(`прогоны дали разный состав: [${names1}] / [${names2}]`);
-  for (const [name, bytes] of second) {
-    const before = first.get(name);
-    if (before && !before.equals(bytes)) problems.push(`${name}: прогоны дали разные байты (${sha256Hex(before)} / ${sha256Hex(bytes)})`);
-  }
-  const h1 = parseHerkunft(first, problems);
-  const h = parseHerkunft(second, problems);
-  if (h1 && h && JSON.stringify(h1.files) !== JSON.stringify(h.files)) problems.push('files в HERKUNFT двух прогонов различаются');
+  // 1. Воспроизводимость и устойчивость к окружению: тот же состав, те же байты (включая паспорт).
+  problems.push(...diffBuilds(first, second));
+  const names = [...second.keys()];
 
-  // 2. Состав каталога: ровно три файла артефакта и паспорт, без .html и подкаталогов.
+  // 2. Состав каталога: ровно три файла артефакта и паспорт, без .html; размеры — в пределах ERP.
   const expected = [...ERP_ARTIFACT_FILES, HERKUNFT_FILE].sort();
-  if (names2.join('\n') !== expected.join('\n')) problems.push(`dist-erp: [${names2.join(', ')}] ≠ [${expected.join(', ')}]`);
-  for (const name of names2) if (name.endsWith('.html')) problems.push(`dist-erp: лишний ${name}`);
+  if (names.join('\n') !== expected.join('\n')) problems.push(`dist-erp: [${names.join(', ')}] ≠ [${expected.join(', ')}]`);
+  for (const name of names) if (name.endsWith('.html')) problems.push(`dist-erp: лишний ${name}`);
+  for (const [name, bytes] of second) {
+    const limit = name === HERKUNFT_FILE ? MAX_HERKUNFT : MAX_FILE;
+    if (bytes.length > limit) problems.push(`${name}: ${bytes.length} B больше предела ERP ${limit} B`);
+  }
 
   // 3. Паспорт: годен, указывает на текущий HEAD и собранную версию движка, хэши — от файлов на диске.
+  const h = parseHerkunft(second, problems);
   if (h) {
     problems.push(...checkHerkunft(h, { allowDirty }));
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim();
-    if (h.commit !== head) problems.push(`commit: ${h.commit} ≠ HEAD ${head}`);
+    if (h.commit !== head) problems.push(`commit: ${String(h.commit)} ≠ HEAD ${head}`);
     const { ENGINE_CONTRACT_VERSION } = await import('@shadrin-v/engine');
     if (h.engineContractVersion !== ENGINE_CONTRACT_VERSION) {
-      problems.push(`engineContractVersion: ${h.engineContractVersion} ≠ ${ENGINE_CONTRACT_VERSION}`);
+      problems.push(`engineContractVersion: ${String(h.engineContractVersion)} ≠ ${ENGINE_CONTRACT_VERSION}`);
     }
+    const files = (typeof h.files === 'object' && h.files !== null ? h.files : {}) as Record<string, unknown>;
     for (const name of ERP_ARTIFACT_FILES) {
       const bytes = second.get(name);
-      if (bytes && h.files[name] !== sha256Hex(bytes)) problems.push(`files["${name}"] не совпадает с sha256 файла`);
+      if (bytes && files[name] !== sha256Hex(bytes)) problems.push(`files["${name}"] не совпадает с sha256 файла`);
     }
   }
 
@@ -108,7 +126,7 @@ async function main(): Promise<number> {
     const bytes = second.get(name)!;
     console.log(`  ${sha256Hex(bytes)}  ${String(bytes.length).padStart(9)} B  ${name}`);
   }
-  console.log(`OK: обе сборки побайтово равны; commit ${h!.commit}, dirty: ${h!.dirty}${allowDirty ? ' (--allow-dirty)' : ''}`);
+  console.log(`OK: обе сборки (вторая — во враждебном окружении) побайтово равны; commit ${String(h!.commit)}, dirty: ${String(h!.dirty)}${allowDirty ? ' (--allow-dirty)' : ''}`);
   return 0;
 }
 

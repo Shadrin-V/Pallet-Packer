@@ -84,15 +84,45 @@ export function findDynamicCode(js: string): string[] {
   return [...js.matchAll(/\beval\s*\(|(?:\bnew\s+)?\bFunction\s*\(/g)].map((m) => m[0]);
 }
 
-/** Нарушения паспорта; пустой список — паспорт годен для сдачи в ERP. */
-export function checkHerkunft(h: Herkunft, opts: { allowDirty: boolean }): string[] {
+const HERKUNFT_KEYS = ['artifact', 'commit', 'dirty', 'engineContractVersion', 'erpApiContract', 'base', 'files'] as const;
+
+const isPlainObject = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
+const show = (x: unknown): string => (x === undefined ? 'undefined' : JSON.stringify(x));
+
+/**
+ * Нарушения паспорта; пустой список — паспорт годен для сдачи в ERP. Принимает и разобранный JSON:
+ * правила не мягче `pruefe` в ERP (`schaefer_erp/ladungsplaner/artefakt.py`) — ровно семь ключей, `dirty`
+ * строго `false` (`true` — только с `--allow-dirty`, до коммита), версия движка — непустая строка, commit —
+ * 40 hex в нижнем регистре, `files` — объект ровно трёх файлов со строками sha256.
+ */
+export function checkHerkunft(h: unknown, opts: { allowDirty: boolean }): string[] {
+  if (!isPlainObject(h)) return [`${HERKUNFT_FILE}: не JSON-объект`];
   const problems: string[] = [];
-  if (h.artifact !== 'ladungsplaner') problems.push(`artifact: "${h.artifact}" ≠ "ladungsplaner"`);
-  if (!/^[0-9a-f]{40}$/.test(h.commit)) problems.push(`commit: "${h.commit}" — не 40-значный sha`);
-  if (h.dirty && !opts.allowDirty) problems.push('dirty: сборка из дерева с незакоммиченными изменениями (ERP принимает только dirty: false)');
-  if (h.base !== ERP_BASE) problems.push(`base: "${h.base}" ≠ "${ERP_BASE}"`);
+  const keys = Object.keys(h);
+  const extra = keys.filter((k) => !(HERKUNFT_KEYS as readonly string[]).includes(k));
+  const missing = HERKUNFT_KEYS.filter((k) => !keys.includes(k));
+  if (extra.length > 0 || missing.length > 0) {
+    problems.push(`ключи: лишние [${extra.sort().join(', ')}], недостающие [${missing.join(', ')}]`);
+  }
+  if (h.artifact !== 'ladungsplaner') problems.push(`artifact: ${show(h.artifact)} ≠ "ladungsplaner"`);
+  if (!(typeof h.commit === 'string' && /^[0-9a-f]{40}$/.test(h.commit))) problems.push(`commit: ${show(h.commit)} — не 40 hex`);
+  if (h.dirty !== false && !(h.dirty === true && opts.allowDirty)) {
+    problems.push(
+      h.dirty === true
+        ? 'dirty: сборка из дерева с незакоммиченными изменениями (ERP принимает только dirty: false)'
+        : `dirty: ${show(h.dirty)} — не булево false`,
+    );
+  }
+  const version = h.engineContractVersion;
+  if (!(typeof version === 'string' && version.trim() !== '')) problems.push(`engineContractVersion: ${show(version)} — не непустая строка`);
   if (h.erpApiContract !== ERP_API_CONTRACT_EXPECTED) {
-    problems.push(`erpApiContract: "${h.erpApiContract}" ≠ "${ERP_API_CONTRACT_EXPECTED}"`);
+    problems.push(`erpApiContract: ${show(h.erpApiContract)} ≠ "${ERP_API_CONTRACT_EXPECTED}"`);
+  }
+  if (h.base !== ERP_BASE) problems.push(`base: ${show(h.base)} ≠ "${ERP_BASE}"`);
+  if (!isPlainObject(h.files)) {
+    problems.push(`files: ${show(h.files)} — не объект`);
+    return problems;
   }
   const names = Object.keys(h.files).sort();
   const expected = [...ERP_ARTIFACT_FILES].sort();
@@ -100,7 +130,42 @@ export function checkHerkunft(h: Herkunft, opts: { allowDirty: boolean }): strin
     problems.push(`files: [${names.join(', ')}] ≠ [${expected.join(', ')}]`);
   }
   for (const [name, hash] of Object.entries(h.files)) {
-    if (!/^[0-9a-f]{64}$/.test(hash)) problems.push(`files["${name}"]: "${hash}" — не sha256 hex`);
+    if (!(typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) problems.push(`files["${name}"]: ${show(hash)} — не sha256 hex`);
+  }
+  return problems;
+}
+
+// ---- устойчивость к окружению машины (круг ревью 1, находка 1) --------------------------------
+
+/**
+ * Браузеры для autoprefixer в сборке ERP — явно, тем же набором, что сейчас даёт умолчание browserslist
+ * (`browserslist.defaults`): так ни `.browserslistrc`/`package.json` в родительских каталогах, ни переменные
+ * `BROWSERSLIST*` не меняют `ladungsplaner.css`. Сменить набор — осознанно, с новой приёмкой в ERP.
+ */
+export const ERP_BROWSERSLIST = ['> 0.5%', 'last 2 versions', 'Firefox ESR', 'not dead'] as const;
+
+/**
+ * Окружение второй сборки `verify:erp`: всё, что сборка ERP обязана игнорировать — dev-режим `NODE_ENV`,
+ * другой набор браузеров и его выбор по окружению, сетка autoprefixer. Хэши обязаны совпасть с первой сборкой.
+ */
+export function hostileBuildEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...base,
+    NODE_ENV: 'development',
+    BROWSERSLIST: 'ie 11, safari 9',
+    BROWSERSLIST_ENV: 'development',
+    AUTOPREFIXER_GRID: 'autoplace',
+  };
+}
+
+/** Расхождения двух сборок: состав каталога и байты каждого файла. */
+export function diffBuilds(a: ReadonlyMap<string, Uint8Array>, b: ReadonlyMap<string, Uint8Array>): string[] {
+  const problems: string[] = [];
+  for (const name of [...new Set([...a.keys(), ...b.keys()])].sort()) {
+    const x = a.get(name);
+    const y = b.get(name);
+    if (!x || !y) problems.push(`${name}: есть только в ${x ? 'первой' : 'второй'} сборке`);
+    else if (sha256Hex(x) !== sha256Hex(y)) problems.push(`${name}: сборки дали разные байты (${sha256Hex(x)} / ${sha256Hex(y)})`);
   }
   return problems;
 }

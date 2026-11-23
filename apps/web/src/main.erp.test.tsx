@@ -209,15 +209,27 @@ describe('main.erp — точка входа сборки для ERP', () => {
         logged.push(...args);
       });
     }
-    stubFetch({ sitzung: () => ok(SESSION), bestellpositionen: () => ok([]), artikel_speichern: () => ok({}) });
+    const rules = { state: 'ent', nestingMode: 'pairwise', rotation: 'none' };
+    const f = stubFetch({
+      sitzung: () => ok(SESSION),
+      bestellpositionen: () => ok([]),
+      artikel_speichern: () => ok({ itemCode: 'A', name: 'A', rules, erpFields: [] }),
+    });
     await import('./main.erp');
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
-    // запись несёт токен в заголовке — и только там
+    // запись несёт токен в заголовке — и только там; ошибка записи не глотается
     await act(async () => {
-      await theProvider().upsertArticle({ itemCode: 'A', name: 'A', rules: { state: 'ent', nestingMode: 'pairwise', rotation: 'none' } } as never).catch(() => {});
+      await expect(theProvider().upsertArticle({ itemCode: 'A', name: 'A', rules } as never)).resolves.toMatchObject({ itemCode: 'A' });
     });
     fireEvent.focus(window);
     await act(async () => {});
+    const posts = f.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    const [postUrl, postInit] = posts[0];
+    expect(postUrl).toBe(API + 'artikel_speichern');
+    expect((postInit?.headers as Record<string, string>)['X-Frappe-CSRF-Token']).toBe(SESSION.csrfToken);
+    expect(String(postInit?.body)).not.toContain(SESSION.csrfToken);
+    for (const [url] of f.mock.calls) expect(String(url)).not.toContain(SESSION.csrfToken);
     for (const k of Object.keys(localStorage)) expect(localStorage.getItem(k)).not.toContain(SESSION.csrfToken);
     for (const k of Object.keys(sessionStorage)) expect(sessionStorage.getItem(k)).not.toContain(SESSION.csrfToken);
     expect(document.cookie).not.toContain(SESSION.csrfToken);

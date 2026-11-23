@@ -1,0 +1,11 @@
+# Входы сборки артефакта для ERP — всегда LF, при любом core.autocrlf (контракт erp-y6tb9 §7: ERP пересобирает
+# из коммита и сравнивает побайтово; CRLF в исходниках, ?raw-SVG или logo.svg дал бы другие байты).
+apps/web/**/*.ts text eol=lf
+apps/web/**/*.tsx text eol=lf
+apps/web/**/*.js text eol=lf
+apps/web/**/*.css text eol=lf
+apps/web/**/*.svg text eol=lf
+apps/web/**/*.html text eol=lf
+apps/web/**/*.json text eol=lf
+packages/**/*.ts text eol=lf
+packages/**/*.json text eol=lf
