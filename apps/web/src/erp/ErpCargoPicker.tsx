@@ -198,19 +198,11 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
               }`}
             />
           </label>
-          {/* Вид кнопки — как `Button variant="secondary"`, но с `aria-busy`, которого у примитива нет. Пока
-              рейс грузится, кнопка недоступна без `disabled`: фокус с неё не слетает, повтор отсекает
+          {/* Пока рейс грузится, кнопка недоступна без `disabled`: фокус с неё не слетает, повтор отсекает
               `tripBusy`. */}
-          <button
-            type="submit"
-            aria-disabled={tripLoading || undefined}
-            aria-busy={tripLoading || undefined}
-            className={`rounded-ctl border border-line-strong bg-card px-3.5 py-2 text-caption font-semibold text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint ${
-              tripLoading ? 'cursor-not-allowed opacity-50' : 'hover:border-brand hover:text-brand'
-            }`}
-          >
+          <Button type="submit" variant="secondary" ariaDisabled={tripLoading || undefined} ariaBusy={tripLoading || undefined}>
             {tt('picker.trip.load')}
-          </button>
+          </Button>
         </form>
         {tripStatus?.kind === 'loaded' && (
           <p role="status" className="flex flex-wrap gap-x-2 text-caption text-muted">

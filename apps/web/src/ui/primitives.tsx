@@ -196,8 +196,10 @@ export const Button = forwardRef<
     ariaDisabled?: boolean;
     /** id текста причины, который озвучивается вместе с кнопкой. */
     ariaDescribedBy?: string;
+    /** Действие кнопки выполняется (запрос в полёте). Без пропа разметка прежняя. */
+    ariaBusy?: boolean;
   }
->(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false, ariaDisabled, ariaDescribedBy }, ref) {
+>(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false, ariaDisabled, ariaDescribedBy, ariaBusy }, ref) {
   const base =
     'rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed' +
     (ariaDisabled ? ' opacity-50 cursor-not-allowed' : '');
@@ -217,6 +219,7 @@ export const Button = forwardRef<
       disabled={disabled}
       aria-disabled={ariaDisabled ? true : undefined}
       aria-describedby={ariaDescribedBy}
+      aria-busy={ariaBusy ? true : undefined}
       className={`${base} ${styles}`}
     >
       {children}

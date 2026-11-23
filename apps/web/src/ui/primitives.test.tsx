@@ -58,6 +58,23 @@ describe('Button', () => {
     expect(clicks).toBe(1); // решает обработчик экрана, примитив нажатие не глотает
   });
 
+  it('без aria-пропов secondary тоже рендерится как раньше — без aria-busy', () => {
+    const { container } = render(<Button variant="secondary" type="submit">Reise laden</Button>);
+    expect(container.innerHTML).toBe(
+      '<button type="submit" class="rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed border border-line-strong bg-card text-ink hover:border-brand hover:text-brand">Reise laden</button>',
+    );
+  });
+
+  it('ariaBusy: несёт aria-busy; ariaBusy={false} атрибута не добавляет', () => {
+    const { rerender } = render(<Button variant="secondary" ariaDisabled ariaBusy>Reise laden</Button>);
+    const btn = screen.getByRole('button', { name: 'Reise laden' });
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    expect(btn).not.toBeDisabled();
+    rerender(<Button variant="secondary" ariaBusy={false}>Reise laden</Button>);
+    expect(btn).not.toHaveAttribute('aria-busy');
+  });
+
   it.each(['primary', 'secondary', 'ghost', 'danger'] as const)('ariaDisabled (%s): наведение не меняет вид', (variant) => {
     render(<Button variant={variant} ariaDisabled>Berechnen</Button>);
     expect(screen.getByRole('button', { name: 'Berechnen' }).className).not.toMatch(/(^|\s)hover:/);
