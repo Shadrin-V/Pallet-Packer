@@ -18,7 +18,9 @@
     "build": "npm run build --workspace @shadrin-v/i18n --workspace @shadrin-v/engine --workspace @shadrin-v/contracts --workspace @app/web --workspace @app/server --if-present",
     "dev:server": "npm run dev --workspace apps/server",
     "dev:web": "npm run dev --workspace apps/web",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:erp": "npm run build --workspace @shadrin-v/i18n --workspace @shadrin-v/engine --workspace @shadrin-v/contracts && npm run build:erp --workspace @app/web",
+    "verify:erp": "tsx apps/web/build/verifyErpArtifact.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

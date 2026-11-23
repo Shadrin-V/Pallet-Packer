@@ -29,3 +29,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      # Артефакт для ERP (контракт erp-y6tb9 §7): две сборки подряд побайтово равны, состав и сканеры
+      # чисты, HERKUNFT.json с dirty: false. Без --allow-dirty: ERP принимает только чистое дерево.
+      - run: npm run verify:erp
