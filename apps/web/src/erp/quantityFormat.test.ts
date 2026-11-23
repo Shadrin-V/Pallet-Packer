@@ -18,10 +18,18 @@ describe('formatSourceQuantity', () => {
     expect(formatSourceQuantity(1250.125, 'ru')).toBe('1 250,125');
   });
 
-  it('точное количество до шести знаков — без округления, лишние нули не показываются', () => {
+  it('точное количество с пятью-шестью знаками — без округления, лишние нули не показываются', () => {
     expect(formatSourceQuantity(12.34567, 'de')).toBe('12,34567');
     expect(formatSourceQuantity(12.34567, 'ru')).toBe('12,34567');
     expect(formatSourceQuantity(0.123456, 'de')).toBe('0,123456');
     expect(formatSourceQuantity(12.5, 'de')).toBe('12,5');
+  });
+
+  it('девять знаков после запятой (точность числовых полей Frappe) — без округления; погрешность за девятым знаком не видна', () => {
+    expect(formatSourceQuantity(12.123456789, 'de')).toBe('12,123456789');
+    expect(formatSourceQuantity(12.123456789, 'ru')).toBe('12,123456789');
+    expect(formatSourceQuantity(0.000000001, 'de')).toBe('0,000000001');
+    expect(formatSourceQuantity(0.1 + 0.2, 'de')).toBe('0,3');
+    expect(formatSourceQuantity(1.1 + 2.2, 'ru')).toBe('3,3');
   });
 });
