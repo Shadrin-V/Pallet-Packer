@@ -11,6 +11,7 @@ import {
   orientedDims,
   placeStack,
   resolveDrop,
+  roomLeft,
   rotateStack,
   stackBuffer,
   unplaceStacks,
@@ -25,6 +26,12 @@ import { Button, InfoHint } from '../ui/primitives';
 import { BrandMark } from './components/BrandMark';
 import { CrossSection } from './components/CrossSection';
 import { Legend } from './components/Legend';
+import { PlanPositionsTable } from './components/PlanPositionsTable';
+import { NotInTruckList } from './components/NotInTruckList';
+import { useHost } from '../host/HostContext';
+import type { PlanContext } from '../erp/planContext';
+import { erpExportParts } from '../erp/erpPlanExport';
+import { formatIsoDate } from '../erp/dateFormat';
 import { capacityMap } from './components/capacity';
 import { WeightNote } from './components/WeightNote';
 import { orderIndexMap, topRects } from './components/cutaway';
@@ -191,9 +198,13 @@ export function LadeplanScreen({
   layout,
   orderColors,
   onManualEditsChange,
+  context,
 }: {
   load: Load;
   layout: Layout;
+  /** Сборка для ERP: рейс, заказы, коды артикулов и неразмещаемые строки (`planContextFrom`). Вне
+   *  хоста ERP не читается. Без него (старый сохранённый план) экран ERP работает без этих подписей. */
+  context?: PlanContext;
   /** Stable orderId→palette slot from Setup, so plan colours survive a reorder and match Setup (QA #2). */
   orderColors?: Record<string, number>;
   /** Есть ли на плане ручные правки раскладки. Выбрасывает их теперь «Рассчитать» на другом экране
@@ -202,6 +213,8 @@ export function LadeplanScreen({
   onManualEditsChange?: (hasEdits: boolean) => void;
 }) {
   const { locale, tt } = useLocale();
+  // Сборка для ERP рисует лист по макету (блок 4); обычная сборка — как прежде.
+  const erp = useHost().kind === 'erp';
   // An unknown code would be a contract drift; show the raw code rather than an empty red line.
   const editErrorText = (code: string) => (isEditErrorKey(code) ? tt(code) : code);
   const capacity = useMemo(() => capacityMap(load), [load]);
@@ -661,6 +674,19 @@ export function LadeplanScreen({
     return overBuffer;
   };
   const violations = findGeometryViolations(load, edited).length;
+  // «Platz für …» (ERP) — от ТЕКУЩЕЙ раскладки, с ручными правками. Ядро считает максимум пакером,
+  // поэтому только при смене раскладки, а не на каждом движении указателя. `null`: позиций ≠ 1 или
+  // места нет (в том числе когда руками уложено больше «максимума») — строки тогда нет вовсе.
+  const room = useMemo(() => (erp ? roomLeft(load, edited) : null), [erp, load, edited]);
+  const tripText =
+    erp && context?.trip
+      ? context.trip.loadingDate
+        ? fillTemplate(tt('plan.trip'), {
+            tripId: context.trip.tripId,
+            date: formatIsoDate(context.trip.loadingDate, locale),
+          })
+        : fillTemplate(tt('plan.tripNoDate'), { tripId: context.trip.tripId })
+      : null;
 
   const v = load.vehicle;
   const grp = (mm: number) => new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'de-DE').format(mm);
@@ -708,15 +734,22 @@ export function LadeplanScreen({
     const captionOf: Record<string, string> = { top: tt('ladeplan.top'), side: tt('ladeplan.side') };
     // Cutaways only — `role="img"` alone would also drag in legend swatches and stack diagrams.
     const svgs = [...(sheetRef.current?.querySelectorAll<SVGSVGElement>('svg[data-cutaway]') ?? [])];
+    // ERP: легенда — по строке на позицию, под ней «Nicht im LKW» и заметка о весе; всё по `edited`
+    // и ровно то, что на листе (без «max.», которой нет и в печати).
+    const erpParts = erp
+      ? erpExportParts({ load, layout: edited, context, orderColors: orderColorMap, tt, locale })
+      : null;
     try {
       await exportPlanPng(v.name, {
         title: v.name,
         meta: [
           `${tt('ladeplan.vehicleInner')}: ${dims}`,
+          ...(tripText ? [tripText] : []),
           ...(orderIds.length ? [`${tt('ladeplan.orders')}: ${orderIds.join(' · ')}`] : []),
         ],
         figures,
-        legend: orderBreakdown(load, edited, orderColorMap).map((o) => ({
+        ...(erpParts ? { notes: erpParts.notes } : {}),
+        legend: erpParts?.legend ?? orderBreakdown(load, edited, orderColorMap).map((o) => ({
           // Unplaced units must travel with the image: an exported plan that silently omits them
           // reads as "everything fits" to whoever receives the PNG.
           label: `${o.orderId} — ${o.items
@@ -761,29 +794,42 @@ export function LadeplanScreen({
           <span>{tt('ladeplan.showTruck')}</span>
         </label>
         {/* Output group. PDF deliberately routes through the same print dialog as "Drucken" — the
-            A4 sheet IS the report; the hint tells the user to pick "save as PDF" there. */}
-        <ActionGroup label={tt('action.export')} className="ml-auto">
-          <Button variant="secondary" onClick={() => window.print()}>
-            {tt('action.exportPdf')}
-          </Button>
-          {/* aria-label must differ from the PDF button's own name, else the two are indistinguishable. */}
-          <InfoHint
-            ariaLabel={`${tt('action.export')} ${tt('action.exportPdf')}`}
-            text={tt('action.exportPdfHint')}
-            align="right"
-          />
-          <Button variant="secondary" onClick={handleExportPng}>
-            {tt('action.exportPng')}
-          </Button>
-          <Button variant="secondary" onClick={() => exportPlanJson(load, edited)}>
-            {tt('action.exportJson')}
-          </Button>
-          <span className="ml-2 border-l border-line pl-3">
+            A4 sheet IS the report; the hint tells the user to pick "save as PDF" there.
+            Сборка для ERP (макет, блок 4): только «Als Bild speichern» и «Drucken» — без PDF, JSON
+            и подписи группы. */}
+        {erp ? (
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            <Button variant="secondary" onClick={handleExportPng}>
+              {tt('erp.action.saveImage')}
+            </Button>
             <Button variant="primary" onClick={() => window.print()}>
               {tt('action.print')}
             </Button>
-          </span>
-        </ActionGroup>
+          </div>
+        ) : (
+          <ActionGroup label={tt('action.export')} className="ml-auto">
+            <Button variant="secondary" onClick={() => window.print()}>
+              {tt('action.exportPdf')}
+            </Button>
+            {/* aria-label must differ from the PDF button's own name, else the two are indistinguishable. */}
+            <InfoHint
+              ariaLabel={`${tt('action.export')} ${tt('action.exportPdf')}`}
+              text={tt('action.exportPdfHint')}
+              align="right"
+            />
+            <Button variant="secondary" onClick={handleExportPng}>
+              {tt('action.exportPng')}
+            </Button>
+            <Button variant="secondary" onClick={() => exportPlanJson(load, edited)}>
+              {tt('action.exportJson')}
+            </Button>
+            <span className="ml-2 border-l border-line pl-3">
+              <Button variant="primary" onClick={() => window.print()}>
+                {tt('action.print')}
+              </Button>
+            </span>
+          </ActionGroup>
+        )}
       </div>
 
       <div
@@ -807,6 +853,7 @@ export function LadeplanScreen({
             по-прежнему работает, лист просто отдаёт разрезам меньше. */}
         <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-b border-line bg-sub px-6 py-3 print:gap-x-6 print:py-2">
           <MetaField label={tt('ladeplan.vehicleInner')} value={dims} />
+          {tripText && <span className="text-body font-semibold tabular-nums">{tripText}</span>}
           {orderIds.length > 0 && (
             <MetaField label={tt('ladeplan.orders')} value={orderIds.join(' · ')} />
           )}
@@ -861,26 +908,35 @@ export function LadeplanScreen({
 
           {/* Workbench, not document: the warehouse sits with the top view it feeds, and prints nothing. */}
           <div ref={bufferRef} className="print:hidden">
-            <WarehouseFloor
-              load={load}
-              tiles={orderedTiles}
-              orderColors={orderColorMap}
-              onRotate={rotateTile}
-              onPickUp={(index, e) =>
-                setDragTile({ index, x: e.clientX, y: e.clientY, downX: e.clientX, downY: e.clientY, pointerId: e.pointerId })
-              }
-              dragging={dragTile?.index ?? null}
-              phantomAt={phantomAt}
-              grouped={yardGrouped}
-              onGroupedChange={changeYardGrouping}
-              bayOrder={bayOrder}
-              onBayOrderChange={(next) => setBayOrder((prev) => mergeBayOrder(next, prev))}
-              showTruck={showTruck}
-              // Активная цель броска — пока стопку несут ИЗ КУЗОВА: только тогда двор принимает груз
-              // извне, и его граница работает как управляющий элемент. Перестановка внутри двора
-              // (`dragTile`) сюда не входит — там цель не зона, а место в ряду.
-              dropTarget={!!carry}
-            />
+            {/* ERP (макет, блок 4): когда всё поместилось, пустого поля «Lager» нет — одна строка.
+                Пока стопку несут из кузова, поле возвращается: это цель броска «снять в Lager». */}
+            {erp && orderedTiles.length === 0 && !carry ? (
+              <p data-testid="warehouse-all-placed" className="flex items-center gap-2 text-caption text-muted">
+                <span className="text-label uppercase tracking-wide text-faint">{tt('warehouse.title')}</span>
+                <span className="rounded-pill border border-success px-2 py-0.5 text-success">{tt('erp.label.allPlaced')}</span>
+              </p>
+            ) : (
+              <WarehouseFloor
+                load={load}
+                tiles={orderedTiles}
+                orderColors={orderColorMap}
+                onRotate={rotateTile}
+                onPickUp={(index, e) =>
+                  setDragTile({ index, x: e.clientX, y: e.clientY, downX: e.clientX, downY: e.clientY, pointerId: e.pointerId })
+                }
+                dragging={dragTile?.index ?? null}
+                phantomAt={phantomAt}
+                grouped={yardGrouped}
+                onGroupedChange={changeYardGrouping}
+                bayOrder={bayOrder}
+                onBayOrderChange={(next) => setBayOrder((prev) => mergeBayOrder(next, prev))}
+                showTruck={showTruck}
+                // Активная цель броска — пока стопку несут ИЗ КУЗОВА: только тогда двор принимает груз
+                // извне, и его граница работает как управляющий элемент. Перестановка внутри двора
+                // (`dragTile`) сюда не входит — там цель не зона, а место в ряду.
+                dropTarget={!!carry}
+              />
+            )}
             {editError && (
               <p role="status" data-testid="edit-error" className="mt-2 text-caption font-semibold text-danger">
                 {editErrorText(editError.code)}
@@ -891,7 +947,30 @@ export function LadeplanScreen({
 
         {/* foot: the per-order breakdown. All totals live in the meta band — one source, said once (D1). */}
         <div className="flex flex-col gap-4 border-t border-line px-6 py-4 print:gap-2 print:py-2" style={{ breakInside: 'avoid' }}>
-          <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} capacity={capacity} />
+          {erp ? (
+            <>
+              <PlanPositionsTable load={load} layout={edited} context={context} capacity={capacity} orderColors={orderColorMap} />
+              {/* «Platz für …» и сноска держатся на «max.» — экранные, как и сама колонка. */}
+              <div className="flex flex-col gap-2 print:hidden">
+                {room && (
+                  <div className="rounded-card border border-line bg-sub px-4 py-3">
+                    <p className="text-body font-semibold">{fillTemplate(tt('plan.room.title'), { n: grp(room.free) })}</p>
+                    <p className="text-caption text-muted">
+                      {fillTemplate(tt('plan.room.text'), {
+                        max: grp(room.max),
+                        name: load.cargo.find((c) => c.id === room.cargoTypeId)?.name ?? room.cargoTypeId,
+                        placed: grp(room.placed),
+                      })}
+                    </p>
+                  </div>
+                )}
+                <p className="text-caption text-faint">{fillTemplate(tt('plan.max.note'), { vehicle: v.name })}</p>
+              </div>
+              <NotInTruckList load={load} layout={edited} context={context} />
+            </>
+          ) : (
+            <Legend load={load} layout={edited} label={tt('ladeplan.legend')} orderColors={orderColorMap} capacity={capacity} />
+          )}
         </div>
       </div>
 

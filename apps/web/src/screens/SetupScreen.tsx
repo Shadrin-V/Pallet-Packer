@@ -19,6 +19,7 @@ import { orderParam, urlWithoutOrderParam } from './setup/orderDeepLink';
 import type { Article, OrderZone } from '@shadrin-v/contracts';
 import { draftLineRefs, mergeZonesIntoDraft } from '../erp/zoneDraft';
 import { formatIsoDate } from '../erp/dateFormat';
+import { planContextFrom, type PlanContext } from '../erp/planContext';
 import { OrderCard } from './setup/OrderCard';
 import { LoadSummary } from './setup/LoadSummary';
 import { RulesPanel } from './setup/RulesPanel';
@@ -58,7 +59,10 @@ export interface SetupScreenProps {
    *  `orderColors` maps orderId → stable palette slot so plan colours match Setup after reorder.
    *  Возвращает, принят ли результат: раскладку с ошибками валидации или геометрии App отвергает
    *  (p3p.16). Объявлять расчёт выполненным можно только по `true`. */
-  onCalculate: (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }) => boolean;
+  onCalculate: (
+    load: Load,
+    opts?: { persist?: boolean; orderColors?: Record<string, number>; context?: PlanContext },
+  ) => boolean;
   /** Called by the reset button, so the parent can also clear the computed Ladeplan. */
   onReset?: () => void;
   /** Стратегия расчёта (5nb этап 2, решение владельца 3): одно состояние на два экрана, владеет им
@@ -605,9 +609,11 @@ export function SetupScreen({
     const { cargo } = toCargoList(orders);
     // Стратегия кладётся в Load ЯВНО: сама по себе она ничего не пересчитывает (решение владельца
     // 1), выбор из шапки применяется именно здесь.
+    // Сборка для ERP: экрану плана нужен ещё контекст черновика (рейс, заказы, коды артикулов,
+    // неразмещаемые строки). Обычной сборке он не нужен и в хранилище не пишется.
     const accepted = onCalculate(
       { vehicle, cargo, loadingMode, orderGrouping },
-      { orderColors: buildOrderColors(orders) },
+      { orderColors: buildOrderColors(orders), ...(erp ? { context: planContextFrom(orders, trip) } : {}) },
     );
     // App отверг ввод (ошибки валидации или геометрии) — объявлять нечего.
     if (!accepted) return;

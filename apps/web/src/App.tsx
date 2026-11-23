@@ -17,6 +17,7 @@ import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 import { EmptyPlan } from './screens/components/EmptyPlan';
 import { readStored, removeStored, writeStored } from './lib/draftStorage';
+import { isPlanContext, type PlanContext } from './erp/planContext';
 
 const LOAD_STORAGE_KEY = 'ladungsplaner.load';
 // Stable orderId→palette slot, persisted separately so the Load format stays unchanged (QA #2).
@@ -27,6 +28,9 @@ const ORDER_COLORS_STORAGE_KEY = 'ladungsplaner.orderColors';
  *  Без этого выбор не переживал перезагрузку: черновик заявки возвращался целиком, а «Von der Seite»
  *  снова становился «Hinten und Seite» (финальное ревью, I4). */
 const STRATEGY_STORAGE_KEY = 'ladungsplaner.strategy';
+/** Контекст плана сборки для ERP (рейс, заказы, коды артикулов, неразмещаемые строки) — рядом с
+ *  `ladungsplaner.load`, своим ключом: в `Load` его нет, и контракт `Load` не меняется. */
+const PLAN_CONTEXT_STORAGE_KEY = 'ladungsplaner.planContext';
 
 /** Прочитать сохранённую стратегию. Чужое/испорченное значение молча игнорируется — засев тогда
  *  возьмёт стратегию последнего плана, а её нет — умолчания контракта. */
@@ -45,7 +49,7 @@ function loadPersistedStrategy(): { loadingMode?: LoadingMode; orderGrouping?: O
 }
 
 /** Rebuild the last computed plan from the persisted Load (layout is derived, not stored). */
-function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Record<string, number> } | null {
+function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Record<string, number>; context?: PlanContext } | null {
   try {
     const raw = readStored(LOAD_STORAGE_KEY);
     if (!raw) return null;
@@ -63,7 +67,16 @@ function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Reco
     } catch {
       /* ignore */
     }
-    return { load, layout, orderColors };
+    // Испорченный контекст не доезжает до экрана плана: план остаётся, без подписей ERP.
+    let context: PlanContext | undefined;
+    try {
+      const rc = readStored(PLAN_CONTEXT_STORAGE_KEY);
+      const parsed: unknown = rc ? JSON.parse(rc) : undefined;
+      if (isPlanContext(parsed)) context = parsed;
+    } catch {
+      /* ignore */
+    }
+    return { load, layout, orderColors, ...(context ? { context } : {}) };
   } catch {
     return null;
   }
@@ -79,7 +92,13 @@ export function App() {
   // Один разбор localStorage на монтирование: loadPersistedResult ещё и пересчитывает layout, а
   // читают его три состояния сразу. Ленивый инициализатор useState вызывает функцию ровно один раз.
   const [persisted] = useState(loadPersistedResult);
-  const [result, setResult] = useState<{ load: Load; layout: Layout; transient?: boolean; orderColors?: Record<string, number> } | null>(persisted);
+  const [result, setResult] = useState<{
+    load: Load;
+    layout: Layout;
+    transient?: boolean;
+    orderColors?: Record<string, number>;
+    context?: PlanContext;
+  } | null>(persisted);
 
   // Стратегия расчёта живёт здесь, а не в результате: её выбирают в шапке «Настройки» — ДО
   // расчёта, когда плана ещё может не быть, и потому хранить её в плане нельзя. Место правки одно
@@ -130,9 +149,12 @@ export function App() {
         writeStored(LOAD_STORAGE_KEY, JSON.stringify(result.load));
         if (result.orderColors) writeStored(ORDER_COLORS_STORAGE_KEY, JSON.stringify(result.orderColors));
         else removeStored(ORDER_COLORS_STORAGE_KEY);
+        if (result.context) writeStored(PLAN_CONTEXT_STORAGE_KEY, JSON.stringify(result.context));
+        else removeStored(PLAN_CONTEXT_STORAGE_KEY);
       } else {
         removeStored(LOAD_STORAGE_KEY);
         removeStored(ORDER_COLORS_STORAGE_KEY);
+        removeStored(PLAN_CONTEXT_STORAGE_KEY);
       }
     } catch {
       /* ignore */
@@ -141,7 +163,10 @@ export function App() {
 
   /** Возвращает, принят ли результат. «Настройка» объявляет расчёт выполненным только по `true`:
    *  раньше объявление шло безусловно и врало уже при геометрическом отказе. */
-  const onCalculate = (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }): boolean => {
+  const onCalculate = (
+    load: Load,
+    opts?: { persist?: boolean; orderColors?: Record<string, number>; context?: PlanContext },
+  ): boolean => {
     // Стратегию передают все вызывающие явно: «Рассчитать» берёт её из состояния ниже, Demo
     // пришпиливает свою (4bj.13). Прежний fallback на стратегию предыдущего плана стал мёртвым
     // кодом вместе с переключателями на ладеплане (5nb этап 2) и убран.
@@ -151,7 +176,14 @@ export function App() {
     // Domain invariant: never surface a layout with geometry violations.
     if (findGeometryViolations(load, layout).length > 0) return false;
     // Demo doesn't pass orderColors → keep the current plan's map.
-    setResult({ load, layout, transient: opts?.persist === false, orderColors: opts?.orderColors ?? result?.orderColors });
+    // Контекст — только этого расчёта: от прежнего плана он не наследуется (рейс и заказы другие).
+    setResult({
+      load,
+      layout,
+      transient: opts?.persist === false,
+      orderColors: opts?.orderColors ?? result?.orderColors,
+      ...(opts?.context ? { context: opts.context } : {}),
+    });
     // Стратегия того, что реально посчиталось, становится текущей — иначе Demo (он пришпиливает
     // rear) оставил бы шапку «Настройки» показывать combined, хотя план перед глазами построен
     // иначе: единственный на всю страницу переключатель обязан описывать то, что на ней видно.
@@ -203,6 +235,7 @@ export function App() {
             load={result.load}
             layout={result.layout}
             orderColors={result.orderColors}
+            context={result.context}
             onManualEditsChange={setHasManualEdits}
           />
         ) : (
