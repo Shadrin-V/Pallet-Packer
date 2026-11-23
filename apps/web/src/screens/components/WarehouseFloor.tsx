@@ -31,7 +31,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
-import { placeMark } from './positionMark';
+import { topMarkPlacements } from './positionMark';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
@@ -214,6 +214,18 @@ export function WarehouseFloor({
   const floorHeight = Math.max(floor.height, yardUnit);
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
+  // Знаки позиций (ERP) на плитках — те же правила, что в виде сверху кузова: вынесенный знак не
+  // ложится на соседнюю плитку. Ключ — индекс в `floor.tiles`; фантом знака не несёт.
+  const tileMarks = topMarkPlacements(
+    marks
+      ? floor.tiles.flatMap((pt, i) => {
+          const mark = pt.tile.phantom ? undefined : marks.get(pt.tile.cargoTypeId);
+          return mark ? [{ key: String(i), mark, rect: { x: pt.x, y: pt.y, w: pt.dx, h: pt.dy } }] : [];
+        })
+      : [],
+    countFont,
+    { length: floor.width },
+  );
 
   return (
     <section aria-label={tt('warehouse.title')} data-testid="warehouse-floor" className="select-none print:hidden">
@@ -381,7 +393,7 @@ export function WarehouseFloor({
               const mark = marks?.get(cargo.id);
               // Знак — по тем же правилам, что в виде сверху кузова; подпись — под полосой знака.
               const tileRect = { x: pt.x, y: pt.y, w: pt.dx, h: pt.dy };
-              const markAt = mark ? placeMark('top', tileRect, mark, countFont, { length: floor.width }) : null;
+              const markAt = mark ? tileMarks.get(String(i)) ?? null : null;
               const area = markAt?.labelArea ?? tileRect;
               // Имя плитки для экранного чтения начинается со знака позиции (ERP): на плитке он
               // нарисован, и без текста человек со скринридером его бы не получил.

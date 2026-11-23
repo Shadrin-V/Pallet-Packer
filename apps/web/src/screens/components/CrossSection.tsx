@@ -36,7 +36,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { selectionBadge } from './selectionBadge';
-import { placeMark, sideMarkVisible, type MarkPlacement } from './positionMark';
+import { sideMarkPlacements, topMarkPlacements, type MarkPlacement } from './positionMark';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
 import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
@@ -165,20 +165,16 @@ export function CrossSection({
   const stackKey = (r: CutRect) => `${r.cargoTypeId}@${r.x},${view === 'top' ? r.y : r.rowY ?? 0}`;
   // Знак позиции (ERP) для каждой стопки, у которой он есть. Гарантия: в виде сверху стопки не
   // закрывают друг друга — знак у КАЖДОЙ; в виде сбоку — у каждой ВИДИМОЙ: место знака (внутри
-  // полосы или над ней) не закрыто ни одной стопкой ближнего ряда. Закрытый знак не рисуется.
-  const markPlacement = new Map<string, MarkPlacement>();
-  if (marks) {
-    for (const r of rects) {
+  // полосы или над ней) не закрыто ближним рядом, не задевает другой знак и не выходит за крышу
+  // (`sideMarkPlacements`). Такой знак не рисуется вовсе.
+  const markPlacement: Map<string, MarkPlacement> = (() => {
+    if (!marks) return new Map();
+    const items = rects.flatMap((r) => {
       const mark = marks.get(r.cargoTypeId);
-      if (!mark) continue;
-      const p = placeMark(view, r, mark, countFont, { length });
-      if (view === 'side') {
-        const nearer = rects.filter((o) => (o.rowY ?? 0) > (r.rowY ?? 0));
-        if (!sideMarkVisible(p, nearer)) continue;
-      }
-      markPlacement.set(stackKey(r), p);
-    }
-  }
+      return mark ? [{ key: stackKey(r), mark, rect: r, rowY: r.rowY }] : [];
+    });
+    return (view === 'side' ? sideMarkPlacements : topMarkPlacements)(items, countFont, { length });
+  })();
 
   // Отсеки транспорта (ADR 026): один неявный [0, length) для односоставного кузова. Считаем ОДИН
   // раз за рендер — держится в шести местах ниже (пол, сетка, подписи, стенки, ходовая, дышло), и

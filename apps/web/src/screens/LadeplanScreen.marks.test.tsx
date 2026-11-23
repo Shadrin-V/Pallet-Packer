@@ -145,6 +145,10 @@ describe('LadeplanScreen — знак позиции без цвета (сбор
       const box = textBox(mark);
       for (const o of rects) if ((o.rowY ?? 0) > (r.rowY ?? 0)) expect(boxesIntersect(box, o)).toBe(false);
     }
+    // ни одна пара знаков сбоку не накладывается друг на друга
+    const sideBoxes = [...side.querySelectorAll('[data-mark]')].map(textBox);
+    for (let i = 0; i < sideBoxes.length; i++)
+      for (let j = i + 1; j < sideBoxes.length; j++) expect(boxesIntersect(sideBoxes[i], sideBoxes[j])).toBe(false);
     // печатное представление: ни знак на грузе, ни знак в таблице не спрятан от печати
     for (const m of document.querySelectorAll('svg[data-cutaway] [data-mark], table [data-testid="position-mark"]')) notPrintHidden(m);
     const tenth = load10.cargo[9].id;
@@ -171,13 +175,18 @@ describe('LadeplanScreen — знак позиции без цвета (сбор
         unit('rear', 0, 0, 1), unit('rear', 0, 0, 2), unit('front', 0, 800, 1),
         // x 2400: дальняя из 3 (432 мм) за ближней из 1 — выступ 288 мм
         unit('high', 2400, 0, 1), unit('high', 2400, 0, 2), unit('high', 2400, 0, 3), unit('front', 2400, 800, 1),
+        // x 4800: две плиты по 144 мм в соседних рядах
+        unit('front', 4800, 0, 1), unit('rear', 4800, 800, 1),
       ],
-      unplaced: [{ cargoTypeId: 'rear', count: 2 }, { cargoTypeId: 'front', count: 2 }, { cargoTypeId: 'high', count: 1 }],
+      unplaced: [{ cargoTypeId: 'rear', count: 1 }, { cargoTypeId: 'front', count: 1 }, { cargoTypeId: 'high', count: 1 }],
     };
     renderPlanErp(load, layout);
     const side = document.querySelector('svg[data-cutaway="side"]')!;
     const markAt = (key: string) => side.querySelector(`[data-mark-for="${key}"] [data-mark]`);
     expect(markAt('rear@0,0')).toBeNull(); // закрыт — не рисуется вовсе
+    // две плиты по 144 мм в соседних рядах на одном x (4800): ровно один знак — ближней, знаки не наложены
+    expect(side.querySelectorAll('[data-mark-for$="@4800,0"], [data-mark-for$="@4800,800"]')).toHaveLength(1);
+    expect(markAt('rear@4800,800')?.textContent).toBe('A');
     expect(markAt('high@2400,0')?.textContent).toBe('C');
     const front = markAt('front@0,800')!;
     expect(front.textContent).toBe('B');

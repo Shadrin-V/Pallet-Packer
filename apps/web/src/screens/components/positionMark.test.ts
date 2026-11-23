@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { boxesIntersect, placeMark, positionMark, positionMarks, sideMarkVisible } from './positionMark';
+import { calculateLayout, type CargoType, type Load } from '@shadrin-v/engine';
+import {
+  boxesIntersect,
+  placeMark,
+  positionMark,
+  positionMarks,
+  sideMarkPlacements,
+  sideMarkVisible,
+  type MarkItem,
+} from './positionMark';
+import { sideRects } from './cutaway';
 
 describe('positionMark', () => {
   it('буквы по порядку, после Z — две буквы', () => {
@@ -96,5 +106,85 @@ describe('sideMarkVisible', () => {
 
   it('ничего ближе нет — знак виден', () => {
     expect(sideMarkVisible(placeMark('side', front, 'B', F, HOLD), [])).toBe(true);
+  });
+});
+
+describe('sideMarkPlacements', () => {
+  const H = 2700;
+  const bar = (key: string, x: number, rowY: number, h: number, w = 1200): MarkItem => ({
+    key,
+    mark: key.toUpperCase(),
+    rect: { x, y: H - h, w, h },
+    rowY,
+  });
+
+  it('две плиты 144 мм в соседних рядах на одном x: ровно один знак — ближней', () => {
+    const placed = sideMarkPlacements([bar('a', 0, 0, 144), bar('b', 0, 800, 144)], F, HOLD);
+    expect([...placed.keys()]).toEqual(['b']);
+  });
+
+  it('полоса целиком закрыта ближними (две ближние рядом) — знака нет', () => {
+    const items = [bar('a', 0, 0, 288, 1600), bar('b', 0, 800, 432, 800), bar('c', 800, 800, 432, 800)];
+    const placed = sideMarkPlacements(items, F, HOLD);
+    expect(placed.has('a')).toBe(false);
+    expect(placed.has('b') && placed.has('c')).toBe(true);
+  });
+
+  it('узкая высокая стопка: над полосой места нет (крыша) — знак не рисуется, за крышу не выходит', () => {
+    const placed = sideMarkPlacements([bar('a', 0, 0, H - 50, 150)], F, HOLD);
+    expect(placed.size).toBe(0);
+  });
+
+  it('инвариант: ни одна пара мест знаков сбоку не пересекается, ни одно не выходит за крышу', () => {
+    const V = { id: 'v', name: 'LKW', length: 13600, width: 2450, height: H };
+    const type = (id: string, h: number, quantity: number, orderId: string, l = 1200, w = 800): CargoType => ({
+      id, name: id, length: l, width: w, height: h, quantity, rotation: 'yawOnly',
+      stacking: { stackable: true }, nesting: { nestable: false }, state: 'entschachtelt', orderId,
+    });
+    const loads: Load[] = [
+      { vehicle: V, cargo: Array.from({ length: 10 }, (_, k) => type(`p${k}`, 144, k === 9 ? 2000 : 2, `BE-${k >> 1}`)) },
+      { vehicle: V, cargo: Array.from({ length: 10 }, (_, k) => type(`q${k}`, 144, 1, `BE-${k >> 1}`)) },
+      { vehicle: V, cargo: [type('a', 144, 7, 'BE-1'), type('b', 600, 5, 'BE-1', 1200, 1000), type('c', 144, 3, 'BE-2', 600, 400), type('d', 1000, 9, 'BE-3')] },
+    ];
+    for (const load of loads) {
+      const layout = calculateLayout(load);
+      const rects = sideRects(load, layout, H);
+      const marks = positionMarks(load.cargo.map((c) => c.id));
+      const items = rects.map((r) => ({
+        key: `${r.cargoTypeId}@${r.x},${r.rowY}`,
+        mark: marks.get(r.cargoTypeId)!,
+        rect: r,
+        rowY: r.rowY,
+      }));
+      const placed = [...sideMarkPlacements(items, F, HOLD).values()];
+      expect(placed.length).toBeGreaterThan(0);
+      for (let i = 0; i < placed.length; i++) {
+        expect(placed[i].box.y).toBeGreaterThanOrEqual(0);
+        for (let j = i + 1; j < placed.length; j++) expect(boxesIntersect(placed[i].box, placed[j].box)).toBe(false);
+      }
+    }
+  });
+});
+
+describe('placeMark — вынос сверху среди соседей', () => {
+  const narrow = { x: 1200, y: 0, w: 150, h: 1200 };
+  const leftN = { x: 0, y: 0, w: 1200, h: 1200 };
+  const rightN = { x: 1350, y: 0, w: 1200, h: 1200 };
+
+  it('справа сосед — знак слева, на соседа не ложится', () => {
+    const p = placeMark('top', narrow, 'C', F, HOLD, [rightN]);
+    expect(p.outside).toBe(true);
+    expect(p.anchor).toBe('end');
+    expect(boxesIntersect(p.box, rightN)).toBe(false);
+  });
+
+  it('соседи с обеих сторон — знак внутри своего следа, по центру, поверх «×N»', () => {
+    const p = placeMark('top', narrow, 'C', F, HOLD, [leftN, rightN]);
+    expect(p.outside).toBe(false);
+    expect(p.leader).toBeUndefined();
+    expect(p.anchor).toBe('middle');
+    expect(p.x).toBe(narrow.x + narrow.w / 2);
+    expect(p.y).toBe(narrow.y + narrow.h / 2);
+    expect(boxesIntersect(p.box, leftN) || boxesIntersect(p.box, rightN)).toBe(false);
   });
 });

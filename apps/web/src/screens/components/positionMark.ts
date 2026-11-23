@@ -69,8 +69,10 @@ const BOLD_WIDTH = 1.1;
 /**
  * Место знака у стопки. Внутри — в левом верхнем углу, если меньшая сторона ≥ 1,6 кегля и знак
  * помещается по ширине (а в виде сверху под ним ещё остаётся строка «×N»). Иначе знак выносится:
- * сбоку — строго над полосой, по её середине; сверху — рядом со следом, с короткой выноской (справа,
- * а у правого края `bounds` — слева).
+ * сбоку — строго над полосой, по её середине; сверху — рядом со следом, с короткой выноской: справа,
+ * иначе слева — туда, где место не выходит за `bounds` и не ложится на `obstacles` (чужие следы с их
+ * подписями, уже поставленные знаки). Места нет ни там, ни там — знак встаёт в центр своего следа,
+ * поверх «×N»: подложка-обводка держит его читаемым.
  */
 export function placeMark(
   view: 'top' | 'side',
@@ -78,6 +80,7 @@ export function placeMark(
   mark: string,
   countFont: number,
   bounds: { length: number },
+  obstacles: readonly Box[] = [],
 ): MarkPlacement {
   const f = countFont;
   const m = MARGIN * f;
@@ -112,23 +115,105 @@ export function placeMark(
     };
   }
   const cy = rect.y + rect.h / 2;
-  const right = rect.x + rect.w + OUTSIDE_GAP * f;
-  const toRight = right + textW <= bounds.length;
-  const x = toRight ? right : rect.x - OUTSIDE_GAP * f;
-  const edge = toRight ? rect.x + rect.w : rect.x;
-  return {
-    ...common,
-    x,
-    y: cy,
-    anchor: toRight ? 'start' : 'end',
-    outside: true,
-    leader: { x1: edge, y1: cy, x2: toRight ? x - m : x + m, y2: cy },
-    box: { x: (toRight ? x : x - textW) - m, y: cy - f / 2 - m, w: textW + 2 * m, h: BAND * f },
-    labelArea: rect,
-  };
+  const box = (left: number): Box => ({ x: left - m, y: cy - f / 2 - m, w: textW + 2 * m, h: BAND * f });
+  const free = (b: Box) => b.x >= 0 && b.x + b.w <= bounds.length && !obstacles.some((o) => boxesIntersect(b, o));
+  const rightX = rect.x + rect.w + OUTSIDE_GAP * f;
+  if (free(box(rightX))) {
+    return {
+      ...common,
+      x: rightX,
+      y: cy,
+      anchor: 'start',
+      outside: true,
+      leader: { x1: rect.x + rect.w, y1: cy, x2: rightX - m, y2: cy },
+      box: box(rightX),
+      labelArea: rect,
+    };
+  }
+  const leftX = rect.x - OUTSIDE_GAP * f;
+  if (free(box(leftX - textW))) {
+    return {
+      ...common,
+      x: leftX,
+      y: cy,
+      anchor: 'end',
+      outside: true,
+      leader: { x1: rect.x, y1: cy, x2: leftX + m, y2: cy },
+      box: box(leftX - textW),
+      labelArea: rect,
+    };
+  }
+  const cx = rect.x + rect.w / 2;
+  return { ...common, x: cx, y: cy, anchor: 'middle', outside: false, box: box(cx - textW / 2), labelArea: rect };
 }
 
 /** Вид сбоку: знак рисуется, только если его место не закрыто ни одной БЛИЖНЕЙ стопкой (`nearer` —
  *  их полосы). Закрытый знак не рисуется вовсе: обрезок буквы читается как другая буква. */
 export const sideMarkVisible = (p: MarkPlacement, nearer: readonly Box[]): boolean =>
   !nearer.some((o) => boxesIntersect(p.box, o));
+
+/** Стопка для раскладки знаков: ключ, знак, полоса/след; в виде сбоку — ряд (`rowY`, больше = ближе). */
+export interface MarkItem {
+  key: string;
+  mark: string;
+  rect: Box;
+  rowY?: number;
+}
+
+/** Полоса целиком закрыта ближними: полосы стоят на полу, так что закрывает только ближняя не ниже
+ *  этой, и их x-интервалы вместе покрывают её x-интервал. */
+function fullyCovered(r: Box, nearer: readonly Box[]): boolean {
+  const spans = nearer
+    .filter((o) => o.y <= r.y && o.y + o.h >= r.y + r.h)
+    .map((o) => [Math.max(o.x, r.x), Math.min(o.x + o.w, r.x + r.w)] as const)
+    .filter(([a, b]) => a < b)
+    .sort((p, q) => p[0] - q[0]);
+  let reach = r.x;
+  for (const [a, b] of spans) {
+    if (a > reach) return false;
+    reach = Math.max(reach, b);
+  }
+  return reach >= r.x + r.w;
+}
+
+/**
+ * Знаки вида сбоку. Ближние ряды ставятся первыми; знак стопки НЕ рисуется, если (1) её полоса
+ * целиком закрыта ближними, (2) место знака задевает полосу ближнего ряда, (3) место знака задевает
+ * уже поставленный знак, (4) вынесенный знак вышел бы за крышу кузова (в поле линейки). Позиция при
+ * этом всё равно читается: в виде сверху, в таблице и в «Nicht im LKW». Итог — ни одна пара мест
+ * знаков не пересекается.
+ */
+export function sideMarkPlacements(
+  items: readonly MarkItem[],
+  countFont: number,
+  bounds: { length: number },
+): Map<string, MarkPlacement> {
+  const order = [...items].sort((a, b) => (b.rowY ?? 0) - (a.rowY ?? 0) || a.rect.x - b.rect.x);
+  const placed = new Map<string, MarkPlacement>();
+  for (const it of order) {
+    const nearer = items.filter((o) => (o.rowY ?? 0) > (it.rowY ?? 0)).map((o) => o.rect);
+    if (fullyCovered(it.rect, nearer)) continue;
+    const p = placeMark('side', it.rect, it.mark, countFont, bounds);
+    if (p.box.y < 0) continue;
+    if (!sideMarkVisible(p, nearer)) continue;
+    if ([...placed.values()].some((q) => boxesIntersect(p.box, q.box))) continue;
+    placed.set(it.key, p);
+  }
+  return placed;
+}
+
+/** Знаки вида сверху (и «Lager»): следы не перекрываются, знак есть у каждого; вынесенный знак
+ *  обходит чужие следы (с подписями внутри них) и уже поставленные знаки. */
+export function topMarkPlacements(
+  items: readonly MarkItem[],
+  countFont: number,
+  bounds: { length: number },
+): Map<string, MarkPlacement> {
+  const placed = new Map<string, MarkPlacement>();
+  for (const it of items) {
+    const others = items.filter((o) => o !== it).map((o) => o.rect);
+    const marksSoFar = [...placed.values()].map((q) => q.box);
+    placed.set(it.key, placeMark('top', it.rect, it.mark, countFont, bounds, [...others, ...marksSoFar]));
+  }
+  return placed;
+}
