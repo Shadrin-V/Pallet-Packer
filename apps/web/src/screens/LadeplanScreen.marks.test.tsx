@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { calculateLayout, type CargoType, type Layout, type Load } from '@shadrin-v/engine';
+import { calculateLayout, moveStack, type CargoType, type Layout, type Load } from '@shadrin-v/engine';
 import type { ErpSession } from '@shadrin-v/contracts';
 import { LocaleProvider } from '../i18n/LocaleContext';
 import { HostProvider, type Host } from '../host/HostContext';
@@ -14,6 +14,10 @@ import { emptyPosition, toCargoList, type OrderState, type PositionState } from 
 import { orderColorToken } from '../lib/orderColor';
 import { LadeplanScreen } from './LadeplanScreen';
 import { PlanPositionsTable } from './components/PlanPositionsTable';
+import { CrossSection } from './components/CrossSection';
+import { sideRects } from './components/cutaway';
+import { boxesIntersect, type Box } from './components/positionMark';
+import { estimateTextWidth } from './components/stackLabel';
 import { capacityMap } from './components/capacity';
 import * as exportPlanModule from '../lib/exportPlan';
 
@@ -84,6 +88,20 @@ function renderPlanStandalone(load: Load, layout: Layout) {
   );
 }
 
+/** Кегль «×N» в этом кузове: 5 % ширины (CrossSection, WarehouseFloor). */
+const COUNT_FONT = V.width * 0.05;
+/** Прямоугольник текста по его атрибутам (ширина — той же оценкой, что у подписей стопок). */
+function textBox(el: Element): Box {
+  const fs = Number(el.getAttribute('font-size'));
+  const w = estimateTextWidth(el.textContent ?? '', fs);
+  const x = Number(el.getAttribute('x'));
+  const y = Number(el.getAttribute('y'));
+  const anchor = el.getAttribute('text-anchor') ?? 'start';
+  const left = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
+  const baseline = el.getAttribute('dominant-baseline');
+  const topY = baseline === 'central' ? y - fs / 2 : y - fs;
+  return { x: left, y: topY, w, h: fs };
+}
 const markOf = (el: Element) => el.closest('[data-cargo-type]')!.getAttribute('data-cargo-type')!;
 const notPrintHidden = (m: Element) => {
   for (let el: Element | null = m; el; el = el.parentElement) expect(el.getAttribute('class') ?? '').not.toMatch(/print:hidden/);
@@ -92,27 +110,40 @@ const notPrintHidden = (m: Element) => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('LadeplanScreen — знак позиции без цвета (сборка для ERP)', () => {
-  it('рейс из 10 позиций: КАЖДАЯ видимая стопка обоих видов несёт знак своего типа, все 10 типов видны и различны', () => {
+  it('рейс из 10 позиций: у каждой стопки вида сверху знак своего типа кеглем «×N», все 10 различны; вид сбоку — у каждой видимой', () => {
     const layout = calculateLayout(load10);
     renderPlanErp(load10, layout);
     const table = new Map(within(screen.getByRole('table')).getAllByTestId('position-mark').map((el) => [markOf(el), el.textContent]));
     expect([...table.values()]).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
     const placedTypes = new Set(layout.placements.map((p) => p.cargoTypeId));
     expect(placedTypes.size).toBe(10); // груз подобран так, что все 10 типов на полу
-    for (const view of ['top', 'side']) {
-      const stacks = [...document.querySelectorAll(`svg[data-cutaway="${view}"] g[data-cargo-type]`)];
-      expect(new Set(stacks.map((g) => g.getAttribute('data-cargo-type')))).toEqual(placedTypes);
-      for (const g of stacks) {
-        const marks = g.querySelectorAll(':scope > [data-mark], :scope > * > [data-mark]');
-        expect(marks).toHaveLength(1); // у каждой стопки ровно один знак
-        expect(marks[0].textContent).toBe(table.get(g.getAttribute('data-cargo-type')!));
-        expect(marks[0].getAttribute('data-mark')).toBe(marks[0].textContent);
-        expect(marks[0].getAttribute('fill')).toBe('var(--ink)');
-        expect(marks[0].getAttribute('stroke')).toBe('var(--card)');
-        expect(marks[0].getAttribute('paint-order')).toBe('stroke');
-        expect(Number(marks[0].getAttribute('font-size'))).toBeGreaterThan(0);
-      }
-      expect(new Set(stacks.map((g) => g.querySelector('[data-mark]')!.textContent)).size).toBe(10);
+    // вид сверху: ни одна стопка не закрыта — знак у каждой
+    const top = document.querySelector('svg[data-cutaway="top"]')!;
+    const topStacks = [...top.querySelectorAll('g[data-cargo-type]')];
+    expect(new Set(topStacks.map((g) => g.getAttribute('data-cargo-type')))).toEqual(placedTypes);
+    for (const g of topStacks) {
+      const marks = top.querySelectorAll(`[data-mark-for="${g.getAttribute('data-stack-key')}"] [data-mark]`);
+      expect(marks).toHaveLength(1); // у каждой стопки ровно один знак
+      expect(marks[0].textContent).toBe(table.get(g.getAttribute('data-cargo-type')!));
+    }
+    expect(new Set([...top.querySelectorAll('[data-mark]')].map((m) => m.textContent)).size).toBe(10);
+    for (const m of document.querySelectorAll('svg[data-cutaway] [data-mark], [data-testid="warehouse-floor"] [data-mark]')) {
+      expect(m.getAttribute('data-mark')).toBe(m.textContent);
+      expect(m.getAttribute('fill')).toBe('var(--ink)');
+      expect(m.getAttribute('stroke')).toBe('var(--card)');
+      expect(m.getAttribute('paint-order')).toBe('stroke');
+      expect(Number(m.getAttribute('font-size'))).toBe(COUNT_FONT); // кегль = кегль «×N», не меньше
+    }
+    // вид сбоку: знак у каждой стопки, перед которой ничего нет; нарисованный знак не залезает на ближнюю стопку
+    const side = document.querySelector('svg[data-cutaway="side"]')!;
+    const rects = sideRects(load10, layout, V.height);
+    const keyOf = (r: (typeof rects)[number]) => `${r.cargoTypeId}@${r.x},${r.rowY}`;
+    for (const r of rects) {
+      const mark = side.querySelector(`[data-mark-for="${keyOf(r)}"] [data-mark]`);
+      if ((r.depth ?? 0) === 0) expect(mark?.textContent).toBe(table.get(r.cargoTypeId));
+      if (!mark) continue;
+      const box = textBox(mark);
+      for (const o of rects) if ((o.rowY ?? 0) > (r.rowY ?? 0)) expect(boxesIntersect(box, o)).toBe(false);
     }
     // печатное представление: ни знак на грузе, ни знак в таблице не спрятан от печати
     for (const m of document.querySelectorAll('svg[data-cutaway] [data-mark], table [data-testid="position-mark"]')) notPrintHidden(m);
@@ -125,6 +156,78 @@ describe('LadeplanScreen — знак позиции без цвета (сбор
     expect(notIn).toHaveTextContent('J');
     // в строке «Nicht im LKW» знак стоит прямо перед количеством
     expect(notIn.nextElementSibling?.textContent).toMatch(/^\d[\d.]* Stk$/);
+  });
+
+  it('вид сбоку: плита 144 мм — знак вынесен над полосой; дальняя стопка за ближней — знака нет, с выступом ≥ 1,4 кегля — есть', () => {
+    const slab = (id: string, orderId: string) => ({ ...pallet(1, 4), id, name: id, orderId });
+    const load: Load = { vehicle: V, cargo: [slab('rear', 'BE-1'), slab('front', 'BE-2'), slab('high', 'BE-3')] };
+    const base = calculateLayout(load);
+    const unit = (cargoTypeId: string, x: number, y: number, tier: number) =>
+      ({ ...base.placements[0], cargoTypeId, x, y, z: (tier - 1) * 144, tier, orientation: 'lwh' as const });
+    const layout: Layout = {
+      ...base,
+      placements: [
+        // x 0: дальняя из 2 (288 мм) за ближней из 1 (144 мм) — выступ 144 мм
+        unit('rear', 0, 0, 1), unit('rear', 0, 0, 2), unit('front', 0, 800, 1),
+        // x 2400: дальняя из 3 (432 мм) за ближней из 1 — выступ 288 мм
+        unit('high', 2400, 0, 1), unit('high', 2400, 0, 2), unit('high', 2400, 0, 3), unit('front', 2400, 800, 1),
+      ],
+      unplaced: [{ cargoTypeId: 'rear', count: 2 }, { cargoTypeId: 'front', count: 2 }, { cargoTypeId: 'high', count: 1 }],
+    };
+    renderPlanErp(load, layout);
+    const side = document.querySelector('svg[data-cutaway="side"]')!;
+    const markAt = (key: string) => side.querySelector(`[data-mark-for="${key}"] [data-mark]`);
+    expect(markAt('rear@0,0')).toBeNull(); // закрыт — не рисуется вовсе
+    expect(markAt('high@2400,0')?.textContent).toBe('C');
+    const front = markAt('front@0,800')!;
+    expect(front.textContent).toBe('B');
+    expect(Number(front.getAttribute('font-size'))).toBe(COUNT_FONT);
+    const b = textBox(front);
+    expect(b.y + b.h).toBeLessThanOrEqual(V.height - 144); // над полосой
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.w).toBeLessThanOrEqual(1200); // строго над своей стопкой
+  });
+
+  it('колонки однородны: упаковщик кладёт в колонку одну позицию, правка не ставит колонку на чужую', () => {
+    // Движок: packing/orchestrator.ts, packZones — одна колонка `columnPlacements(c, …)` на место пола
+    // (ADR 003: «одно напольное место = стопка одного типа»). Поэтому нижней чужой позиции в колонке
+    // нет, и знака верхней достаточно.
+    for (const load of [load10, load9]) {
+      const typesAt = new Map<string, Set<string>>();
+      for (const p of calculateLayout(load).placements) {
+        const k = `${p.x}:${p.y}`;
+        typesAt.set(k, (typesAt.get(k) ?? new Set()).add(p.cargoTypeId));
+      }
+      for (const t of typesAt.values()) expect(t.size).toBe(1);
+    }
+    const layout = calculateLayout(load10);
+    const a = layout.placements.find((p) => p.cargoTypeId === 'p1')!;
+    const b = layout.placements.find((p) => p.cargoTypeId === 'p2')!;
+    const r = moveStack(load10, layout, { cargoTypeId: 'p1', x: a.x, y: a.y }, b.x, b.y);
+    expect(r.error?.code).toBe('ERR_EDIT_OVERLAP');
+  });
+
+  it('вид сверху: знак не налезает на имя артикула и «×N» (следы 600×400, 800×600, 1200×800)', () => {
+    for (const [l, w] of [[600, 400], [800, 600], [1200, 800]]) {
+      const c: CargoType = { ...pallet(1, 6), length: l, width: w, name: 'Sonderpalette lang', rotation: 'none' };
+      const load: Load = { vehicle: V, cargo: [c] };
+      const { unmount } = render(
+        <LocaleProvider initial="de">
+          <CrossSection load={load} layout={calculateLayout(load)} view="top" label="top" marks={new Map([['p1', 'AB']])} />
+        </LocaleProvider>,
+      );
+      const top = document.querySelector('svg[data-cutaway="top"]')!;
+      const stacks = [...top.querySelectorAll('g[data-cargo-type]')];
+      expect(stacks.length).toBeGreaterThan(0);
+      for (const g of stacks) {
+        const mark = top.querySelector(`[data-mark-for="${g.getAttribute('data-stack-key')}"] [data-mark]`)!;
+        const markBox = textBox(mark);
+        const labels = [...g.querySelectorAll('text')];
+        expect(labels.length).toBeGreaterThan(0);
+        for (const t of labels) expect(boxesIntersect(markBox, textBox(t))).toBe(false);
+      }
+      unmount();
+    }
   });
 
   it('рейс из 10 позиций, одна из них в м³: десять разных знаков, у строки в м³ знак есть в «Nicht im LKW», в печати и в картинке', async () => {
@@ -145,8 +248,13 @@ describe('LadeplanScreen — знак позиции без цвета (сбор
     expect(opts.notes!.flatMap((n) => n.lines).some((line) => line.startsWith('C ') && line.includes('12,4 m³'))).toBe(true);
     // картинка несёт те же разрезы, что экран, — с теми же знаками
     for (const s of opts.sections) {
-      const marks = new Set([...s.svg.querySelectorAll('[data-mark]')].map((m) => m.textContent));
-      expect(marks).toEqual(new Set(tableMarks));
+      const marks = [...s.svg.querySelectorAll('[data-mark]')];
+      const shown = new Set(marks.map((m) => m.textContent));
+      // сверху видна каждая стопка; сбоку — только не закрытые ближним рядом
+      if (s.svg.dataset.cutaway === 'top') expect(shown).toEqual(new Set(tableMarks));
+      else for (const m of shown) expect(tableMarks).toContain(m);
+      expect(marks.length).toBeGreaterThan(0);
+      for (const m of marks) expect(Number(m.getAttribute('font-size'))).toBe(COUNT_FONT);
     }
   });
 

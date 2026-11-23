@@ -31,7 +31,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
-import { markGlyph } from './positionMark';
+import { placeMark } from './positionMark';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
@@ -379,6 +379,10 @@ export function WarehouseFloor({
               const realIndex =
                 phantomAt && pt.srcIndex > phantomAt.index ? pt.srcIndex - 1 : pt.srcIndex;
               const mark = marks?.get(cargo.id);
+              // Знак — по тем же правилам, что в виде сверху кузова; подпись — под полосой знака.
+              const tileRect = { x: pt.x, y: pt.y, w: pt.dx, h: pt.dy };
+              const markAt = mark ? placeMark('top', tileRect, mark, countFont, { length: floor.width }) : null;
+              const area = markAt?.labelArea ?? tileRect;
               // Имя плитки для экранного чтения начинается со знака позиции (ERP): на плитке он
               // нарисован, и без текста человек со скринридером его бы не получил.
               const tileName = `${mark ? `${fillTemplate(tt('plan.mark.sr'), { mark })} · ` : ''}${cargo.name} ×${pt.tile.units}`;
@@ -420,14 +424,14 @@ export function WarehouseFloor({
                   {/* Имя артикула над количеством (ayg) — та же пара, что в виде сверху. Имя тише
                       числа и пропадает первым, когда плитка мала: stackLabel решает, что влезло. */}
                   {(() => {
-                    const name = stackLabel(cargo.name, pt.dx, pt.dy, countFont);
+                    const name = stackLabel(cargo.name, area.w, area.h, countFont);
                     const dy = name ? countFont * 0.45 : 0;
                     return (
                       <>
                         {name && (
                           <text
-                            x={pt.x + pt.dx / 2}
-                            y={pt.y + pt.dy / 2 - dy}
+                            x={area.x + area.w / 2}
+                            y={area.y + area.h / 2 - dy}
                             fill="var(--muted)"
                             fontSize={countFont * NAME_FONT_RATIO}
                             fontWeight={600}
@@ -439,8 +443,8 @@ export function WarehouseFloor({
                           </text>
                         )}
                         <text
-                          x={pt.x + pt.dx / 2}
-                          y={pt.y + pt.dy / 2 + dy}
+                          x={area.x + area.w / 2}
+                          y={area.y + area.h / 2 + dy}
                           fill="var(--ink)"
                           fontSize={countFont}
                           fontWeight={700}
@@ -453,28 +457,30 @@ export function WarehouseFloor({
                       </>
                     );
                   })()}
-                  {mark &&
-                    (() => {
-                      const g = markGlyph({ x: pt.x, y: pt.y, w: pt.dx, h: pt.dy }, countFont);
-                      return (
-                        <text
-                          data-mark={mark}
-                          x={g.x}
-                          y={g.y}
-                          fill="var(--ink)"
-                          fontSize={g.fontSize}
-                          fontWeight={700}
-                          stroke="var(--card)"
-                          strokeWidth={g.strokeWidth}
-                          strokeLinejoin="round"
-                          paintOrder="stroke"
-                          dominantBaseline="central"
-                          pointerEvents="none"
-                        >
-                          {mark}
-                        </text>
-                      );
-                    })()}
+                  {mark && markAt && (
+                    <>
+                      {markAt.leader && (
+                        <line {...markAt.leader} stroke="var(--ink)" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                      )}
+                      <text
+                        data-mark={mark}
+                        x={markAt.x}
+                        y={markAt.y}
+                        fill="var(--ink)"
+                        fontSize={markAt.fontSize}
+                        fontWeight={700}
+                        stroke="var(--card)"
+                        strokeWidth={markAt.strokeWidth}
+                        strokeLinejoin="round"
+                        paintOrder="stroke"
+                        textAnchor={markAt.anchor}
+                        dominantBaseline="central"
+                        pointerEvents="none"
+                      >
+                        {mark}
+                      </text>
+                    </>
+                  )}
                   {sel === realIndex && (
                     <>
                       <rect

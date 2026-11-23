@@ -36,7 +36,7 @@ import { topRects, sideRects, type CutRect } from './cutaway';
 import { snap, type StackSel } from './editLayout';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { selectionBadge } from './selectionBadge';
-import { markGlyph } from './positionMark';
+import { placeMark, sideMarkVisible, type MarkPlacement } from './positionMark';
 import { normalizeRect, stacksInRect, hasRef, toggleRef, groupBBox, refKey } from './marquee';
 import { fillTemplate } from './stackFormula';
 import { RULER_FONT, FrontCap, TrailerUnder, GroundLine, TopChrome, MetreRuler, VerticalRuler } from './truckChrome';
@@ -161,6 +161,24 @@ export function CrossSection({
   const nameOf = (cargoTypeId: string) => load.cargo.find((c) => c.id === cargoTypeId)?.name ?? null;
   const draggable = view === 'top' && !!onMoveStack;
   const rotatable = view === 'top' && !!onRotateStack;
+  /** Ключ стопки на чертеже: тип + место пола (в виде сбоку — x и ряд, `rowY`). */
+  const stackKey = (r: CutRect) => `${r.cargoTypeId}@${r.x},${view === 'top' ? r.y : r.rowY ?? 0}`;
+  // Знак позиции (ERP) для каждой стопки, у которой он есть. Гарантия: в виде сверху стопки не
+  // закрывают друг друга — знак у КАЖДОЙ; в виде сбоку — у каждой ВИДИМОЙ: место знака (внутри
+  // полосы или над ней) не закрыто ни одной стопкой ближнего ряда. Закрытый знак не рисуется.
+  const markPlacement = new Map<string, MarkPlacement>();
+  if (marks) {
+    for (const r of rects) {
+      const mark = marks.get(r.cargoTypeId);
+      if (!mark) continue;
+      const p = placeMark(view, r, mark, countFont, { length });
+      if (view === 'side') {
+        const nearer = rects.filter((o) => (o.rowY ?? 0) > (r.rowY ?? 0));
+        if (!sideMarkVisible(p, nearer)) continue;
+      }
+      markPlacement.set(stackKey(r), p);
+    }
+  }
 
   // Отсеки транспорта (ADR 026): один неявный [0, length) для односоставного кузова. Считаем ОДИН
   // раз за рендер — держится в шести местах ниже (пол, сетка, подписи, стенки, ходовая, дышло), и
@@ -575,6 +593,7 @@ export function CrossSection({
               // A stable handle on this particular floor column: the render index is not one.
               data-stack-ref={view === 'top' ? refKey(ref) : undefined}
               data-cargo-type={r.cargoTypeId}
+              data-stack-key={stackKey(r)}
               transform={tf}
               onPointerDown={draggable ? onDown(r) : undefined}
               style={draggable ? { cursor: 'grab' } : undefined}
@@ -583,51 +602,28 @@ export function CrossSection({
               {view === 'top' && (() => {
                 // Имя артикула над количеством (ayg): по одному ×N груз не опознать, а легенда
                 // внизу листа заставляет сверять цвета. Имя тише числа — оно подпись, не итог.
-                const name = stackLabel(nameOf(r.cargoTypeId), r.w, r.h, countFont);
+                // Со знаком позиции (ERP) подпись центрируется под полосой знака — не налезает на него.
+                const area = markPlacement.get(stackKey(r))?.labelArea ?? r;
+                const name = stackLabel(nameOf(r.cargoTypeId), area.w, area.h, countFont);
                 const count = (r.count ?? 1) > 1 ? `×${r.count}` : null;
                 if (!name && !count) return null;
                 // Обе строки вместе центрируются по стопке: одна строка стоит по центру, две
                 // расходятся от него на пол-строки в каждую сторону.
-                const cy = r.y + r.h / 2;
+                const cy = area.y + area.h / 2;
                 const dy = name && count ? countFont * 0.45 : 0;
                 return (
                   <>
                     {name && (
-                      <text x={r.x + r.w / 2} y={cy - dy} fill="var(--muted)" fontSize={countFont * NAME_FONT_RATIO} fontWeight={600} textAnchor="middle" dominantBaseline="central">
+                      <text x={area.x + area.w / 2} y={cy - dy} fill="var(--muted)" fontSize={countFont * NAME_FONT_RATIO} fontWeight={600} textAnchor="middle" dominantBaseline="central">
                         {name}
                       </text>
                     )}
                     {count && (
-                      <text x={r.x + r.w / 2} y={cy + dy} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+                      <text x={area.x + area.w / 2} y={cy + dy} fill="var(--ink)" fontSize={countFont} fontWeight={700} textAnchor="middle" dominantBaseline="central">
                         {count}
                       </text>
                     )}
                   </>
-                );
-              })()}
-              {(() => {
-                // Знак позиции (ERP): тёмный по светлой обводке-подложке — читается поверх
-                // штриховки и в ч/б печати. Не скрыт от печати: лист читают без цвета.
-                const mark = marks?.get(r.cargoTypeId);
-                if (!mark) return null;
-                const g = markGlyph(r, countFont);
-                return (
-                  <text
-                    data-mark={mark}
-                    x={g.x}
-                    y={g.y}
-                    fill="var(--ink)"
-                    fontSize={g.fontSize}
-                    fontWeight={700}
-                    stroke="var(--card)"
-                    strokeWidth={g.strokeWidth}
-                    strokeLinejoin="round"
-                    paintOrder="stroke"
-                    dominantBaseline="central"
-                    pointerEvents="none"
-                  >
-                    {mark}
-                  </text>
                 );
               })()}
               {isSelected && (
@@ -656,6 +652,44 @@ export function CrossSection({
             </g>
           );
         })}
+        {/* Знаки позиций (ERP) — отдельным слоем поверх ВСЕХ стопок: вынесенный знак не уходит под
+            соседнюю стопку, а в виде сбоку закрытый ближним рядом знак не рисуется вовсе (см.
+            `markPlacement`). Тёмный по светлой обводке-подложке — читается поверх штриховки и в ч/б
+            печати; от печати не скрыт. */}
+        {marks && (
+          <g data-marks pointerEvents="none">
+            {sortedRects.map((r) => {
+              const key = stackKey(r);
+              const p = markPlacement.get(key);
+              const mark = marks.get(r.cargoTypeId);
+              if (!p || !mark) return null;
+              const moving = view === 'top' && !!drag && hasRef(drag.refs, { cargoTypeId: r.cargoTypeId, x: r.x, y: r.y });
+              return (
+                <g key={key} data-mark-for={key} transform={moving ? `translate(${drag!.dx} ${drag!.dy})` : undefined}>
+                  {p.leader && (
+                    <line {...p.leader} stroke="var(--ink)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                  )}
+                  <text
+                    data-mark={mark}
+                    x={p.x}
+                    y={p.y}
+                    fill="var(--ink)"
+                    fontSize={p.fontSize}
+                    fontWeight={700}
+                    stroke="var(--card)"
+                    strokeWidth={p.strokeWidth}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                    textAnchor={p.anchor}
+                    dominantBaseline="central"
+                  >
+                    {mark}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        )}
         {/* The block the user has selected, drawn as one frame with its count. Screen only. */}
         {(() => {
           if (view !== 'top' || sel.length < 2) return null;

@@ -4,7 +4,7 @@
 // `layout` — ТЕКУЩАЯ раскладка экрана (с ручными правками): числа идут за тем, что на экране.
 // Колонка «max.» — экранная (печать её не несёт, решение оркестратора); «nicht im LKW» печатается.
 import type { Layout, Load } from '@shadrin-v/engine';
-import { formatLength } from '@shadrin-v/i18n';
+import { formatLength, formatLengthNumber } from '@shadrin-v/i18n';
 import { useLocale } from '../../i18n/LocaleContext';
 import { OrderSwatch } from '../../lib/swatch';
 import { formatSourceQuantity } from '../../erp/quantityFormat';
@@ -30,9 +30,8 @@ const TD = 'px-2 py-1.5';
 export function PlanPositionsTable({ load, layout, context, capacity, orderColors, marks }: PlanPositionsTableProps) {
   const { locale, tt } = useLocale();
   const num = (n: number) => formatSourceQuantity(n, locale);
-  // Габарит «L × W × H mm»: все три числа — записью длины (`formatLength`), единица — один раз, в конце.
-  const unitMm = ` ${tt('unit.mm')}`;
-  const lengthNum = (mm: number) => formatLength(mm, locale).slice(0, -unitMm.length);
+  // Габарит «L × W × H mm»: все три числа — записью длины, единица — один раз, в конце.
+  const lengthNum = (mm: number) => formatLengthNumber(mm, locale);
   const quantityOf = new Map(load.cargo.map((c) => [c.id, c.quantity]));
   const orders = orderBreakdown(load, layout, orderColors);
   return (
