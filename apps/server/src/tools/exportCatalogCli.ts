@@ -1,4 +1,4 @@
-import { renameSync, writeFileSync } from 'node:fs';
+import { renameSync, rmSync, writeFileSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { exportCatalog } from './exportCatalog';
 
@@ -16,8 +16,13 @@ try {
   const { articles, skipped } = exportCatalog(db);
   // Temp file + rename: a failed write leaves no half-written export behind.
   const tmp = `${outPath}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(articles, null, 2)}\n`);
-  renameSync(tmp, outPath);
+  try {
+    writeFileSync(tmp, `${JSON.stringify(articles, null, 2)}\n`);
+    renameSync(tmp, outPath);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
   for (const s of skipped) process.stderr.write(`${s.itemCode}: ${s.reason}\n`);
   process.stderr.write(`exported ${articles.length} articles, skipped ${skipped.length}\n`);
   skippedCount = skipped.length;

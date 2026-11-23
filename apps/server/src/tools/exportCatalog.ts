@@ -15,6 +15,8 @@ interface Row {
 
 export type SkipReason =
   | 'EMPTY_CODE'
+  | 'CODE_NOT_TRIMMED'
+  | 'TEXT_TOO_LONG'
   | 'DIMENSION_OUT_OF_RANGE'
   | 'RULES_NOT_JSON'
   | 'RULES_INCOMPLETE'
@@ -26,18 +28,21 @@ export interface CatalogExport {
   skipped: Array<{ itemCode: string; reason: SkipReason }>;
 }
 
-// Contract §5 (artikel_speichern): every dimension sent is an integer 1..20000 mm.
-const MAX_MM = 20000;
+// Limits of the ERP contract (api-vertrag §4 item 5 "Пределы" and the dimension rule there); the
+// same limits apply on the ERP side, so a row beyond them would be rejected at import.
+const MAX_MM = 20000; // dimensions and nesting steps: integer 1..20000 mm
+const MAX_COUNT = 1000; // maxNested, maxTiers: integer 1..1000
+const MAX_TEXT = 140; // itemCode, name: at most 140 characters
 const isMm = (v: number): boolean => Number.isInteger(v) && v >= 1 && v <= MAX_MM;
-const isPosInt = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 1;
+const isCount = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_COUNT;
 const oneOf = (list: readonly string[], v: unknown): boolean => typeof v === 'string' && list.includes(v);
 
 const RULE_CHECKS: Record<keyof ArticleRules, (v: unknown) => boolean> = {
   state: (v) => oneOf(NESTING_STATES, v),
   nestingMode: (v) => oneOf(NESTING_MODES, v),
   rotation: (v) => oneOf(ROTATION_RULES, v),
-  maxNested: isPosInt,
-  maxTiers: isPosInt,
+  maxNested: isCount,
+  maxTiers: isCount,
   allowUnpairedTop: (v) => typeof v === 'boolean',
   forkAccess: (v) => oneOf(FORK_ACCESS, v),
   forkAxis: (v) => oneOf(FORK_AXES, v),
@@ -86,6 +91,14 @@ export function exportCatalog(db: Database.Database): CatalogExport {
     const skip = (reason: SkipReason): void => void result.skipped.push({ itemCode: r.item_code, reason });
     if (r.item_code.trim() === '') {
       skip('EMPTY_CODE');
+      continue;
+    }
+    if (r.item_code !== r.item_code.trim()) {
+      skip('CODE_NOT_TRIMMED');
+      continue;
+    }
+    if (r.item_code.length > MAX_TEXT || r.name.length > MAX_TEXT) {
+      skip('TEXT_TOO_LONG');
       continue;
     }
     const nums = [r.length, r.width, r.height, r.nest_step_pairwise, r.nest_step_sequential];

@@ -126,4 +126,47 @@ describe('exportCatalog', () => {
     expect(r.articles.map((a) => a.itemCode)).toEqual(['A1']);
     db.close();
   });
+
+  it.each([['maxNested', 1000, 1001], ['maxTiers', 1000, 1001]])('%s: 1000 passes, %i+1 is skipped', (key, ok, bad) => {
+    const db = seed();
+    const base = { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' };
+    setRules(db, JSON.stringify({ ...base, [key]: ok }));
+    expect(skippedOf(db)).toEqual([]);
+    setRules(db, JSON.stringify({ ...base, [key]: bad }));
+    expect(skippedOf(db)).toEqual([{ itemCode: 'A1', reason: 'RULES_BAD_VALUE' }]);
+    db.close();
+  });
+
+  it('forkAccess, forkAxis, allowUnpairedTop: valid passes, invalid is skipped', () => {
+    const db = seed();
+    const base = { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' };
+    setRules(db, JSON.stringify({ ...base, forkAccess: 'twoSides', forkAxis: 'width', allowUnpairedTop: true }));
+    expect(skippedOf(db)).toEqual([]);
+    for (const bad of [{ forkAccess: 'x' }, { forkAxis: 'height' }, { allowUnpairedTop: 'yes' }]) {
+      setRules(db, JSON.stringify({ ...base, ...bad }));
+      expect(skippedOf(db)).toEqual([{ itemCode: 'A1', reason: 'RULES_BAD_VALUE' }]);
+    }
+    db.close();
+  });
+
+  it('item code and name longer than 140 chars are skipped, exactly 140 passes', () => {
+    const db = seed();
+    db.prepare('UPDATE article SET name=? WHERE item_code=?').run('n'.repeat(140), 'A1');
+    expect(skippedOf(db)).toEqual([]);
+    db.prepare('UPDATE article SET name=? WHERE item_code=?').run('n'.repeat(141), 'A1');
+    expect(skippedOf(db)).toEqual([{ itemCode: 'A1', reason: 'TEXT_TOO_LONG' }]);
+    db.prepare('UPDATE article SET name=? WHERE item_code=?').run('Palette', 'A1');
+    db.prepare('UPDATE article SET item_code=? WHERE item_code=?').run('c'.repeat(141), 'A1');
+    expect(skippedOf(db)).toEqual([{ itemCode: 'c'.repeat(141), reason: 'TEXT_TOO_LONG' }]);
+    db.close();
+  });
+
+  it('item code with edge whitespace is skipped, not silently trimmed', () => {
+    const db = seed();
+    db.prepare("UPDATE article SET item_code=' A1' WHERE item_code='A1'").run();
+    const r = exportCatalog(db);
+    expect(r.skipped).toEqual([{ itemCode: ' A1', reason: 'CODE_NOT_TRIMMED' }]);
+    expect(r.articles.map((a) => a.itemCode)).toEqual(['B2']);
+    db.close();
+  });
 });
