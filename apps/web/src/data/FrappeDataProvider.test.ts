@@ -531,6 +531,84 @@ describe('FrappeDataProvider — смена пользователя (контр
     expect(f).toHaveBeenCalledTimes(5);
   });
 
+  // После сбоя проверки несколько запросов и перепроверка оболочки стартуют разом. Перепроверка в
+  // каждый момент одна: все ждут её общий результат, второй `sitzung` параллельно не уходит.
+  const afterFailedCheck = async (sitzungAnswers: Response[]) => {
+    const pending: Array<(r: Response) => void> = [];
+    const f = vi.fn((url: string) => {
+      if (url === API + 'sitzung') {
+        if (f.mock.calls.length === 1) return Promise.resolve(ok(SESSION));
+        if (f.mock.calls.length === 2) return Promise.reject(new TypeError('Failed to fetch'));
+        return new Promise<Response>((r) => { pending.push(r); });
+      }
+      return Promise.resolve(ok([]));
+    });
+    const dp = new FrappeDataProvider({ fetchImpl: f as unknown as typeof fetch });
+    await dp.session();
+    await expect(dp.session()).rejects.toBeInstanceOf(TypeError);
+    const lines = dp.listOpenLines();
+    const shell = dp.session();
+    const lines2 = dp.listOpenLines({ query: 'x' });
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const sitzungCalls = () => f.mock.calls.filter(([url]) => url === API + 'sitzung').length;
+    expect(sitzungCalls()).toBe(3); // вход, сорвавшаяся проверка и ОДНА новая
+    for (const answer of sitzungAnswers) pending.shift()?.(answer);
+    return { f, lines, shell, lines2, sitzungCalls };
+  };
+
+  it('после сбоя проверки: запросы и перепроверка оболочки ждут одну общую; другой пользователь — ни один не ушёл', async () => {
+    const { f, lines, shell, lines2, sitzungCalls } = await afterFailedCheck([ok(BORIS), ok(BORIS)]);
+    await expect(lines).rejects.toEqual(CHANGED);
+    await expect(shell).rejects.toEqual(CHANGED);
+    await expect(lines2).rejects.toEqual(CHANGED);
+    expect(sitzungCalls()).toBe(3);
+    expect(f.mock.calls.every(([url]) => url === API + 'sitzung')).toBe(true);
+  });
+
+  it('после сбоя проверки: прежний пользователь в общей проверке — запросы уходят, второго sitzung нет', async () => {
+    const { f, lines, shell, lines2, sitzungCalls } = await afterFailedCheck([ok(SESSION), ok(BORIS)]);
+    await expect(lines).resolves.toEqual([]);
+    await expect(shell).resolves.toMatchObject({ user: SESSION.user });
+    await expect(lines2).resolves.toEqual([]);
+    expect(sitzungCalls()).toBe(3);
+    expect(f.mock.calls.filter(([url]) => String(url).startsWith(API + 'bestellpositionen'))).toHaveLength(2);
+  });
+
+  it('перепроверка без ответа: через 15 с прервана и считается сбоем — ожидающий GET отклонён, в сеть не ушёл', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const f = vi.fn()
+        .mockResolvedValueOnce(ok(SESSION))
+        .mockImplementationOnce((_url: string, init: RequestInit) => {
+          signal = init.signal ?? undefined;
+          return new Promise<Response>(() => {}); // сервер молчит
+        })
+        .mockResolvedValueOnce(ok(SESSION))
+        .mockImplementation(() => Promise.resolve(ok([])));
+      const dp = new FrappeDataProvider({ fetchImpl: f });
+      await dp.session();
+      const recheck = dp.session();
+      const waiting = dp.listOpenLines();
+      const recheckOutcome = recheck.catch((e: unknown) => e);
+      const waitingOutcome = waiting.catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(signal?.aborted).toBe(false);
+      expect(f).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      const err = await recheckOutcome;
+      expect(err).toMatchObject({ name: 'TimeoutError' });
+      expect(await waitingOutcome).toBe(err);
+      expect(f.mock.calls.map(([url]) => url)).toEqual([API + 'sitzung', API + 'sitzung']);
+      // следующий запрос снова проверяет сессию и уходит
+      await expect(dp.listOpenLines()).resolves.toEqual([]);
+      expect(f.mock.calls.map(([url]) => url)).toEqual([API + 'sitzung', API + 'sitzung', API + 'sitzung', API + 'bestellpositionen']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('тот же пользователь при перепроверке — как раньше: новый токен берётся', async () => {
     const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(ok({ ...SESSION, csrfToken: 'tok-2' })).mockResolvedValueOnce(ok([]));
     const dp = new FrappeDataProvider({ fetchImpl: f });

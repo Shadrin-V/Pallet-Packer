@@ -21,7 +21,10 @@
 //   данные под сессией нового сотрудника до перехода на экран «вошёл другой пользователь». Проверка
 //   сорвалась (сеть, сбой сервера, кривой ответ) — пользователь НЕ подтверждён: ожидавшие запросы
 //   отклоняются той же ошибкой, что получила проверка, без сети, а следующий новый запрос сначала снова
-//   проверяет сессию.
+//   проверяет сессию. Проверка в каждый момент одна: все (запросы, оболочка, новый токен после 400,
+//   перепроверка после 403) ждут общий результат; новая начинается только после конца прежней. Иначе
+//   запрос, дождавшийся «прежнего пользователя» от своей проверки, ушёл бы, пока параллельная ещё могла
+//   найти смену. Проверка, не ответившая за 15 с, прерывается (`AbortController`) и считается сорвавшейся.
 // Количество, единицы и порядок провайдер не трогает — это решает сервер (§4 п. 2–3, 8).
 import {
   isOpenLine,
@@ -68,6 +71,8 @@ const CLOSED_CODE: Record<SessionEnd, string> = { expired: 'ERR_NOT_LOGGED_IN', 
 /** Предел строк поиска и списка строк (контракт §3, §4 п. 7). */
 const MAX_QUERY = 140;
 const MAX_LINES = 200;
+/** Предел ожидания проверки сессии: дольше — сбой проверки, а не вечное ожидание придержанных запросов. */
+export const SESSION_CHECK_TIMEOUT_MS = 15_000;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const isRecord = (x: unknown): x is Record<string, unknown> =>
@@ -172,7 +177,9 @@ function articleInput(a: ArticleInput): ArticleInput {
 
 // ---- транспорт -------------------------------------------------------------------------------
 
-type Call = { method: 'GET'; params?: URLSearchParams } | { method: 'POST'; body: Record<string, unknown> };
+type Call =
+  | { method: 'GET'; params?: URLSearchParams; signal?: AbortSignal }
+  | { method: 'POST'; body: Record<string, unknown> };
 interface Reply {
   ok: boolean;
   status: number;
@@ -189,8 +196,8 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
   private user: string | undefined;
   /** Код, которым закрытый провайдер отклоняет всё; undefined — открыт. */
   private closedCode: string | undefined;
-  /** Идущие проверки сессии (исход не важен — только «закончилась»); пока они есть, новые запросы ждут. */
-  private readonly sessionChecks = new Set<Promise<unknown>>();
+  /** Идущая проверка сессии — одна на всех; пока она есть, новые запросы ждут её исхода. */
+  private sessionCheck: Promise<ErpSession> | undefined;
   /** Ошибка последней сорвавшейся проверки сессии; есть — пользователь не подтверждён. */
   private checkFailure: { error: unknown } | undefined;
 
@@ -221,6 +228,7 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
     if (call.method === 'GET') {
       const qs = call.params?.toString() ?? '';
       if (qs) url += '?' + qs;
+      if (call.signal) init.signal = call.signal;
     } else {
       headers['Content-Type'] = 'application/json';
       headers['X-Frappe-CSRF-Token'] = this.csrfToken ?? '';
@@ -264,38 +272,57 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
     return { code: 'ERR_HTTP', details: { status: 403 } };
   }
 
-  /** Пропустить запрос в сеть, только когда пользователь подтверждён: дождаться идущих проверок;
-   *  ждал, а проверка сорвалась, — отказ её ошибкой; проверка сорвалась раньше — проверить заново. */
+  /** Пропустить запрос в сеть, только когда пользователь подтверждён: дождаться идущей проверки (и той,
+   *  что началась за время ожидания); она сорвалась — отказ её ошибкой. Сорвалась прежняя, а идущей
+   *  нет — начать новую. */
   private async confirmedUser(): Promise<void> {
-    let waited = false;
-    while (this.sessionChecks.size > 0) {
-      waited = true;
-      await Promise.all(this.sessionChecks);
+    let pending = this.sessionCheck ?? (this.checkFailure !== undefined ? this.fetchSession() : undefined);
+    while (pending) {
+      await pending;
+      pending = this.sessionCheck;
     }
     if (this.closedCode !== undefined) throw this.closedError();
-    if (this.checkFailure === undefined) return;
-    if (waited) throw this.checkFailure.error;
-    await this.fetchSession();
+    if (this.checkFailure !== undefined) throw this.checkFailure.error;
   }
 
-  /** Проверка сессии, на время которой новые запросы придержаны (см. `send`). */
+  /** Общая проверка сессии: идёт — вернуть её же, иначе начать новую. Исход записывается раньше, чем
+   *  его увидит любой ждущий (обработчик повешен первым). */
   private fetchSession(): Promise<ErpSession> {
+    if (this.sessionCheck) return this.sessionCheck;
     const check = this.readSession();
-    const settled = check.then(
-      () => {
-        this.checkFailure = undefined;
-      },
-      (error: unknown) => {
-        this.checkFailure = { error };
-      },
+    this.sessionCheck = check;
+    const finish = (failure: { error: unknown } | undefined) => {
+      if (this.sessionCheck === check) this.sessionCheck = undefined;
+      this.checkFailure = failure;
+    };
+    check.then(
+      () => finish(undefined),
+      (error: unknown) => finish({ error }),
     );
-    this.sessionChecks.add(settled);
-    void settled.then(() => this.sessionChecks.delete(settled));
     return check;
   }
 
+  /** `sitzung` с пределом времени: не ответил за `SESSION_CHECK_TIMEOUT_MS` — запрос прерван, отказ
+   *  `TimeoutError` (так же, как `fetch` с истёкшим `AbortSignal.timeout`). */
+  private async sitzungWithTimeout(): Promise<unknown> {
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const reason = new DOMException('session check timed out', 'TimeoutError');
+        ctl.abort(reason);
+        reject(reason);
+      }, SESSION_CHECK_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([this.call('sitzung', { method: 'GET', signal: ctl.signal }), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async readSession(): Promise<ErpSession> {
-    const s = parseErpSession(await this.call('sitzung', { method: 'GET' }));
+    const s = parseErpSession(await this.sitzungWithTimeout());
     if (!s) throw badResponse();
     if (this.closedCode !== undefined) throw this.closedError();
     if (this.user !== undefined && s.user !== this.user) {
