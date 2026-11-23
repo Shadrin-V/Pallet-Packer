@@ -731,13 +731,15 @@ export function SetupScreen({
         </div>
       )}
 
-      {/* Строка рейса над карточками (макет, блок 3): сколько заказов, штучных и неразмещаемых позиций. */}
+      {/* Строка рейса над карточками (макет, блок 3): сколько заказов, штучных и неразмещаемых позиций.
+          Заказы считаются все, включая те, что карточки не получили (только неразмещаемые строки):
+          их строки видны в списке неразмещаемого ниже. */}
       {erp && trip && (
         <p data-testid="trip-line" className="mb-3 text-caption text-muted">
           {fillTemplate(tt('setup.tripLine'), {
             tripId: trip.tripId,
             date: trip.loadingDate ? formatIsoDate(trip.loadingDate, locale) : '—',
-            orders: cards.length,
+            orders: orders.length,
             pieces: orders.reduce((n, o) => n + o.positions.filter((p) => !p.unplaceable).length, 0),
             other: orders.reduce((n, o) => n + o.positions.filter((p) => p.unplaceable).length, 0),
           })}

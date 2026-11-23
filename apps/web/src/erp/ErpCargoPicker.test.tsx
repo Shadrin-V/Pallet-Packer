@@ -170,6 +170,24 @@ describe('ErpCargoPicker — Reise laden', () => {
     }
   });
 
+  it('строка рейса считает и заказ без карточки (все его строки неразмещаемые)', async () => {
+    const base = fixtureTrip();
+    const onlyM3: OrderZone = {
+      orderId: 'PUR-ORD-2026-00872', partner: 'Muster Holz Sp. z o.o.', positions: [
+        { itemCode: 'MAT0078', itemName: 'Schnittholz 22x100x2400', quantity: 0, uom: 'Cubic Meter',
+          lineRef: 'k1l2m3n4o5', dimensionsSource: 'manual', unplaceable: 'ERR_LINE_UNIT_NOT_PIECES', sourceQuantity: 3.5 },
+      ],
+    };
+    fake.loadTrip.mockResolvedValue({ ...base, zones: [...base.zones, onlyM3] });
+    renderSetupWithPicker();
+    await loadTripBy('LKW-2026-00412');
+    await screen.findByDisplayValue('PUR-ORD-2026-00871');
+    expect(screen.queryByDisplayValue('PUR-ORD-2026-00872')).toBeNull();
+    expect(screen.getByTestId('trip-line')).toHaveTextContent(
+      'Reise LKW-2026-00412 · Verladung 24.11.2026 · 2 Bestellungen, 1 Positionen in Stück, 2 nicht planbar',
+    );
+  });
+
   it('рейс переживает перезагрузку и сбрасывается «Zurücksetzen»', async () => {
     fake.loadTrip.mockResolvedValue(fixtureTrip());
     const first = renderSetupWithPicker();
