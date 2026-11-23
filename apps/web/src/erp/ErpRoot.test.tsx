@@ -10,7 +10,7 @@ import { emptyOrder } from '../screens/setup/setupState';
 import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 import type { DataProvider } from '../data/DataProvider';
 import type { ErpSource } from '../data/ErpSource';
-import { FrappeDataProvider } from '../data/FrappeDataProvider';
+import { ERP_API_PREFIX, FrappeDataProvider } from '../data/FrappeDataProvider';
 
 const SESSION: ErpSession = {
   user: 'anna@firma.de',
@@ -28,7 +28,8 @@ function fakeSource(): FakeSource {
   return {
     session: vi.fn(),
     loadTrip: vi.fn(),
-    listOpenLines: vi.fn(),
+    // Шаг выбора груза запрашивает список при монтировании — честный пустой ответ по умолчанию.
+    listOpenLines: vi.fn().mockResolvedValue([]),
     importLines: vi.fn(),
     listVehicles: vi.fn(),
     upsertVehicle: vi.fn(),
@@ -279,14 +280,33 @@ describe('ErpRoot + FrappeDataProvider: другой пользователь в
     render(<ErpRoot source={dp} subscribeExpired={expired.subscribe} subscribeChanged={changedSig.subscribe} />);
     return dp;
   }
+  /** `METHOD имя_метода` запроса, например `GET sitzung`. */
+  const routeOf = (url: string, init: RequestInit) => `${init.method} ${url.slice(ERP_API_PREFIX.length).split('?')[0]}`;
+  /**
+   * Подмена сети, отвечающая ПО АДРЕСУ И МЕТОДУ, а не по порядку вызовов: тест не зависит от того,
+   * сколько запросов страница делает сама (шаг выбора груза при монтировании просит список строк).
+   * У маршрута — очередь ответов; последний ответ очереди повторяется. Неизвестный маршрут — сбой сети.
+   */
+  type Route = ((url: string) => Response) | (() => Response)[];
+  function routedFetch(routes: Record<string, Route>): ReturnType<typeof vi.fn> {
+    return vi.fn((url: string, init: RequestInit) => {
+      const r = routes[routeOf(url, init)];
+      if (r === undefined) return Promise.reject(new TypeError(`unexpected ${routeOf(url, init)}`));
+      if (typeof r === 'function') return Promise.resolve(r(url));
+      const next = r.length > 1 ? r.shift()! : r[0];
+      return Promise.resolve(next());
+    });
+  }
+  const callsTo = (f: ReturnType<typeof vi.fn>, route: string) =>
+    f.mock.calls.filter(([url, init]) => routeOf(url, init) === route);
   const posts = (f: ReturnType<typeof vi.fn>) => f.mock.calls.filter(([, init]) => init.method === 'POST');
 
   it('POST → 400 без кода → sitzung Бориса: второго POST нет, токен Бориса не используется, экран «другой пользователь»', async () => {
-    const f = vi.fn()
-      .mockResolvedValueOnce(ok(SESSION)) // вход
-      .mockResolvedValueOnce(bare(400)) // POST с токеном Анны
-      .mockResolvedValueOnce(ok(BORIS)) // за новым токеном — а там Борис
-      .mockImplementation(() => Promise.resolve(ok([])));
+    const f = routedFetch({
+      'GET sitzung': [() => ok(SESSION), () => ok(BORIS)], // вход, затем за новым токеном — а там Борис
+      'POST positionen': () => bare(400), // POST с токеном Анны
+      'GET bestellpositionen': () => ok([]),
+    });
     const dp = mount(f);
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
     await act(async () => {
@@ -294,8 +314,11 @@ describe('ErpRoot + FrappeDataProvider: другой пользователь в
     });
     expect(screen.getByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
     expect(appMounted()).toBe(false);
+    expect(callsTo(f, 'GET sitzung')).toHaveLength(2);
     expect(posts(f)).toHaveLength(1);
     expect(posts(f)[0][1].headers['X-Frappe-CSRF-Token']).toBe(SESSION.csrfToken);
+    // токен Бориса не ушёл ни в один запрос
+    for (const [, init] of f.mock.calls) expect(JSON.stringify(init)).not.toContain(BORIS.csrfToken);
     // запоздавший вызов размонтированного экрана Анны в сеть не уходит
     const calls = f.mock.calls.length;
     await expect(dp.upsertArticle({ itemCode: 'A', name: 'A', rules: { state: 'ent', nestingMode: 'pairwise', rotation: 'none' } } as never)).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
@@ -303,26 +326,40 @@ describe('ErpRoot + FrappeDataProvider: другой пользователь в
   });
 
   it('403 без кода → перепроверка отдала Бориса: экран «другой пользователь», дальше в сеть не ходим', async () => {
-    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(new Response('{}', { status: 403 })).mockResolvedValueOnce(ok(BORIS));
+    // 403 отдаёт только запрос самого теста (query=probe); список шага выбора при монтировании — пустой.
+    const f = routedFetch({
+      'GET sitzung': [() => ok(SESSION), () => ok(BORIS)],
+      'GET bestellpositionen': (url) =>
+        new URL(url, 'http://x').searchParams.get('query') === 'probe' ? new Response('{}', { status: 403 }) : ok([]),
+    });
     const dp = mount(f);
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
     await act(async () => {
-      await expect(dp.listOpenLines()).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
+      await expect(dp.listOpenLines({ query: 'probe' })).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
     });
     expect(screen.getByRole('button', { name: 'Seite neu laden' })).toBeInTheDocument();
+    expect(callsTo(f, 'GET bestellpositionen').filter(([url]) => String(url).includes('query=probe'))).toHaveLength(1);
+    expect(callsTo(f, 'GET sitzung')).toHaveLength(2); // вход и одна перепроверка
+    const calls = f.mock.calls.length;
     await expect(dp.loadTrip('LKW-1')).rejects.toEqual({ code: 'ERR_SESSION_CHANGED' });
-    expect(f).toHaveBeenCalledTimes(3);
+    expect(f.mock.calls.length).toBe(calls);
   });
 
   it('после истечения сессии провайдер закрыт: запоздавший вызов в сеть не уходит', async () => {
-    const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    const f = routedFetch({
+      'GET sitzung': [() => ok(SESSION)],
+      'GET reise': () => new Response('{}', { status: 401 }),
+      'GET bestellpositionen': () => ok([]),
+    });
     const dp = mount(f);
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
     await act(async () => {
       await expect(dp.loadTrip('LKW-1')).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
     });
     expect(screen.getByRole('link', { name: 'Neu anmelden' })).toBeInTheDocument();
+    expect(callsTo(f, 'GET reise')).toHaveLength(1);
+    const calls = f.mock.calls.length;
     await expect(dp.importLines(['a1'])).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
-    expect(f).toHaveBeenCalledTimes(2);
+    expect(f.mock.calls.length).toBe(calls);
   });
 });

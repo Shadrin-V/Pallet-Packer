@@ -4,10 +4,10 @@
 // Тонкий координатор: состояние, выбор строки, персистентность, сборка Load, раскладка в две
 // колонки от xl. Собственно строка (PositionRow), карточка заказа (OrderCard) и разбор правил
 // (RulesPanel) живут в ./setup/ — здесь их только соединяют.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Load, LoadingMode, OrderGrouping, Vehicle } from '@shadrin-v/engine';
 import { fillTemplate } from './components/stackFormula';
-import { useT } from '../i18n/LocaleContext';
+import { useLocale, useT } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
 import { useHost } from '../host/HostContext';
@@ -16,7 +16,9 @@ import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
 import { removeStored } from '../lib/draftStorage';
 import { orderParam, urlWithoutOrderParam } from './setup/orderDeepLink';
-import type { Article } from '@shadrin-v/contracts';
+import type { Article, OrderZone } from '@shadrin-v/contracts';
+import { draftLineRefs, mergeZonesIntoDraft } from '../erp/zoneDraft';
+import { formatIsoDate } from '../erp/ErpCargoPicker';
 import { OrderCard } from './setup/OrderCard';
 import { LoadSummary } from './setup/LoadSummary';
 import { RulesPanel } from './setup/RulesPanel';
@@ -31,13 +33,23 @@ import {
   activeStep, applySuggestion, buildOrderColors, dimsComplete, emptyOrder,
   emptyPosition, isPristineDraft, loadSetup, lockedFieldsFrom, nextColorIndex, nextOrderNumber, numOr0,
   orderStateFromZone, saveSetup, SETUP_STORAGE_KEY, toCargo, toCargoList,
-  type LockedFields, type OrderState, type PositionState,
+  type LockedFields, type OrderState, type PositionState, type TripRef,
 } from './setup/setupState';
 
 export {
   activeStep, applySuggestion, lockedFieldsFrom, toCargo,
   type LockedFields, type OrderState, type PositionState,
 };
+
+/** Дверь шага выбора груза (сборка для ERP) в черновик экрана. */
+export interface DraftImportApi {
+  /** Дописать зоны ответа ERP в черновик (`mergeZonesIntoDraft` от текущего состояния); `trip` —
+   *  рейс, из которого они пришли: сохраняется с черновиком. Строки, уже бывшие в черновике,
+   *  пропускаются — их `lineRef` в `skippedLineRefs`. */
+  addZones(zones: OrderZone[], trip?: TripRef): { addedPositions: number; skippedLineRefs: string[] };
+  /** `lineRef` строк, которые уже в черновике. */
+  draftLineRefs: ReadonlySet<string>;
+}
 
 export interface SetupScreenProps {
   initialVehicle?: Vehicle;
@@ -65,6 +77,8 @@ export interface SetupScreenProps {
    *  экран вопреки спеке §6 «всегда на виду». План рендерится ВНУТРИ корневой обёртки экрана —
    *  общий родитель и делает sticky сквозным; setup-части несут print:hidden сами. */
   children?: ReactNode;
+  /** Шаг выбора груза над заказами (сборка для ERP); без пропа его нет. */
+  importSlot?: (api: DraftImportApi) => ReactNode;
 }
 
 /** Причина блокировки расчёта в сборке для ERP — цель `aria-describedby` обеих кнопок расчёта. */
@@ -107,9 +121,10 @@ interface Selection {
 export function SetupScreen({
   initialVehicle, initialOrders, onCalculate, onReset,
   loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange, hasManualEdits = false,
-  children,
+  children, importSlot,
 }: SetupScreenProps) {
   const tt = useT();
+  const { locale } = useLocale();
   // В ERP баннера нет (макет): логотип и имя пользователя — в верхней полосе хоста, язык и палитру
   // задаёт хост, поэтому и переключателей тоже нет.
   const host = useHost();
@@ -118,6 +133,13 @@ export function SetupScreen({
   const defaultVehicle = (): Vehicle => vehicleFromPreset(VEHICLE_PRESETS[0]);
   const [vehicle, setVehicle] = useState<Vehicle>(() => initialVehicle ?? loadSetup()?.vehicle ?? defaultVehicle());
   const [orders, setOrders] = useState<OrderState[]>(() => initialOrders ?? loadSetup()?.orders ?? [emptyOrder(1)]);
+  // Рейс ERP, из которого пришли заказы черновика: сохраняется вместе с ним, «Zurücksetzen» его
+  // сбрасывает. Переданный извне `initialOrders` — не сохранённый черновик, рейса у него нет.
+  const [trip, setTrip] = useState<TripRef | undefined>(() => (initialOrders ? undefined : loadSetup()?.trip));
+  // Последнее состояние заказов для `addZones`: ответ ERP приходит позже клика, а логист мог за это
+  // время править черновик — слияние обязано идти от того, что на экране сейчас, а не в момент клика.
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
   // Article catalogue (Task 8): saving a row's article goes through the DataProvider seam, so it
   // must tolerate rendering outside a provider (existing tests do this).
   const dp = useOptionalDataProvider();
@@ -258,8 +280,8 @@ export function SetupScreen({
     }
     // A save means the user edited the form: what is on screen is their draft, not the demo.
     setLoadedDemo(null);
-    saveSetup({ vehicle, orders });
-  }, [vehicle, orders]);
+    saveSetup({ vehicle, orders, ...(trip ? { trip } : {}) });
+  }, [vehicle, orders, trip]);
 
   // Deep-link импорта заказа (LKWkalk-s17): ссылка из ERPNext срабатывает ОДИН раз. Караулит ref, а
   // не пустой список зависимостей: StrictMode монтирует эффекты дважды, и без него разработочная
@@ -336,6 +358,8 @@ export function SetupScreen({
     skipNextSaveRef.current = true; // don't overwrite the saved draft with the demo
     setVehicle(d.vehicle);
     setOrders(d.orders);
+    // Демо замещает черновик целиком: рейс прежнего черновика к нему не относится.
+    setTrip(undefined);
     // Pin the strategy so the showcase is deterministic (4bj.12); rear loading makes the two-sided
     // fork-access position an effective constraint, so the feature is visible (4bj.13).
     onCalculate(
@@ -353,6 +377,7 @@ export function SetupScreen({
     if (typeof window !== 'undefined' && !window.confirm(tt('setup.resetConfirm'))) return;
     setVehicle(defaultVehicle());
     setOrders([emptyOrder(1)]);
+    setTrip(undefined);
     try {
       removeStored(SETUP_STORAGE_KEY);
     } catch {
@@ -381,6 +406,18 @@ export function SetupScreen({
 
   const addOrder = () =>
     setOrders((os) => [...os, emptyOrder(nextOrderNumber(os), nextColorIndex(os))]);
+
+  // Шаг выбора груза (ERP): слияние считается синхронно — вызывающему нужны счётчики сразу.
+  const lineRefs = useMemo(() => draftLineRefs(orders), [orders]);
+  const addZones: DraftImportApi['addZones'] = (zones, nextTrip) => {
+    const merged = mergeZonesIntoDraft(ordersRef.current, zones);
+    if (merged.orders !== ordersRef.current) {
+      ordersRef.current = merged.orders;
+      setOrders(merged.orders);
+    }
+    if (nextTrip) setTrip(nextTrip);
+    return { addedPositions: merged.addedPositions, skippedLineRefs: merged.skippedLineRefs };
+  };
   // Reorder an order in the list. List order = order priority → zones (strict) and packing queue
   // (densityFirst) follow it; the engine/contract are untouched (ADR 017). 4bj.11.
   // Скрытые карточки (ERP: заказ только из неразмещаемых строк) перескакиваются: иначе шаг на
@@ -616,6 +653,7 @@ export function SetupScreen({
         calcBlockedReasonId={calcBlocked ? CALC_BLOCKED_ID : undefined}
       />
       <main className="mx-auto max-w-[1120px] px-5 pb-6 sm:px-6 print:hidden">
+      {importSlot?.({ addZones, draftLineRefs: lineRefs })}
       {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать». */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
@@ -657,6 +695,19 @@ export function SetupScreen({
             ✕
           </button>
         </div>
+      )}
+
+      {/* Строка рейса над карточками (макет, блок 3): сколько заказов, штучных и неразмещаемых позиций. */}
+      {erp && trip && (
+        <p data-testid="trip-line" className="mb-3 text-caption text-muted">
+          {fillTemplate(tt('setup.tripLine'), {
+            tripId: trip.tripId,
+            date: trip.loadingDate ? formatIsoDate(trip.loadingDate, locale) : '—',
+            orders: cards.length,
+            pieces: orders.reduce((n, o) => n + o.positions.filter((p) => !p.unplaceable).length, 0),
+            other: orders.reduce((n, o) => n + o.positions.filter((p) => p.unplaceable).length, 0),
+          })}
+        </p>
       )}
 
       {/* Master-detail (spec §7): order cards + the selected position's rules panel. From xl

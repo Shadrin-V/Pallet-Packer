@@ -12,6 +12,7 @@ import {
 import { LocaleProvider } from './i18n/LocaleContext';
 import { useHost } from './host/HostContext';
 import { ErpTopBar } from './erp/ErpTopBar';
+import { ErpCargoPicker } from './erp/ErpCargoPicker';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 import { EmptyPlan } from './screens/components/EmptyPlan';
@@ -191,6 +192,8 @@ export function App() {
         onLoadingModeChange={chooseLoadingMode}
         onOrderGroupingChange={chooseOrderGrouping}
         hasManualEdits={hasManualEdits}
+        // Шаг выбора груза (макет, блоки 2 и 5) — только в сборке для ERP.
+        importSlot={host.kind === 'erp' ? (api) => <ErpCargoPicker source={host.source} api={api} /> : undefined}
       >
         {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until
             the first Berechnen it stands in as an empty state. There is no "back": the plan is
