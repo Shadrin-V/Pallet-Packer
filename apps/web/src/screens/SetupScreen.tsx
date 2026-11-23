@@ -10,6 +10,7 @@ import { fillTemplate } from './components/stackFormula';
 import { useT } from '../i18n/LocaleContext';
 import { Button } from '../ui/primitives';
 import { HeroHeader } from '../ui/HeroHeader';
+import { useHost } from '../host/HostContext';
 import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 import { DEMO_VARIANTS } from '../data/demo';
 import { useOptionalDataProvider } from '../data/DataProviderContext';
@@ -105,6 +106,9 @@ export function SetupScreen({
   children,
 }: SetupScreenProps) {
   const tt = useT();
+  // В ERP баннера нет (макет): логотип и имя пользователя — в верхней полосе хоста, язык и палитру
+  // задаёт хост, поэтому и переключателей тоже нет.
+  const host = useHost();
   // Через vehicleFromPreset (финальное ревью, находка 1): собранный вручную объект молча терял бы
   // `compartments`, если бы дефолтный пресет когда-нибудь стал многосоставным.
   const defaultVehicle = (): Vehicle => vehicleFromPreset(VEHICLE_PRESETS[0]);
@@ -549,7 +553,7 @@ export function SetupScreen({
     // только прокрутка уходила в ладеплан (спека §6 требует «всегда на виду»). print:hidden несут
     // setup-части сами (шапка, маячок, <main>): план печатается, а обёртка ничего не прячет.
     <div>
-      <HeroHeader />
+      {host.kind !== 'erp' && <HeroHeader />}
       {/* Маячок ПЕРЕД шапкой: пока он виден, шапка полная; уехал за верх — ужимается (§6).
           Наблюдаем за элементом, а не за скроллом — см. useStickyCompact. mt-6 воспроизводит
           прежний верхний паддинг <main> над шапкой; на печати маячок скрыт, чтобы его отступ не

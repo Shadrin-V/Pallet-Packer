@@ -103,6 +103,27 @@ describe('draftStorage', () => {
     expect(localStorage.getItem('ladungsplaner.u.anna%40firma.de.setup')).toBe('A3');
   });
 
+  it('пустой пользователь не привязывается: хранение остаётся непривязанным и запертым, ничего не удаляется', () => {
+    localStorage.setItem('ladungsplaner.setup', '{"anon":1}');
+    localStorage.setItem('ladungsplaner.u.anna%40firma.de.setup', '{"anna":1}');
+    bindDraftsToUser('');
+    expect(boundUser()).toBeNull();
+    writeStored('ladungsplaner.setup', 'X');
+    removeStored('ladungsplaner.setup');
+    expect(localStorage.getItem('ladungsplaner.setup')).toBe('{"anon":1}');
+    expect(localStorage.getItem('ladungsplaner.u.anna%40firma.de.setup')).toBe('{"anna":1}');
+    expect(localStorage.getItem('ladungsplaner.u..setup')).toBeNull();
+  });
+
+  it('пустой пользователь после привязки снимает её и запирает хранение', () => {
+    bindDraftsToUser('anna@firma.de');
+    bindDraftsToUser('');
+    expect(boundUser()).toBeNull();
+    writeStored('ladungsplaner.setup', 'X');
+    expect(localStorage.getItem('ladungsplaner.setup')).toBeNull();
+    expect(localStorage.getItem('ladungsplaner.u.anna%40firma.de.setup')).toBeNull();
+  });
+
   it('настройки вида после привязки тоже под пользователем', () => {
     bindDraftsToUser('boris@firma.de');
     writeStored('ladungsplaner.showTruck', 'false');

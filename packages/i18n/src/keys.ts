@@ -10,6 +10,17 @@ export const TRANSLATION_KEYS = [
   // Доступные имена контролов (не видимый текст)
   'a11y.localeSwitch',
 
+  // Оболочка ERP: верхняя полоса и состояния сессии (бид lp-erp-shell)
+  'erp.topbar.label',
+  'erp.backToErp',
+  'erp.session.loading',
+  'erp.session.expiredTitle',
+  'erp.session.expired',
+  'erp.session.login',
+  'erp.session.changed',
+  'erp.session.reload',
+  'erp.retry',
+
   // Setup screen (order/position editor)
   'setup.orders',
   'setup.addOrder',

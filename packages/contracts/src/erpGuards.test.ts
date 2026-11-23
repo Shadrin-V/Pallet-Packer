@@ -75,6 +75,13 @@ describe('ERP v1 response guards', () => {
     expect(parseErpSession(noToken)).toBeNull();
   });
 
+  it('сессия: пустой user или пустой csrfToken → null', () => {
+    const s = { user: 'anna@firma.de', fullName: 'Anna Muster', language: 'de', csrfToken: 't', appVersion: '0.21.567' };
+    expect(parseErpSession(s)).not.toBeNull();
+    expect(parseErpSession({ ...s, user: '' })).toBeNull();
+    expect(parseErpSession({ ...s, csrfToken: '' })).toBeNull();
+  });
+
   it('строка закупки: reason ⇔ placeable false', () => {
     const l = { lineRef: 'x', orderId: 'PUR-ORD-1', itemCode: 'A', itemName: 'A', openQuantity: 2.5, uom: 'Cubic Meter', placeable: true };
     expect(isOpenLine(l)).toBe(true);

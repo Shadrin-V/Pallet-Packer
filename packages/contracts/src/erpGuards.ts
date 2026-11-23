@@ -75,7 +75,8 @@ export function isOpenLine(x: unknown): x is OpenLine {
 export function parseErpSession(x: unknown): ErpSession | null {
   if (!isRecord(x)) return null;
   const { user, fullName, csrfToken, appVersion, language } = x;
-  if (typeof user !== 'string' || typeof fullName !== 'string') return null;
-  if (typeof csrfToken !== 'string' || typeof appVersion !== 'string') return null;
+  // Пустой user дал бы всем таким входам один общий префикс хранения; пустой токен — POST без CSRF.
+  if (!isNonEmptyString(user) || typeof fullName !== 'string') return null;
+  if (!isNonEmptyString(csrfToken) || typeof appVersion !== 'string') return null;
   return { user, fullName, language: language === 'ru' ? 'ru' : 'de', csrfToken, appVersion };
 }

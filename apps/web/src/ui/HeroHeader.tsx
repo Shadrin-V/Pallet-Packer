@@ -2,6 +2,7 @@
 // SCHÄFER brand head). Token-only. The faint pallet-grid SVG is a THEMATIC PLACEHOLDER: swap it for
 // a real image (<img>) or looped video (<video autoplay muted loop playsinline>) placed in
 // apps/web/public/ — keep it inside the same absolute layer with a readable overlay.
+import { logoUrl } from '../lib/logoUrl';
 import { useT } from '../i18n/LocaleContext';
 import { LocaleSwitch } from './LocaleSwitch';
 import { ThemeSwitch } from '../theme/ThemeSwitch';
@@ -22,7 +23,7 @@ export function HeroHeader() {
       </svg>
 
       <div className="relative mx-auto flex max-w-[1120px] flex-wrap items-center gap-x-4 gap-y-3 px-5 py-6 sm:flex-nowrap sm:px-6">
-        <img src="/logo.svg" alt={tt('ladeplan.brandName')} className="h-12 w-auto shrink-0 sm:h-14" />
+        <img src={logoUrl()} alt={tt('ladeplan.brandName')} className="h-12 w-auto shrink-0 sm:h-14" />
         <div className="min-w-0 flex-1 sm:flex-initial">
           <h1 className="text-title font-[650] leading-tight">{tt('app.title')}</h1>
           <p className="text-caption text-muted">{tt('app.subtitle')}</p>

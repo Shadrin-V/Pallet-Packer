@@ -60,6 +60,13 @@ function encodedUserOf(key: string): string | null {
 }
 
 export function bindDraftsToUser(nextUser: string): void {
+  // Пустой пользователь — не личность: все такие входы делили бы один префикс. Привязка снимается,
+  // хранение запирается, ничего не удаляется.
+  if (nextUser === '') {
+    user = null;
+    locked = true;
+    return;
+  }
   user = nextUser;
   locked = false;
   try {

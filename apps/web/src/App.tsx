@@ -10,6 +10,8 @@ import {
   type OrderGrouping,
 } from '@shadrin-v/engine';
 import { LocaleProvider } from './i18n/LocaleContext';
+import { useHost } from './host/HostContext';
+import { ErpTopBar } from './erp/ErpTopBar';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 import { EmptyPlan } from './screens/components/EmptyPlan';
@@ -67,6 +69,8 @@ function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Reco
 }
 
 export function App() {
+  // Хост ERP задаёт язык (из сессии, без записи в хранилище) и ставит свою верхнюю полосу.
+  const host = useHost();
   // Single page: SetupScreen stays mounted (its state never resets); the Ladeplan result renders
   // below it when a layout has been computed. Both survive a refresh via localStorage.
   // `transient` marks a Demo preview: shown in the UI but never persisted, so a reload returns to
@@ -170,7 +174,8 @@ export function App() {
   };
 
   return (
-    <LocaleProvider initial="de">
+    <LocaleProvider initial={host.kind === 'erp' ? host.session.language : 'de'} persist={host.kind !== 'erp'}>
+      {host.kind === 'erp' && <ErpTopBar fullName={host.session.fullName} />}
       {/* Setup is screen-only; printing yields just the Ladeplan document — print:hidden несут
           setup-части внутри SetupScreen, а не обёртка здесь: план передаётся ДЕТЬМИ SetupScreen
           (LKWkalk-9tq), чтобы липкая шапка «Настройки» и план делили одного родителя — sticky

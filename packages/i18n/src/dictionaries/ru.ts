@@ -9,6 +9,17 @@ export const ru: Dictionary = {
   // Двуязычно намеренно, значение совпадает с de — см. комментарий там же.
   'a11y.localeSwitch': 'Sprache / Язык',
 
+  // Оболочка ERP (бид lp-erp-shell); немецкие — макет, блоки 2 и 5.
+  'erp.topbar.label': 'Навигация ERP',
+  'erp.backToErp': 'Назад в ERP',
+  'erp.session.loading': 'Проверяем сессию ERP …',
+  'erp.session.expiredTitle': 'Вход в ERP истёк',
+  'erp.session.expired': 'Войди снова. Выбранные позиции и введённые размеры сохранятся в этой вкладке.',
+  'erp.session.login': 'Войти снова',
+  'erp.session.changed': 'В ERP вошёл другой пользователь. Перезагрузи страницу.',
+  'erp.session.reload': 'Перезагрузить страницу',
+  'erp.retry': 'Повторить',
+
   'setup.orders': 'Заказы',
   'setup.addOrder': 'Добавить заказ',
   'setup.addPosition': 'Добавить позицию',

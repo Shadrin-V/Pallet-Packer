@@ -10,6 +10,17 @@ export const de: Dictionary = {
   // локаль. Значение одинаково в de и ru — это не забытый перевод (LKWkalk-y5j, решение 7).
   'a11y.localeSwitch': 'Sprache / Язык',
 
+  // Оболочка ERP (бид lp-erp-shell); немецкие — макет, блоки 2 и 5.
+  'erp.topbar.label': 'ERP-Navigation',
+  'erp.backToErp': 'Zurück zum ERP',
+  'erp.session.loading': 'ERP-Sitzung wird geprüft …',
+  'erp.session.expiredTitle': 'Deine Anmeldung im ERP ist abgelaufen',
+  'erp.session.expired': 'Melde dich neu an. Gewählte Positionen und eingetragene Maße bleiben in diesem Tab erhalten.',
+  'erp.session.login': 'Neu anmelden',
+  'erp.session.changed': 'Im ERP ist jetzt ein anderer Benutzer angemeldet. Lade die Seite neu.',
+  'erp.session.reload': 'Seite neu laden',
+  'erp.retry': 'Erneut versuchen',
+
   'setup.orders': 'Aufträge',
   'setup.addOrder': 'Auftrag hinzufügen',
   'setup.addPosition': 'Position hinzufügen',
