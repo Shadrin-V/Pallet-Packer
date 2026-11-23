@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   calculateLayout,
   findGeometryViolations,
@@ -13,6 +13,8 @@ import { LocaleProvider } from './i18n/LocaleContext';
 import { useHost } from './host/HostContext';
 import { ErpTopBar } from './erp/ErpTopBar';
 import { ErpCargoPicker } from './erp/ErpCargoPicker';
+import { ERP_STEP_ANCHORS, ErpSteps } from './erp/ErpSteps';
+import { ERP_KEY_OVERRIDES } from './erp/erpLabels';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 import { EmptyPlan } from './screens/components/EmptyPlan';
@@ -142,6 +144,11 @@ export function App() {
   // проходит через App, а не остаётся внутри плана.
   const [hasManualEdits, setHasManualEdits] = useState(false);
 
+  // Сколько размещаемых позиций в черновике «Настройки» — для полосы шагов ERP. Знает об этом
+  // SetupScreen (черновик живёт там), поэтому число поднимается сюда, к верхней полосе.
+  const [draftPositions, setDraftPositions] = useState(0);
+  const onDraftStats = useCallback((s: { positions: number }) => setDraftPositions(s.positions), []);
+
   useEffect(() => {
     try {
       if (result?.transient) return; // preview: leave the previously saved plan untouched
@@ -206,9 +213,32 @@ export function App() {
     }
   };
 
+  const erp = host.kind === 'erp';
+  const plan = result ? (
+    <LadeplanScreen
+      load={result.load}
+      layout={result.layout}
+      orderColors={result.orderColors}
+      context={result.context}
+      onManualEditsChange={setHasManualEdits}
+    />
+  ) : (
+    <EmptyPlan />
+  );
+
   return (
-    <LocaleProvider initial={host.kind === 'erp' ? host.session.language : 'de'} persist={host.kind !== 'erp'}>
-      {host.kind === 'erp' && <ErpTopBar fullName={host.session.fullName} />}
+    // В ERP подписи говорят словами макета («Bestellungen», «Ladeplan berechnen») — подменой ключей.
+    <LocaleProvider
+      initial={host.kind === 'erp' ? host.session.language : 'de'}
+      persist={!erp}
+      overrides={erp ? ERP_KEY_OVERRIDES : undefined}
+    >
+      {host.kind === 'erp' && (
+        <ErpTopBar
+          fullName={host.session.fullName}
+          steps={<ErpSteps positions={draftPositions} hasPlan={!!result} />}
+        />
+      )}
       {/* Setup is screen-only; printing yields just the Ladeplan document — print:hidden несут
           setup-части внутри SetupScreen, а не обёртка здесь: план передаётся ДЕТЬМИ SetupScreen
           (LKWkalk-9tq), чтобы липкая шапка «Настройки» и план делили одного родителя — sticky
@@ -226,20 +256,17 @@ export function App() {
         hasManualEdits={hasManualEdits}
         // Шаг выбора груза (макет, блоки 2 и 5) — только в сборке для ERP.
         importSlot={host.kind === 'erp' ? (api) => <ErpCargoPicker source={host.source} api={api} /> : undefined}
+        erpMode={erp}
+        onDraftStats={erp ? onDraftStats : undefined}
       >
         {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until
             the first Berechnen it stands in as an empty state. There is no "back": the plan is
-            removed by Zurücksetzen, which says so and asks first. */}
-        {result ? (
-          <LadeplanScreen
-            load={result.load}
-            layout={result.layout}
-            orderColors={result.orderColors}
-            context={result.context}
-            onManualEditsChange={setHasManualEdits}
-          />
+            removed by Zurücksetzen, which says so and asks first.
+            В ERP план обёрнут якорем шага «Ladeplan» полосы шагов. */}
+        {erp ? (
+          <div id={ERP_STEP_ANCHORS.plan} className="scroll-mt-24">{plan}</div>
         ) : (
-          <EmptyPlan />
+          plan
         )}
       </SetupScreen>
     </LocaleProvider>

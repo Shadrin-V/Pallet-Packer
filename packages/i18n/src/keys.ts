@@ -20,6 +20,17 @@ export const TRANSLATION_KEYS = [
   'erp.session.changed',
   'erp.session.reload',
   'erp.retry',
+  // Оболочка экранов ERP по макету: полоса шагов, пустое состояние, подписи (бид lp-erp-steps)
+  'erp.step.label',
+  'erp.step.select',
+  'erp.step.setup',
+  'erp.step.plan',
+  'erp.empty.title',
+  'erp.empty.text',
+  'erp.empty.action',
+  'erp.action.changePositions',
+  'erp.label.orders',
+  'erp.label.calculate',
 
   // Setup screen (order/position editor)
   'setup.orders',

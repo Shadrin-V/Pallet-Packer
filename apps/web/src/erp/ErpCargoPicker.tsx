@@ -174,7 +174,7 @@ export function ErpCargoPicker({ source, api }: ErpCargoPickerProps) {
   const qty = (n: number) => formatSourceQuantity(n, locale);
 
   return (
-    <section id={PICKER_SECTION_ID} aria-label={tt('picker.title')} className="mb-6 flex flex-col gap-4 print:hidden">
+    <section id={PICKER_SECTION_ID} aria-label={tt('picker.title')} className="mb-6 flex scroll-mt-24 flex-col gap-4 print:hidden">
       {/* Reise laden */}
       <div className="flex flex-col gap-3 rounded-card bg-card p-4 shadow-card">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

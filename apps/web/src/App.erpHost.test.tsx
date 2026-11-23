@@ -97,7 +97,7 @@ describe('App: контекст плана (сборка для ERP)', () => {
       writeStored('ladungsplaner.setup', JSON.stringify({ vehicle: load.vehicle, orders: [order], trip: context.trip }));
       render(<HostProvider value={{ kind: 'erp', session: SESSION, source: fake() }}><App /></HostProvider>);
       expect(screen.queryByText('Reise LKW-12866 · Verladung 24.11.2026')).toBeNull();
-      await userEvent.click(screen.getAllByRole('button', { name: 'Berechnen' })[0]);
+      await userEvent.click(screen.getAllByRole('button', { name: 'Ladeplan berechnen' })[0]);
       expect(screen.getByText('Reise LKW-12866 · Verladung 24.11.2026')).toBeInTheDocument();
       expect(within(screen.getAllByRole('table').at(-1)!).getByText('EUR101')).toBeInTheDocument();
       const stored: unknown = JSON.parse(readStored('ladungsplaner.planContext') ?? 'null');

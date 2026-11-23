@@ -177,11 +177,13 @@ describe('main.erp — точка входа сборки для ERP', () => {
     stubFetch({ sitzung: () => ok(SESSION), bestellpositionen: () => ok([]), reise: () => new Response('{}', { status: 401 }) });
     await import('./main.erp');
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    // Программа смонтирована — иначе проверка «после сигнала кнопки нет» ничего не доказывала бы.
+    expect(screen.getAllByRole('button', { name: 'Ladeplan berechnen' }).length).toBeGreaterThan(0);
     await act(async () => {
       await expect(theProvider().loadTrip('LKW-2026-00412')).rejects.toEqual({ code: 'ERR_NOT_LOGGED_IN' });
     });
     expect(screen.getByRole('link', { name: 'Neu anmelden' })).toBeInTheDocument();
-    expect(screen.queryAllByRole('button', { name: 'Berechnen' })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: 'Ladeplan berechnen' })).toHaveLength(0);
   });
 
   it('сигнал «вошёл другой пользователь» провайдера доходит до корня: экран перезагрузки', async () => {

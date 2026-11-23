@@ -56,7 +56,7 @@ beforeEach(() => {
 
 const renderRoot = () => render(<ErpRoot source={source} subscribeExpired={signal.subscribe} subscribeChanged={changed.subscribe} />);
 /** Признак смонтированной программы: кнопка расчёта в шапке «Настройки». */
-const appMounted = () => screen.queryAllByRole('button', { name: 'Berechnen' }).length > 0;
+const appMounted = () => screen.queryAllByRole('button', { name: 'Ladeplan berechnen' }).length > 0;
 const ladungsplanerKeys = () => Object.keys(localStorage).filter((k) => k.startsWith('ladungsplaner.'));
 
 describe('ErpRoot', () => {

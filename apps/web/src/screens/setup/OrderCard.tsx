@@ -21,6 +21,8 @@ export interface OrderCardProps {
   canMoveDown: boolean;
   onMove: (dir: -1 | 1) => void;
   onOrderIdChange: (v: string) => void;
+  /** Номер заказа только для чтения (сборка для ERP: номер приходит из ERP, макет). */
+  orderIdReadOnly?: boolean;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
   armed: { kind: 'position' | 'order'; key: string } | null;
@@ -55,6 +57,7 @@ export function OrderCard({
   canMoveDown,
   onMove,
   onOrderIdChange,
+  orderIdReadOnly = false,
   onPositionChange,
   onAddPosition,
   armed,
@@ -83,7 +86,18 @@ export function OrderCard({
           overflow-hidden section, same fix already applied to the position row below. */}
       <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
         <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
-        <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
+        {orderIdReadOnly ? (
+          // Поле, а не текст: номер остаётся выделяемым и копируемым, скринридер называет его так же.
+          <input
+            type="text"
+            readOnly
+            aria-label={tt('field.orderId')}
+            value={order.orderId}
+            className="min-w-0 rounded-ctl border border-transparent bg-transparent px-2 py-1.5 text-body font-bold text-ink outline-none focus-visible:border-brand"
+          />
+        ) : (
+          <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
+        )}
         {/* Шапка заказа ERP (макет, блок 3): поставщик и, при прямой поставке, покупатель. */}
         {erp && order.partner && <span className="text-caption text-muted">{order.partner}</span>}
         {erp && order.customer && (

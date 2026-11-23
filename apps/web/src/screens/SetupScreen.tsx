@@ -20,6 +20,8 @@ import type { Article, OrderZone } from '@shadrin-v/contracts';
 import { draftLineRefs, mergeZonesIntoDraft } from '../erp/zoneDraft';
 import { formatIsoDate } from '../erp/dateFormat';
 import { planContextFrom, type PlanContext } from '../erp/planContext';
+import { ErpEmptyState, focusTripInput } from '../erp/ErpEmptyState';
+import { ERP_STEP_ANCHORS } from '../erp/ErpSteps';
 import { OrderCard } from './setup/OrderCard';
 import { LoadSummary } from './setup/LoadSummary';
 import { RulesPanel } from './setup/RulesPanel';
@@ -83,6 +85,11 @@ export interface SetupScreenProps {
   children?: ReactNode;
   /** Шаг выбора груза над заказами (сборка для ERP); без пропа его нет. */
   importSlot?: (api: DraftImportApi) => ReactNode;
+  /** Оболочка экранов сборки для ERP (макет; App ставит при хосте ERP): без Demo и ручного номера
+   *  заказа, кнопка «Positionen ändern», пустое состояние вместо нетронутой заготовки. */
+  erpMode?: boolean;
+  /** Сколько размещаемых позиций в черновике (нетронутая заготовка — ноль) — для полосы шагов. */
+  onDraftStats?: (s: { positions: number }) => void;
 }
 
 /** Причина блокировки расчёта в сборке для ERP — цель `aria-describedby` обеих кнопок расчёта. */
@@ -125,7 +132,7 @@ interface Selection {
 export function SetupScreen({
   initialVehicle, initialOrders, onCalculate, onReset,
   loadingMode, orderGrouping, onLoadingModeChange, onOrderGroupingChange, hasManualEdits = false,
-  children, importSlot,
+  children, importSlot, erpMode = false, onDraftStats,
 }: SetupScreenProps) {
   const tt = useT();
   const { locale } = useLocale();
@@ -411,6 +418,15 @@ export function SetupScreen({
   const addOrder = () =>
     setOrders((os) => [...os, emptyOrder(nextOrderNumber(os), nextColorIndex(os))]);
 
+  // Полоса шагов (ERP): нетронутая заготовка — не позиция, неразмещаемые строки в план не идут.
+  const pristine = isPristineDraft(orders);
+  const placeablePositions = pristine
+    ? 0
+    : orders.reduce((n, o) => n + o.positions.filter((p) => !p.unplaceable).length, 0);
+  useEffect(() => {
+    onDraftStats?.({ positions: placeablePositions });
+  }, [placeablePositions, onDraftStats]);
+
   // Шаг выбора груза (ERP): слияние считается синхронно — вызывающему нужны счётчики сразу.
   const lineRefs = useMemo(() => draftLineRefs(orders), [orders]);
   const addZones: DraftImportApi['addZones'] = (zones, nextTrip) => {
@@ -450,6 +466,12 @@ export function SetupScreen({
   // inside the card instead — riding out to this button would make a keyboard user tab back through
   // the Auftrags-ID, the reorder buttons and every surviving row just to resume editing (LKWkalk-78x).
   const addOrderRef = useRef<HTMLButtonElement>(null);
+  /** Куда уходит фокус, когда карточки больше нет. В ERP кнопки «+ Auftrag hinzufügen» нет — фокус
+   *  уходит в поле рейса шага выбора груза, а не на <body>. */
+  const focusAfterCardGone = () => {
+    if (erpMode) focusTripInput();
+    else addOrderRef.current?.focus();
+  };
 
   /** Remove one position from the calculation. The catalogue article is untouched — this says
    *  "not on this truck", not "no such article". An order that loses its last position goes too:
@@ -483,7 +505,7 @@ export function SetupScreen({
       return next.length > 0 ? next : [emptyOrder(1)];
     });
     if (neighbour) nameRefs.current.get(neighbour.id)?.focus();
-    else addOrderRef.current?.focus();
+    else focusAfterCardGone();
   };
 
   /** Remove a whole order. The last one is replaced by a fresh empty order, never left empty. */
@@ -493,7 +515,7 @@ export function SetupScreen({
       const next = os.filter((o) => o.key !== okey);
       return next.length > 0 ? next : [emptyOrder(1)];
     });
-    addOrderRef.current?.focus();
+    focusAfterCardGone();
   };
 
   // Save (or update) a position's dimensions/rules as a catalogue article. No-op outside a
@@ -652,7 +674,8 @@ export function SetupScreen({
         onLoadingModeChange={onLoadingModeChange}
         onOrderGroupingChange={onOrderGroupingChange}
         onVehicleChange={setVehicle}
-        onDemo={handleDemo}
+        onDemo={erpMode ? undefined : handleDemo}
+        onChangePositions={erpMode ? focusTripInput : undefined}
         onReset={handleReset}
         onCalculate={handleCalculate}
         calcBlocked={calcBlocked}
@@ -660,11 +683,16 @@ export function SetupScreen({
       />
       <main className="mx-auto max-w-[1120px] px-5 pb-6 sm:px-6 print:hidden">
       {importSlot?.({ addZones, draftLineRefs: lineRefs })}
-      {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать». */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
-        <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
-      </div>
+      {/* Якорь шага «Einrichten» (ERP): шаг выбора груза стоит выше в том же <main>. */}
+      {erpMode && <div id={ERP_STEP_ANCHORS.setup} className="scroll-mt-24" />}
+      {/* Orders. «Демо» уехало в шапку экрана (§6) — там же, где «Сброс» и «Рассчитать».
+          В ERP номера заказов приходят из ERP: ручного «+ Auftrag hinzufügen» нет (макет). */}
+      {!(erpMode && pristine) && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-eyebrow uppercase font-semibold text-faint">{tt('setup.orders')}</span>
+          {!erpMode && <Button ref={addOrderRef} variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>}
+        </div>
+      )}
       {loadedDemo !== null && (
         // What this demo IS comes first; how to get the next one is an aside at the end (QA).
         <p className="mb-3 text-caption text-muted" data-testid="demo-caption">
@@ -727,7 +755,9 @@ export function SetupScreen({
             (row divider ≈ 0, header 10px) by enough to be seen without counting — 32px does, 16px
             did not. Scale value, not a hand-picked number. */}
         <div className="flex min-w-0 flex-1 flex-col gap-8">
-          {cards.map((o, oi) => (
+          {/* ERP, нетронутая заготовка: вместо пустой карточки — пустое состояние макета (блок 5). */}
+          {erpMode && pristine && <ErpEmptyState />}
+          {!(erpMode && pristine) && cards.map((o, oi) => (
             <OrderCard
               key={o.key}
               order={o}
@@ -738,6 +768,7 @@ export function SetupScreen({
               canMoveDown={oi < cards.length - 1}
               onMove={(dir) => moveOrder(o.key, dir)}
               onOrderIdChange={(orderId) => patchOrder(o.key, { orderId })}
+              orderIdReadOnly={erpMode}
               onPositionChange={(pid, patch) => patchPosition(o.key, pid, patch)}
               onAddPosition={() => addPosition(o.key)}
               armed={armed}
@@ -859,9 +890,11 @@ export function SetupScreen({
 
       {/* Duplicate add-order action below the last order (E10). «Сброс» и «Рассчитать» отсюда
           уехали в липкую шапку (§6): под шестью заказами до них надо было домотать. */}
-      <div className="mt-3 flex justify-center">
-        <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
-      </div>
+      {!erpMode && (
+        <div className="mt-3 flex justify-center">
+          <Button variant="ghost" onClick={addOrder}>+ {tt('setup.addOrder')}</Button>
+        </div>
+      )}
       {/* Second "Berechnen", next to the plan it produces (Task 7). Not a duplication oversight: it
           used to live exactly here, was moved into the sticky header (§6) because under six orders
           you had to scroll a long way to reach it, and is back now for the opposite reason — the
