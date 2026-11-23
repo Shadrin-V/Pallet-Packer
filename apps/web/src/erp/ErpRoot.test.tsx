@@ -75,6 +75,7 @@ describe('ErpRoot', () => {
     source.session.mockResolvedValue(SESSION); // de
     renderRoot();
     expect(await screen.findByRole('link', { name: 'Zurück zum ERP' })).toBeInTheDocument();
+    expect(appMounted()).toBe(true);
     expect(document.documentElement.lang).toBe('de');
   });
 
@@ -169,6 +170,7 @@ describe('ErpRoot', () => {
     await act(async () => {});
     expect(source.session).toHaveBeenCalledTimes(3);
     expect(screen.getByRole('link', { name: 'Zurück zum ERP' })).toBeInTheDocument();
+    expect(appMounted()).toBe(true);
   });
 
   it('фокус при истёкшей сессии → экран входа', async () => {
@@ -208,6 +210,7 @@ describe('ErpRoot', () => {
       window.dispatchEvent(new StorageEvent('storage', { key: null }));
     });
     expect(screen.getByRole('link', { name: 'Zurück zum ERP' })).toBeInTheDocument();
+    expect(appMounted()).toBe(true);
   });
 
   it('возврат на вкладку (visibilitychange) тоже сверяет пользователя', async () => {
@@ -225,6 +228,7 @@ describe('ErpRoot', () => {
     source.session.mockResolvedValue({ ...SESSION, user: 'boris@firma.de', fullName: 'Boris Beispiel' });
     renderRoot();
     await screen.findByRole('link', { name: 'Zurück zum ERP' });
+    expect(appMounted()).toBe(true);
     expect(screen.queryByDisplayValue('PUR-ORD-ANNA')).toBeNull();
     expect(screen.queryByDisplayValue('PUR-ORD-ANON')).toBeNull();
     expect(localStorage.getItem('ladungsplaner.setup')).toBeNull();
@@ -236,6 +240,7 @@ describe('ErpRoot', () => {
     renderRoot();
     await userEvent.click(await screen.findByRole('button', { name: 'Erneut versuchen' }));
     expect(await screen.findByRole('link', { name: 'Zurück zum ERP' })).toBeInTheDocument();
+    expect(appMounted()).toBe(true);
   });
 
   it('сигнал «сессия сменилась» от провайдера → экран «другой пользователь», провайдер закрыт', async () => {

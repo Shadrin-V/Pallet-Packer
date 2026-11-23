@@ -46,7 +46,9 @@ export const ERP_API_PREFIX = '/api/method/schaefer_erp.ladungsplaner.api.';
 
 export interface FrappeDataProviderOptions {
   fetchImpl?: typeof fetch;
-  /** Вызывается ровно один раз на каждый итоговый `ERR_NOT_LOGGED_IN`. */
+  /** Вызывается ровно один раз на каждый итоговый `ERR_NOT_LOGGED_IN` ОТКРЫТОГО провайдера. После закрытия
+   *  (`close` или смена пользователя) намеренно не вызывается: отказ закрытого провайдера — не новое
+   *  истечение, сигнал уже был или его заменила смена пользователя. */
   onSessionExpired?: () => void;
   /** Вызывается один раз: `sitzung` вернул другого пользователя, чем первая сессия. */
   onSessionChanged?: () => void;
