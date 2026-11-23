@@ -91,6 +91,45 @@ describe('order routes (adapter configured)', () => {
       orderId: 'SO-2',
       positions: [{ itemCode: 'ABB101', itemName: 'Palette', quantity: 10 }],
     });
+    // rolled-back seeding: the zone is exactly as before, no catalogue fields leak in
+    const pos = res.json().positions[0];
+    expect(pos).not.toHaveProperty('rules');
+    expect(pos).not.toHaveProperty('nestStepPairwise');
+    expect(pos).not.toHaveProperty('nestStepSequential');
+    await app.close();
+  });
+
+  it('import returns the catalogue rules in the position', async () => {
+    const db = openDb(':memory:');
+    upsertArticle(
+      db,
+      { itemCode: 'ABB101', name: 'Palette', length: 1200, width: 800, height: 144, nestStepPairwise: 22,
+        rules: { state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'none', maxTiers: 4 } },
+      { now: 'x' },
+    );
+    const app = buildApp({ erpnext: fakeErpnext, db });
+    const pos = (await app.inject({ method: 'GET', url: '/api/orders/SAL-ORD-1' })).json().positions[0];
+    expect(pos.rules).toEqual({ state: 'verschachtelt', nestingMode: 'pairwise', rotation: 'none', maxTiers: 4 });
+    expect(pos.nestStepPairwise).toBe(22);
+    expect(pos).not.toHaveProperty('nestStepSequential');
+    expect(pos.dimensionsSource).toBe('manual');
+    expect(pos).not.toHaveProperty('length');
+    await app.close();
+  });
+
+  it('a new article gets the catalogue defaults', async () => {
+    const db = openDb(':memory:');
+    const app = buildApp({ erpnext: fakeErpnext, db });
+    const pos = (await app.inject({ method: 'GET', url: '/api/orders/SAL-ORD-1' })).json().positions[0];
+    expect(pos.rules).toEqual({ state: 'entschachtelt', nestingMode: 'pairwise', rotation: 'yawOnly' });
+    await app.close();
+  });
+
+  it('without a db there are no rules in the response', async () => {
+    const app = buildApp({ erpnext: fakeErpnext });
+    const pos = (await app.inject({ method: 'GET', url: '/api/orders/SAL-ORD-1' })).json().positions[0];
+    expect(pos).not.toHaveProperty('rules');
+    expect(pos).not.toHaveProperty('nestStepPairwise');
     await app.close();
   });
 });
