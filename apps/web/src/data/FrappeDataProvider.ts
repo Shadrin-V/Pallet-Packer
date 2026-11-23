@@ -18,7 +18,10 @@
 // - Пока идёт любая проверка сессии (`sitzung`: перепроверка при возврате во вкладку, новый токен после 400,
 //   перепроверка после 403), новые запросы в сеть не уходят — ждут её исхода. Тот же пользователь — уходят;
 //   другой — отклоняются `ERR_SESSION_CHANGED` без сети. Иначе быстрый GET старой вкладки успел бы прочитать
-//   данные под сессией нового сотрудника до перехода на экран «вошёл другой пользователь».
+//   данные под сессией нового сотрудника до перехода на экран «вошёл другой пользователь». Проверка
+//   сорвалась (сеть, сбой сервера, кривой ответ) — пользователь НЕ подтверждён: ожидавшие запросы
+//   отклоняются той же ошибкой, что получила проверка, без сети, а следующий новый запрос сначала снова
+//   проверяет сессию.
 // Количество, единицы и порядок провайдер не трогает — это решает сервер (§4 п. 2–3, 8).
 import {
   isOpenLine,
@@ -188,6 +191,8 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
   private closedCode: string | undefined;
   /** Идущие проверки сессии (исход не важен — только «закончилась»); пока они есть, новые запросы ждут. */
   private readonly sessionChecks = new Set<Promise<unknown>>();
+  /** Ошибка последней сорвавшейся проверки сессии; есть — пользователь не подтверждён. */
+  private checkFailure: { error: unknown } | undefined;
 
   constructor(opts: FrappeDataProviderOptions = {}) {
     // Через globalThis: браузер требует `window` получателем `fetch` (LKWkalk-7wb).
@@ -207,9 +212,7 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
 
   private async send(method: string, call: Call): Promise<Reply> {
     // Сам `sitzung` не ждёт — он и есть проверка. Без идущей проверки — без лишнего ожидания.
-    if (method !== 'sitzung') {
-      while (this.sessionChecks.size > 0) await Promise.all(this.sessionChecks);
-    }
+    if (method !== 'sitzung') await this.confirmedUser();
     // И здесь, а не только на входе публичного метода: цепочка, начатая до закрытия, после него не шлёт.
     if (this.closedCode !== undefined) throw this.closedError();
     const headers: Record<string, string> = { Accept: 'application/json' };
@@ -261,10 +264,31 @@ export class FrappeDataProvider implements DataProvider, ErpSource {
     return { code: 'ERR_HTTP', details: { status: 403 } };
   }
 
+  /** Пропустить запрос в сеть, только когда пользователь подтверждён: дождаться идущих проверок;
+   *  ждал, а проверка сорвалась, — отказ её ошибкой; проверка сорвалась раньше — проверить заново. */
+  private async confirmedUser(): Promise<void> {
+    let waited = false;
+    while (this.sessionChecks.size > 0) {
+      waited = true;
+      await Promise.all(this.sessionChecks);
+    }
+    if (this.closedCode !== undefined) throw this.closedError();
+    if (this.checkFailure === undefined) return;
+    if (waited) throw this.checkFailure.error;
+    await this.fetchSession();
+  }
+
   /** Проверка сессии, на время которой новые запросы придержаны (см. `send`). */
   private fetchSession(): Promise<ErpSession> {
     const check = this.readSession();
-    const settled = check.catch(() => undefined);
+    const settled = check.then(
+      () => {
+        this.checkFailure = undefined;
+      },
+      (error: unknown) => {
+        this.checkFailure = { error };
+      },
+    );
     this.sessionChecks.add(settled);
     void settled.then(() => this.sessionChecks.delete(settled));
     return check;

@@ -113,7 +113,8 @@ export function ErpRoot({ source, subscribeExpired, subscribeChanged }: ErpRootP
           if (readyUser.current !== user) return;
           if (isSessionChanged(error)) leave('changed');
           else if (isSessionExpired(error)) leave('expired');
-          // прочие сбои проверки не мешают работать
+          // прочие сбои проверки программу не закрывают: провайдер отклонил ожидавшие запросы той же
+          // ошибкой, а следующий запрос сначала снова проверит сессию (FrappeDataProvider, `confirmedUser`)
         },
       );
     };

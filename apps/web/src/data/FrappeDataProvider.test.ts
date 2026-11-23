@@ -506,6 +506,31 @@ describe('FrappeDataProvider — смена пользователя (контр
     expect(f.mock.calls[2][0]).toBe(API + 'bestellpositionen');
   });
 
+  it('перепроверка упала сетью: ожидающий GET в сеть не ушёл и получил ту же сетевую ошибку; следующий запрос снова проверяет сессию', async () => {
+    const offline = new TypeError('Failed to fetch');
+    let failRecheck: (e: unknown) => void = () => {};
+    const f = vi.fn()
+      .mockResolvedValueOnce(ok(SESSION))
+      .mockImplementationOnce(() => new Promise<Response>((_, reject) => { failRecheck = reject; }))
+      .mockResolvedValueOnce(ok(SESSION))
+      .mockImplementation(() => Promise.resolve(ok([])));
+    const dp = new FrappeDataProvider({ fetchImpl: f });
+    await dp.session();
+    const recheck = dp.session();
+    const waiting = dp.listOpenLines();
+    await Promise.resolve();
+    failRecheck(offline);
+    await expect(recheck).rejects.toBe(offline);
+    await expect(waiting).rejects.toBe(offline);
+    expect(f.mock.calls.map(([url]) => url)).toEqual([API + 'sitzung', API + 'sitzung']);
+    // Пользователь не подтверждён: новый запрос сначала снова спрашивает sitzung, потом уходит.
+    await expect(dp.listOpenLines()).resolves.toEqual([]);
+    expect(f.mock.calls.map(([url]) => url)).toEqual([API + 'sitzung', API + 'sitzung', API + 'sitzung', API + 'bestellpositionen']);
+    // Подтверждён — дальше без лишних sitzung.
+    await dp.listOpenLines();
+    expect(f).toHaveBeenCalledTimes(5);
+  });
+
   it('тот же пользователь при перепроверке — как раньше: новый токен берётся', async () => {
     const f = vi.fn().mockResolvedValueOnce(ok(SESSION)).mockResolvedValueOnce(ok({ ...SESSION, csrfToken: 'tok-2' })).mockResolvedValueOnce(ok([]));
     const dp = new FrappeDataProvider({ fetchImpl: f });
