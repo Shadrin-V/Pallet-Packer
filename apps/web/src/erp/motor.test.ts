@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import fc from 'fast-check';
 import { calculateLayout } from '@shadrin-v/engine';
+import { t, type TranslationKey } from '@shadrin-v/i18n';
 import { describe, expect, it } from 'vitest';
 import {
   CAPACITY_API_VERSION,
@@ -160,5 +164,20 @@ describe('presets re-export', () => {
       }
     }
     expect(COMPARTMENT_LABELS_DE['vehicle.compartment.tractor']).toBe('Motorwagen');
+  });
+
+  // Единый источник — словарь de: фасад держит свою константу (без i18n в lkw_motor.js, замок 🔬 У2),
+  // тест следит, что она равна словарю и ровно на ключи отсеков пресетов.
+  it('COMPARTMENT_LABELS_DE equals the de dictionary, exactly the preset compartment keys', () => {
+    const keys = [...new Set(VEHICLE_PRESETS.flatMap((p) => (p.compartments ?? []).map((c) => c.name!)))].sort();
+    expect(keys.length).toBeGreaterThan(0);
+    expect(Object.keys(COMPARTMENT_LABELS_DE).sort()).toEqual(keys);
+    for (const key of keys) expect(COMPARTMENT_LABELS_DE[key]).toBe(t(key as TranslationKey, 'de'));
+    expect(Object.isFrozen(COMPARTMENT_LABELS_DE)).toBe(true);
+  });
+
+  it('the facade source imports nothing at runtime from @shadrin-v/i18n', () => {
+    const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'motor.ts'), 'utf8');
+    expect(src).not.toMatch(/^import\s+(?!type\b)[^;]*['"]@shadrin-v\/i18n['"]/m);
   });
 });

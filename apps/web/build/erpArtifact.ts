@@ -104,11 +104,11 @@ export function findHostAccess(js: string): string[] {
 /**
  * Самодостаточность `lkw_motor.js`: ни одной внешней ссылки модуля — `import` в любой форме (статический,
  * `import(…)`, `import.meta`) и реэкспорт `export … from`. Свой `export { … }` без `from` разрешён.
- * Ни одна форма `import` в коде не стоит после `.` или буквы, поэтому сегмент имени через точку не
- * считается: в бандл вшиты словари i18n (подписи отсеков), и их ключи `setup.import.*` — данные.
+ * Замок буквальный (🔬 У2): считается любое слово `import`, и в данных тоже — не сужать. Поэтому фасад не
+ * тянет словари i18n (их ключи `setup.import.*`): подписи отсеков — своя константа `COMPARTMENT_LABELS_DE`.
  */
 export function findModuleLinks(js: string): string[] {
-  const re = /(?<![\w$.])import\b|\bexport\s*(?:\*|\{[^}]*\})\s*(?:as\s+[\w$]+\s*)?from\s*["'`]/g;
+  const re = /\bimport\b|\bexport\s*(?:\*|\{[^}]*\})\s*(?:as\s+[\w$]+\s*)?from\s*["'`]/g;
   return [...js.matchAll(re)].map((m) => m[0]);
 }
 

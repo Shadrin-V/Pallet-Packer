@@ -12,7 +12,6 @@ import {
   maxUnitsInVehicle,
   type CapacityOptions,
 } from '@shadrin-v/engine';
-import { t, type TranslationKey } from '@shadrin-v/i18n';
 import { VEHICLE_PRESETS, vehicleFromPreset } from '../data/presets';
 
 export { ENGINE_CONTRACT_VERSION, maxUnitsInVehicle, VEHICLE_PRESETS, vehicleFromPreset };
@@ -26,14 +25,15 @@ export const FACADE_ERROR_CODES = [ERR_INVALID_INPUT] as const;
 
 export const DEFAULT_VEHICLE_PRESET_KEY: string = VEHICLE_PRESETS[0].key;
 
-/** i18n compartment keys used by the presets -> German text. */
-export const COMPARTMENT_LABELS_DE: Readonly<Record<string, string>> = Object.freeze(
-  Object.fromEntries(
-    VEHICLE_PRESETS.flatMap((p) => p.compartments ?? [])
-      .filter((c) => c.name !== undefined)
-      .map((c) => [c.name as string, t(c.name as TranslationKey, 'de')]),
-  ),
-);
+/**
+ * i18n compartment keys used by the presets -> German text. A local constant, not `t()`: importing
+ * @shadrin-v/i18n would bundle both full dictionaries into lkw_motor.js (their `setup.import.*` keys trip
+ * the literal `import` lock). Single source stays the de dictionary — motor.test.ts locks equality.
+ */
+export const COMPARTMENT_LABELS_DE: Readonly<Record<string, string>> = Object.freeze({
+  'vehicle.compartment.tractor': 'Motorwagen',
+  'vehicle.compartment.trailer': 'Anhänger',
+});
 
 export type CapacityError = { code: string; details?: unknown };
 export type CapacityResult =

@@ -82,11 +82,10 @@ describe('lkw_motor.js: замки', () => {
     expect(findModuleLinks('const important=1,imported=2,reimport=3;export{important};')).toEqual([]);
   });
 
-  it('самодостаточность: ключи словаря вида "setup.import.failed" и свойство x.import — не ссылки модуля', () => {
-    // Словари i18n вшиты в lkw_motor.js (подписи отсеков); их ключи `setup.import.*` — данные, не синтаксис.
-    expect(findModuleLinks('const d={"setup.import.failed":"Auftrag konnte nicht importiert werden."};')).toEqual([]);
-    expect(findModuleLinks('a.import(1);')).toEqual([]);
-    // Слово import в начале строки-данных — осторожно считается: реальной формы модуля от данных не отличить.
+  it('самодостаточность: замок буквальный — любое слово import, в том числе ключ словаря "setup.import.x" и свойство x.import', () => {
+    // Решение контроллера (🔬 У2): список не сужается; в lkw_motor.js не должно быть словарей i18n вовсе.
+    expect(findModuleLinks('const d={"setup.import.failed":"x"};')).toHaveLength(1);
+    expect(findModuleLinks('a.import(1);')).toHaveLength(1);
     expect(findModuleLinks('const s="import x";')).toHaveLength(1);
   });
 
