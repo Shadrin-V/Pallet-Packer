@@ -5,10 +5,13 @@
 //
 // Собирает `build:erp` ДВАЖДЫ — вторую с заведомо «враждебным» окружением (`hostileBuildEnv`: dev-режим,
 // чужие браузеры, сетка autoprefixer) — и требует: обе сборки побайтово равны (ERP пересобирает на своей
-// машине и сравнивает побайтово); в `apps/web/dist-erp` ровно три обычных файла артефакта и `HERKUNFT.json`,
-// без `.html`, ссылок и подкаталогов; размеры — в пределах ERP; паспорт — в канонической форме, годен
-// (`checkHerkunft`, правила `pruefe` ERP), его коммит — текущий HEAD, версия движка — из собранного пакета,
-// sha256 — от файлов на диске; сканеры запретов пусты. Иначе — exit 1 с перечнем нарушений.
+// машине и сравнивает побайтово); в `apps/web/dist-erp` ровно четыре обычных файла артефакта (страница и
+// `lkw_motor.js`, ADR 027, поправка 2026-11-25) и `HERKUNFT.json`, без `.html`, ссылок, подкаталогов и
+// лишних чанков; размеры — в пределах ERP; файлы страницы побайтово равны эталону 5d67485 (второй проход
+// не меняет первый); паспорт — в канонической форме, годен (`checkHerkunft`, правила `pruefe` ERP), его
+// коммит — текущий HEAD, версия движка — из собранного пакета, sha256 — от файлов на диске; сканеры
+// запретов (для `lkw_motor.js` — и замки «без сети и без ERP» и самодостаточности) пусты. Иначе — exit 1
+// с перечнем нарушений.
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -16,12 +19,11 @@ import { fileURLToPath } from 'node:url';
 import {
   ERP_ARTIFACT_FILES,
   HERKUNFT_FILE,
+  checkFirstPassReference,
   checkHerkunft,
   diffBuilds,
-  findCssForbidden,
-  findDynamicCode,
-  findRootAbsoluteLiterals,
   hostileBuildEnv,
+  scanArtifactFiles,
   serializeHerkunft,
   sha256Hex,
   type Herkunft,
@@ -82,7 +84,8 @@ async function main(): Promise<number> {
   problems.push(...diffBuilds(first, second));
   const names = [...second.keys()];
 
-  // 2. Состав каталога: ровно три файла артефакта и паспорт, без .html; размеры — в пределах ERP.
+  // 2. Состав каталога: ровно четыре файла артефакта и паспорт — без .html и без лишних чанков второго
+  //    прохода; размеры — в пределах ERP.
   const expected = [...ERP_ARTIFACT_FILES, HERKUNFT_FILE].sort();
   if (names.join('\n') !== expected.join('\n')) problems.push(`dist-erp: [${names.join(', ')}] ≠ [${expected.join(', ')}]`);
   for (const name of names) if (name.endsWith('.html')) problems.push(`dist-erp: лишний ${name}`);
@@ -90,6 +93,9 @@ async function main(): Promise<number> {
     const limit = name === HERKUNFT_FILE ? MAX_HERKUNFT : MAX_FILE;
     if (bytes.length > limit) problems.push(`${name}: ${bytes.length} B больше предела ERP ${limit} B`);
   }
+
+  // 2а. Первый проход (страница) — побайтово эталон 5d67485.
+  problems.push(...checkFirstPassReference(second));
 
   // 3. Паспорт: годен, указывает на текущий HEAD и собранную версию движка, хэши — от файлов на диске.
   const h = parseHerkunft(second, problems);
@@ -108,13 +114,8 @@ async function main(): Promise<number> {
     }
   }
 
-  // 4. Сканеры запретов (контракт §7).
-  const js = second.get('ladungsplaner.js')?.toString('utf8') ?? '';
-  const css = second.get('ladungsplaner.css')?.toString('utf8') ?? '';
-  for (const x of findRootAbsoluteLiterals(js)) problems.push(`ladungsplaner.js: адрес от корня вне разрешённых: ${x}`);
-  for (const x of findRootAbsoluteLiterals(css)) problems.push(`ladungsplaner.css: адрес от корня вне разрешённых: ${x}`);
-  for (const x of findDynamicCode(js)) problems.push(`ladungsplaner.js: динамический код: ${x}`);
-  for (const x of findCssForbidden(css)) problems.push(`ladungsplaner.css: запрещено: ${x}`);
+  // 4. Сканеры запретов (контракт §7) и замки `lkw_motor.js` (решение A′).
+  problems.push(...scanArtifactFiles(second));
 
   console.log('\n=== verify:erp — итог ===');
   if (problems.length > 0) {

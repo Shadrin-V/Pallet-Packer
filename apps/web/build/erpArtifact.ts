@@ -11,7 +11,13 @@ import path from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
 
 export const ERP_BASE = '/assets/schaefer_erp/ladungsplaner/';
-export const ERP_ARTIFACT_FILES = ['ladungsplaner.js', 'ladungsplaner.css', 'logo.svg'] as const;
+/**
+ * Файлы артефакта в паспорте. Первые три — страница (первый проход, `vite.erp.config.ts`); `lkw_motor.js` —
+ * фасад ёмкости для Desk-страницы ERP (второй проход, `vite.erp-motor.config.ts`; ADR 027, поправка
+ * 2026-11-25, решение A′).
+ */
+export const ERP_MOTOR_FILE = 'lkw_motor.js';
+export const ERP_ARTIFACT_FILES = ['ladungsplaner.js', 'ladungsplaner.css', 'logo.svg', ERP_MOTOR_FILE] as const;
 export const ALLOWED_ROOT_PREFIXES = ['/api/method/schaefer_erp.ladungsplaner.api.', ERP_BASE] as const;
 export const HERKUNFT_FILE = 'HERKUNFT.json';
 const ERP_API_CONTRACT_EXPECTED = 'erp-y6tb9-v1';
@@ -84,6 +90,79 @@ export function findDynamicCode(js: string): string[] {
   return [...js.matchAll(/\beval\s*\(|(?:\bnew\s+)?\bFunction\s*\(/g)].map((m) => m[0]);
 }
 
+/**
+ * Замок «без сети и без ERP» для `lkw_motor.js` (erp-y6tb9.15, 🔬 У2): фасад — чистые функции, поэтому в
+ * бандле нет ни сетевых API, ни Frappe, ни глобалов и хранилищ хоста, ни DOM, ни React. Список не ослаблять:
+ * если он сработал на код бандлера — разбирать причину, а не убирать токен.
+ */
+export function findHostAccess(js: string): string[] {
+  const re =
+    /\bfetch\s*\(|\bXMLHttpRequest|\bWebSocket|\bEventSource|\bsendBeacon|frappe|\bwindow\.|\bglobalThis|\blocalStorage|\bsessionStorage|\bdocument\.|\breact\b/gi;
+  return [...js.matchAll(re)].map((m) => m[0]);
+}
+
+/**
+ * Самодостаточность `lkw_motor.js`: ни одной внешней ссылки модуля — `import` в любой форме (статический,
+ * `import(…)`, `import.meta`) и реэкспорт `export … from`. Свой `export { … }` без `from` разрешён.
+ * Ни одна форма `import` в коде не стоит после `.` или буквы, поэтому сегмент имени через точку не
+ * считается: в бандл вшиты словари i18n (подписи отсеков), и их ключи `setup.import.*` — данные.
+ */
+export function findModuleLinks(js: string): string[] {
+  const re = /(?<![\w$.])import\b|\bexport\s*(?:\*|\{[^}]*\})\s*(?:as\s+[\w$]+\s*)?from\s*["'`]/g;
+  return [...js.matchAll(re)].map((m) => m[0]);
+}
+
+/** Все сканеры запретов по файлам артефакта (контракт §7; для `lkw_motor.js` — и замки решения A′). */
+export function scanArtifactFiles(files: ReadonlyMap<string, Uint8Array>): string[] {
+  const text = (name: string) => {
+    const bytes = files.get(name);
+    return bytes ? Buffer.from(bytes).toString('utf8') : undefined;
+  };
+  const problems: string[] = [];
+  const js = text('ladungsplaner.js') ?? '';
+  const css = text('ladungsplaner.css') ?? '';
+  for (const x of findRootAbsoluteLiterals(js)) problems.push(`ladungsplaner.js: адрес от корня вне разрешённых: ${x}`);
+  for (const x of findRootAbsoluteLiterals(css)) problems.push(`ladungsplaner.css: адрес от корня вне разрешённых: ${x}`);
+  for (const x of findDynamicCode(js)) problems.push(`ladungsplaner.js: динамический код: ${x}`);
+  for (const x of findCssForbidden(css)) problems.push(`ladungsplaner.css: запрещено: ${x}`);
+  const motor = text(ERP_MOTOR_FILE);
+  if (motor === undefined) {
+    problems.push(`${ERP_MOTOR_FILE}: нет файла`);
+    return problems;
+  }
+  for (const x of findRootAbsoluteLiterals(motor)) problems.push(`${ERP_MOTOR_FILE}: адрес от корня вне разрешённых: ${x}`);
+  for (const x of findDynamicCode(motor)) problems.push(`${ERP_MOTOR_FILE}: динамический код: ${x}`);
+  for (const x of findHostAccess(motor)) problems.push(`${ERP_MOTOR_FILE}: сеть, ERP или хост: ${x}`);
+  for (const x of findModuleLinks(motor)) problems.push(`${ERP_MOTOR_FILE}: внешняя ссылка модуля: ${x}`);
+  return problems;
+}
+
+// ---- эталон первого прохода -------------------------------------------------------------------
+
+/**
+ * sha256 файлов страницы из паспорта коммита 5d67485 (последняя приёмка ERP до `lkw_motor.js`). Второй
+ * проход сборки обязан не менять первый: эти три файла — побайтово те же. Константа, а не чтение
+ * `dist-erp/HERKUNFT.json` (его перезаписывает каждая сборка). Tailwind сканирует весь `src/**`, так что
+ * новый файл исходников может изменить CSS — тогда искать причину, а не менять эталон. Сменить эталон —
+ * только осознанно, вместе с новой приёмкой страницы в ERP.
+ */
+export const FIRST_PASS_REFERENCE: Readonly<Record<string, string>> = Object.freeze({
+  'ladungsplaner.js': '64df1b8d7b839f017c971fc480d5c1da0e675452c8d5391ef705ac9d056c23ba',
+  'ladungsplaner.css': 'f0504847444b7ff079d189002a389261e0ecacb10ca31a0d42341ce52757965f',
+  'logo.svg': 'aea33712175363e97a214ba5cebba06ef79b7fc9c712aceb77e8ced10121fac2',
+});
+
+/** Расхождения файлов страницы с эталоном 5d67485; пустой список — первый проход не изменился. */
+export function checkFirstPassReference(files: ReadonlyMap<string, Uint8Array>): string[] {
+  const problems: string[] = [];
+  for (const [name, expected] of Object.entries(FIRST_PASS_REFERENCE)) {
+    const bytes = files.get(name);
+    if (!bytes) problems.push(`${name}: нет файла (эталон 5d67485 ${expected})`);
+    else if (sha256Hex(bytes) !== expected) problems.push(`${name}: sha256 ${sha256Hex(bytes)} ≠ эталон 5d67485 ${expected}`);
+  }
+  return problems;
+}
+
 const HERKUNFT_KEYS = ['artifact', 'commit', 'dirty', 'engineContractVersion', 'erpApiContract', 'base', 'files'] as const;
 
 const isPlainObject = (x: unknown): x is Record<string, unknown> =>
@@ -94,7 +173,7 @@ const show = (x: unknown): string => (x === undefined ? 'undefined' : JSON.strin
  * Нарушения паспорта; пустой список — паспорт годен для сдачи в ERP. Принимает и разобранный JSON:
  * правила не мягче `pruefe` в ERP (`schaefer_erp/ladungsplaner/artefakt.py`) — ровно семь ключей, `dirty`
  * строго `false` (`true` — только с `--allow-dirty`, до коммита), версия движка — непустая строка, commit —
- * 40 hex в нижнем регистре, `files` — объект ровно трёх файлов со строками sha256.
+ * 40 hex в нижнем регистре, `files` — объект ровно файлов `ERP_ARTIFACT_FILES` (четырёх) со строками sha256.
  */
 export function checkHerkunft(h: unknown, opts: { allowDirty: boolean }): string[] {
   if (!isPlainObject(h)) return [`${HERKUNFT_FILE}: не JSON-объект`];
@@ -175,8 +254,10 @@ export function diffBuilds(a: ReadonlyMap<string, Uint8Array>, b: ReadonlyMap<st
 const git = (cwd: string, args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8' });
 
 /**
- * Пишет `HERKUNFT.json` в каталог сборки после записи бандла (`public/logo.svg` к этому моменту уже
- * скопирован). `commit` — `git rev-parse HEAD`, `dirty` — непустой `git status --porcelain`. Версии
+ * Пишет `HERKUNFT.json` в каталог сборки после записи бандла. Подключён только ко второму проходу
+ * (`vite.erp-motor.config.ts`, `lkw_motor.js`): к этому моменту первый проход уже положил страницу и
+ * `logo.svg`, так что паспорт идёт по всем четырём файлам `ERP_ARTIFACT_FILES`.
+ * `commit` — `git rev-parse HEAD`, `dirty` — непустой `git status --porcelain`. Версии
  * контрактов берутся из собранных пакетов в момент сборки (сам модуль их не импортирует: проверка
  * `verify:erp` запускается и на клоне, где пакеты ещё не собраны).
  */

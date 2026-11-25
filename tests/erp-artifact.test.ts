@@ -8,13 +8,19 @@ import {
   ERP_ARTIFACT_FILES,
   ERP_BASE,
   ERP_BROWSERSLIST,
+  ERP_MOTOR_FILE,
+  FIRST_PASS_REFERENCE,
   buildHerkunft,
+  checkFirstPassReference,
   checkHerkunft,
   diffBuilds,
   hostileBuildEnv,
   findCssForbidden,
   findDynamicCode,
+  findHostAccess,
+  findModuleLinks,
   findRootAbsoluteLiterals,
+  scanArtifactFiles,
   serializeHerkunft,
   sha256Hex,
 } from '../apps/web/build/erpArtifact';
@@ -25,7 +31,8 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 describe('артефакт для ERP: значения контракта §7', () => {
   it('база, состав файлов и разрешённые адреса от корня — дословно', () => {
     expect(ERP_BASE).toBe('/assets/schaefer_erp/ladungsplaner/');
-    expect([...ERP_ARTIFACT_FILES]).toEqual(['ladungsplaner.js', 'ladungsplaner.css', 'logo.svg']);
+    expect([...ERP_ARTIFACT_FILES]).toEqual(['ladungsplaner.js', 'ladungsplaner.css', 'logo.svg', 'lkw_motor.js']);
+    expect(ERP_MOTOR_FILE).toBe('lkw_motor.js');
     expect([...ALLOWED_ROOT_PREFIXES]).toEqual(['/api/method/schaefer_erp.ladungsplaner.api.', ERP_BASE]);
   });
 });
@@ -46,6 +53,87 @@ describe('сканеры артефакта', () => {
   });
 });
 
+// erp-y6tb9.15, решение A′: lkw_motor.js — без сети, без ERP, без хоста и самодостаточный (🔬 У2).
+describe('lkw_motor.js: замки', () => {
+  it('замок «без сети и без ERP»: каждый запрещённый токен найден', () => {
+    const tokens = ['fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'sendBeacon', 'frappe', 'window.',
+      'globalThis', 'localStorage', 'sessionStorage', 'document.'];
+    for (const tok of tokens) expect(findHostAccess(`const a=1;${tok}x;`)).toEqual([tok]);
+    expect(findHostAccess('a=fetch (u)')).toEqual(['fetch (']);
+    expect(findHostAccess('Symbol.for("react.element")')).toEqual(['react']);
+    expect(findHostAccess('import*as R from"react-dom"')).toEqual(['react']);
+  });
+
+  it('замок «без сети и без ERP»: чистый модуль и похожие слова — пусто', () => {
+    expect(findHostAccess('function f(a){return a.length*2}const prefetch=1;export{f as calculateCapacity};')).toEqual([]);
+    expect(findHostAccess('"Reaktion";"windows";"documents"')).toEqual([]);
+  });
+
+  it('самодостаточность: import, import(), export … from — найдены; свой export {…} и похожие слова — нет', () => {
+    expect(findModuleLinks('import{a}from"./x.js";')).toHaveLength(1);
+    expect(findModuleLinks('import"./side.js";')).toHaveLength(1);
+    expect(findModuleLinks('const m=import("./chunk.js");')).toHaveLength(1);
+    expect(findModuleLinks('const m=import ("./chunk.js");')).toHaveLength(1);
+    expect(findModuleLinks('const u=import.meta.url;')).toHaveLength(1);
+    expect(findModuleLinks('export{a}from"./x.js";')).toHaveLength(1);
+    expect(findModuleLinks('export * from "./x.js";')).toHaveLength(1);
+    expect(findModuleLinks('export*as ns from"./x.js";')).toHaveLength(1);
+    expect(findModuleLinks('const a=1,b=2;export{a as A,b as B};')).toEqual([]);
+    expect(findModuleLinks('const important=1,imported=2,reimport=3;export{important};')).toEqual([]);
+  });
+
+  it('самодостаточность: ключи словаря вида "setup.import.failed" и свойство x.import — не ссылки модуля', () => {
+    // Словари i18n вшиты в lkw_motor.js (подписи отсеков); их ключи `setup.import.*` — данные, не синтаксис.
+    expect(findModuleLinks('const d={"setup.import.failed":"Auftrag konnte nicht importiert werden."};')).toEqual([]);
+    expect(findModuleLinks('a.import(1);')).toEqual([]);
+    // Слово import в начале строки-данных — осторожно считается: реальной формы модуля от данных не отличить.
+    expect(findModuleLinks('const s="import x";')).toHaveLength(1);
+  });
+
+  it('сканеры прогоняются и по lkw_motor.js: адреса от корня, динамический код, сеть/ERP, внешние ссылки', () => {
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const clean = new Map([
+      ['ladungsplaner.js', enc('fetch("/api/method/schaefer_erp.ladungsplaner.api.x");window.a=1')],
+      ['ladungsplaner.css', enc('a{color:red}')],
+      ['lkw_motor.js', enc('const f=a=>a*2;export{f as calculateCapacity};')],
+    ]);
+    expect(scanArtifactFiles(clean)).toEqual([]);
+    const dirty = new Map(clean);
+    dirty.set('lkw_motor.js', enc('const u="/api/plans";eval("1");fetch(u);const m=import("./c.js");export{m};'));
+    const problems = scanArtifactFiles(dirty);
+    expect(problems).toHaveLength(4);
+    for (const p of problems) expect(p).toMatch(/^lkw_motor\.js: /);
+    expect(problems.some((p) => p.includes('/api/plans'))).toBe(true);
+    expect(problems.some((p) => p.includes('eval'))).toBe(true);
+    expect(problems.some((p) => p.includes('fetch('))).toBe(true);
+    expect(problems.some((p) => p.includes('import'))).toBe(true);
+    // Без lkw_motor.js сканер не молчит: отсутствие файла — тоже нарушение.
+    const missing = new Map(clean);
+    missing.delete('lkw_motor.js');
+    expect(scanArtifactFiles(missing)).toEqual([expect.stringContaining('lkw_motor.js')]);
+  });
+});
+
+// Первый проход (страница) — побайтово как в коммите 5d67485: второй проход его не трогает (Focus 4).
+describe('первый проход: эталон 5d67485', () => {
+  it('эталон — дословно из паспорта 5d67485, ровно три файла страницы', () => {
+    expect({ ...FIRST_PASS_REFERENCE }).toEqual({
+      'ladungsplaner.js': '64df1b8d7b839f017c971fc480d5c1da0e675452c8d5391ef705ac9d056c23ba',
+      'ladungsplaner.css': 'f0504847444b7ff079d189002a389261e0ecacb10ca31a0d42341ce52757965f',
+      'logo.svg': 'aea33712175363e97a214ba5cebba06ef79b7fc9c712aceb77e8ced10121fac2',
+    });
+  });
+
+  it('другие байты или отсутствующий файл страницы — нарушение по каждому файлу', () => {
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const other = new Map([['ladungsplaner.js', enc('j')], ['ladungsplaner.css', enc('c')], ['logo.svg', enc('s')], ['lkw_motor.js', enc('m')]]);
+    const problems = checkFirstPassReference(other);
+    expect(problems).toHaveLength(3);
+    for (const name of ['ladungsplaner.js', 'ladungsplaner.css', 'logo.svg']) expect(problems.some((p) => p.startsWith(name))).toBe(true);
+    expect(checkFirstPassReference(new Map())).toHaveLength(3);
+  });
+});
+
 describe('HERKUNFT.json', () => {
   it('HERKUNFT: грязное дерево и чужой состав файлов — нарушения', () => {
     const h = buildHerkunft({ commit: 'c'.repeat(40), dirty: true, engineContractVersion: '0.19.0', erpApiContract: 'erp-y6tb9-v1',
@@ -53,6 +141,17 @@ describe('HERKUNFT.json', () => {
     expect(checkHerkunft(h, { allowDirty: false })).toEqual([expect.stringContaining('dirty')]);
     expect(checkHerkunft(h, { allowDirty: true })).toEqual([]);
     expect(checkHerkunft({ ...h, dirty: false, files: { 'ladungsplaner.js': 'x' } }, { allowDirty: false })).not.toEqual([]);
+  });
+
+  it('HERKUNFT: паспорт ровно на 4 файла — прежние три без lkw_motor.js и пятый лишний — нарушения', () => {
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const base = { commit: 'c'.repeat(40), dirty: false, engineContractVersion: '0.19.0', erpApiContract: 'erp-y6tb9-v1' };
+    const three = buildHerkunft({ ...base, files: { 'ladungsplaner.js': enc('j'), 'ladungsplaner.css': enc('c'), 'logo.svg': enc('s') } });
+    expect(checkHerkunft(three, { allowDirty: false })).toEqual([expect.stringContaining('lkw_motor.js')]);
+    const four = buildHerkunft({ ...base, files: { 'ladungsplaner.js': enc('j'), 'ladungsplaner.css': enc('c'), 'logo.svg': enc('s'), 'lkw_motor.js': enc('m') } });
+    expect(checkHerkunft(four, { allowDirty: false })).toEqual([]);
+    const five = buildHerkunft({ ...base, files: { 'ladungsplaner.js': enc('j'), 'ladungsplaner.css': enc('c'), 'logo.svg': enc('s'), 'lkw_motor.js': enc('m'), 'lkw_motor-x.js': enc('x') } });
+    expect(checkHerkunft(five, { allowDirty: false })).toEqual([expect.stringContaining('lkw_motor-x.js')]);
   });
 
   it('HERKUNFT: чужие база и контракт API — нарушения', () => {
