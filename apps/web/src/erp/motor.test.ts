@@ -1,4 +1,5 @@
 import fc from 'fast-check';
+import { calculateLayout } from '@shadrin-v/engine';
 import { describe, expect, it } from 'vitest';
 import {
   CAPACITY_API_VERSION,
@@ -128,10 +129,18 @@ describe('calculateCapacity', () => {
   });
 
   it('zero placement without errors -> does_not_fit', () => {
-    // pallet 1200x800 w/ twoSides fork axis width needs the pinned orientation; make it impossible
-    const v = { id: 'v', name: 'v', length: 1000, width: 700, height: 1000 };
-    const r = calculateCapacity(cargo({ length: 1200, width: 800, forkAccess: 'twoSides', rotation: 'none' }), v);
-    expect(r.status).toBe('does_not_fit');
+    // Fits the hold dimensions, but two-sided fork access (axis length, rear loading) pins an
+    // orientation that cannot be placed: the engine reports no error and places nothing.
+    const v = { id: 'v', name: 'v', length: 1000, width: 1300, height: 1000 };
+    const c = cargo({ rotation: 'yawOnly', stacking: { stackable: false }, forkAccess: 'twoSides', forkAxis: 'length' });
+    const layout = calculateLayout({
+      vehicle: v,
+      cargo: [{ ...c, quantity: 0, fill: true, orderId: undefined } as never],
+      loadingMode: 'rear',
+    });
+    expect(layout.errors).toBeUndefined();
+    expect(layout.metrics.totalPlaced).toBe(0);
+    expect(calculateCapacity(c, v, { loadingMode: 'rear' })).toEqual({ status: 'does_not_fit', units: 0 });
   });
 });
 
