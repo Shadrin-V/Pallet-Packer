@@ -10,17 +10,20 @@
 // лишних чанков; размеры — в пределах ERP; файлы страницы побайтово равны эталону 5d67485 (второй проход
 // не меняет первый); паспорт — в канонической форме, годен (`checkHerkunft`, правила `pruefe` ERP), его
 // коммит — текущий HEAD, версия движка — из собранного пакета, sha256 — от файлов на диске; сканеры
-// запретов (для `lkw_motor.js` — и замки «без сети и без ERP» и самодостаточности) пусты. Иначе — exit 1
-// с перечнем нарушений.
+// запретов (для `lkw_motor.js` — и замки «без сети и без ERP» и самодостаточности) пусты; собранный
+// `lkw_motor.js` после каждой из двух сборок загружается и отдаёт ровно экспорт фасада, версии и пробный
+// расчёт (`checkMotorModule`). Иначе — exit 1 с перечнем нарушений.
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   ERP_ARTIFACT_FILES,
+  ERP_MOTOR_FILE,
   HERKUNFT_FILE,
   checkFirstPassReference,
   checkHerkunft,
+  checkMotorModule,
   diffBuilds,
   hostileBuildEnv,
   scanArtifactFiles,
@@ -53,6 +56,30 @@ function buildOnce(label: string, env: NodeJS.ProcessEnv, problems: string[]): S
   return snap;
 }
 
+/**
+ * Загружает только что собранный `lkw_motor.js` (по file-URL с номером сборки — без кэша модулей между
+ * сборками) и проверяет поверхность экспорта против паспорта той же сборки (`checkMotorModule`).
+ * Вызывается сразу после каждой сборки, пока следующая не перезаписала `dist-erp/`.
+ */
+async function checkBuiltMotor(build: number, snap: Snapshot, problems: string[]): Promise<void> {
+  const label = `сборка ${build}`;
+  if (!snap.has(ERP_MOTOR_FILE)) return; // отсутствие файла называет состав каталога и сканеры
+  let engineContractVersion: unknown;
+  try {
+    engineContractVersion = (JSON.parse(snap.get(HERKUNFT_FILE)?.toString('utf8') ?? 'null') as Record<string, unknown> | null)
+      ?.engineContractVersion;
+  } catch {
+    engineContractVersion = undefined; // паспорт разбирает и называет шаг 3
+  }
+  try {
+    const url = `${pathToFileURL(path.join(OUT, ERP_MOTOR_FILE)).href}?build=${build}`;
+    const mod = (await import(url)) as Record<string, unknown>;
+    for (const p of checkMotorModule({ ...mod }, engineContractVersion)) problems.push(`${label}: ${p}`);
+  } catch (e) {
+    problems.push(`${label}: ${ERP_MOTOR_FILE} не загружается как ES-модуль: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Разобранный паспорт; каноническая форма (`serializeHerkunft`) исключает и повтор ключей. */
 function parseHerkunft(snap: Snapshot, problems: string[]): Record<string, unknown> | undefined {
   const raw = snap.get(HERKUNFT_FILE);
@@ -78,7 +105,9 @@ function parseHerkunft(snap: Snapshot, problems: string[]): Record<string, unkno
 async function main(): Promise<number> {
   const problems: string[] = [];
   const first = buildOnce('сборка 1 из 2 (окружение как есть)', process.env, problems);
+  await checkBuiltMotor(1, first, problems);
   const second = buildOnce('сборка 2 из 2 (враждебное окружение: NODE_ENV=development, BROWSERSLIST, AUTOPREFIXER_GRID)', hostileBuildEnv(process.env), problems);
+  await checkBuiltMotor(2, second, problems);
 
   // 1. Воспроизводимость и устойчивость к окружению: тот же состав, те же байты (включая паспорт).
   problems.push(...diffBuilds(first, second));

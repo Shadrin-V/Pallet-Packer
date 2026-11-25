@@ -10,9 +10,11 @@ import {
   ERP_BROWSERSLIST,
   ERP_MOTOR_FILE,
   FIRST_PASS_REFERENCE,
+  MOTOR_EXPORTS,
   buildHerkunft,
   checkFirstPassReference,
   checkHerkunft,
+  checkMotorModule,
   diffBuilds,
   hostileBuildEnv,
   findCssForbidden,
@@ -110,6 +112,61 @@ describe('lkw_motor.js: замки', () => {
     const missing = new Map(clean);
     missing.delete('lkw_motor.js');
     expect(scanArtifactFiles(missing)).toEqual([expect.stringContaining('lkw_motor.js')]);
+  });
+});
+
+// Поверхность экспорта собранного lkw_motor.js (ревью задачи 2, риск a): без неё файл без экспортов
+// прошёл бы все замки, паспорт и детерминизм.
+describe('lkw_motor.js: поверхность экспорта', () => {
+  const fake = (over: Record<string, unknown> = {}): Record<string, unknown> => {
+    const preset = { key: 'lkw-standard', length: 13600, width: 2450, height: 2700 };
+    return {
+      CAPACITY_API_VERSION: '1',
+      COMPARTMENT_LABELS_DE: {},
+      DEFAULT_VEHICLE_PRESET_KEY: 'lkw-standard',
+      ENGINE_CONTRACT_VERSION: '0.19.0',
+      ERR_INVALID_INPUT: 'ERR_INVALID_INPUT',
+      FACADE_ERROR_CODES: ['ERR_INVALID_INPUT'],
+      VEHICLE_PRESETS: [preset],
+      calculateCapacity: () => ({ status: 'fits', units: 1 }),
+      maxUnitsInVehicle: () => 1,
+      vehicleFromPreset: (p: unknown) => p,
+      ...over,
+    };
+  };
+
+  it('имена экспорта — ровно десять имён фасада', () => {
+    expect([...MOTOR_EXPORTS]).toEqual(['CAPACITY_API_VERSION', 'COMPARTMENT_LABELS_DE', 'DEFAULT_VEHICLE_PRESET_KEY',
+      'ENGINE_CONTRACT_VERSION', 'ERR_INVALID_INPUT', 'FACADE_ERROR_CODES', 'VEHICLE_PRESETS', 'calculateCapacity',
+      'maxUnitsInVehicle', 'vehicleFromPreset']);
+  });
+
+  it('годный модуль — пусто', () => {
+    expect(checkMotorModule(fake(), '0.19.0')).toEqual([]);
+  });
+
+  it('модуль без экспортов (вход вытряхнут) — нарушение', () => {
+    expect(checkMotorModule({}, '0.19.0')).not.toEqual([]);
+    expect(checkMotorModule({}, '0.19.0')[0]).toContain('экспорт');
+  });
+
+  it('лишний или недостающий экспорт — нарушение', () => {
+    expect(checkMotorModule(fake({ extra: 1 }), '0.19.0')).toEqual([expect.stringContaining('extra')]);
+    const { maxUnitsInVehicle: _drop, ...less } = fake();
+    expect(checkMotorModule(less, '0.19.0')).toEqual([expect.stringContaining('maxUnitsInVehicle')]);
+  });
+
+  it('версия API фасада и версия движка против паспорта', () => {
+    expect(checkMotorModule(fake({ CAPACITY_API_VERSION: '2' }), '0.19.0')).toEqual([expect.stringContaining('CAPACITY_API_VERSION')]);
+    expect(checkMotorModule(fake(), '0.20.0')).toEqual([expect.stringContaining('ENGINE_CONTRACT_VERSION')]);
+  });
+
+  it('пробный расчёт: не fits или исключение — нарушение', () => {
+    expect(checkMotorModule(fake({ calculateCapacity: () => ({ status: 'does_not_fit', units: 0 }) }), '0.19.0'))
+      .toEqual([expect.stringContaining('calculateCapacity')]);
+    expect(checkMotorModule(fake({ calculateCapacity: () => { throw new Error('boom'); } }), '0.19.0'))
+      .toEqual([expect.stringContaining('boom')]);
+    expect(checkMotorModule(fake({ DEFAULT_VEHICLE_PRESET_KEY: 'nope' }), '0.19.0')).toEqual([expect.stringContaining('nope')]);
   });
 });
 

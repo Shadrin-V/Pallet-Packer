@@ -137,6 +137,65 @@ export function scanArtifactFiles(files: ReadonlyMap<string, Uint8Array>): strin
   return problems;
 }
 
+// ---- поверхность экспорта lkw_motor.js --------------------------------------------------------
+
+/** Имена экспорта фасада `src/erp/motor.ts` (задача 1), отсортированы. */
+export const MOTOR_EXPORTS = [
+  'CAPACITY_API_VERSION',
+  'COMPARTMENT_LABELS_DE',
+  'DEFAULT_VEHICLE_PRESET_KEY',
+  'ENGINE_CONTRACT_VERSION',
+  'ERR_INVALID_INPUT',
+  'FACADE_ERROR_CODES',
+  'VEHICLE_PRESETS',
+  'calculateCapacity',
+  'maxUnitsInVehicle',
+  'vehicleFromPreset',
+] as const;
+
+/** Пробный груз: европаллета 1200×800×144 — в стандартный LKW помещается заведомо. */
+const MOTOR_SMOKE_CARGO = {
+  length: 1200,
+  width: 800,
+  height: 144,
+  rotation: 'yawOnly',
+  state: 'verschachtelt',
+  stacking: { stackable: true },
+  nesting: { nestable: false },
+} as const;
+
+/**
+ * Нарушения загруженного модуля `lkw_motor.js` (ревью задачи 2, риск a): ровно имена `MOTOR_EXPORTS`,
+ * `CAPACITY_API_VERSION` — "1", `ENGINE_CONTRACT_VERSION` — как в паспорте, и пробный расчёт на пресете по
+ * умолчанию даёт `fits`. Без этой проверки вытряхнутый до пустоты вход прошёл бы замки, паспорт и детерминизм.
+ */
+export function checkMotorModule(mod: Record<string, unknown>, engineContractVersion: unknown): string[] {
+  const names = Object.keys(mod).sort();
+  const expected = [...MOTOR_EXPORTS].sort();
+  if (names.join('\n') !== expected.join('\n')) {
+    return [`${ERP_MOTOR_FILE}: экспорт [${names.join(', ')}] ≠ [${expected.join(', ')}]`];
+  }
+  const problems: string[] = [];
+  if (mod.CAPACITY_API_VERSION !== '1') problems.push(`${ERP_MOTOR_FILE}: CAPACITY_API_VERSION ${show(mod.CAPACITY_API_VERSION)} ≠ "1"`);
+  if (mod.ENGINE_CONTRACT_VERSION !== engineContractVersion) {
+    problems.push(`${ERP_MOTOR_FILE}: ENGINE_CONTRACT_VERSION ${show(mod.ENGINE_CONTRACT_VERSION)} ≠ паспорт ${show(engineContractVersion)}`);
+  }
+  try {
+    const presets = mod.VEHICLE_PRESETS as ReadonlyArray<{ key: string }>;
+    const preset = presets.find((p) => p.key === mod.DEFAULT_VEHICLE_PRESET_KEY);
+    if (!preset) {
+      problems.push(`${ERP_MOTOR_FILE}: нет пресета DEFAULT_VEHICLE_PRESET_KEY ${show(mod.DEFAULT_VEHICLE_PRESET_KEY)}`);
+      return problems;
+    }
+    const vehicle = (mod.vehicleFromPreset as (p: unknown) => unknown)(preset);
+    const result = (mod.calculateCapacity as (c: unknown, v: unknown) => { status?: unknown })(MOTOR_SMOKE_CARGO, vehicle);
+    if (result?.status !== 'fits') problems.push(`${ERP_MOTOR_FILE}: calculateCapacity(1200×800×144, пресет по умолчанию) = ${show(result)}, ожидалось fits`);
+  } catch (e) {
+    problems.push(`${ERP_MOTOR_FILE}: пробный расчёт упал: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return problems;
+}
+
 // ---- эталон первого прохода -------------------------------------------------------------------
 
 /**
