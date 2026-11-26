@@ -155,6 +155,8 @@ export const MOTOR_EXPORTS = [
 
 /** Пробный груз: европаллета 1200×800×144 — в стандартный LKW помещается заведомо. */
 const MOTOR_SMOKE_CARGO = {
+  id: 'smoke',
+  name: 'EUR-Palette',
   length: 1200,
   width: 800,
   height: 144,
