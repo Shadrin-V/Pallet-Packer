@@ -57,9 +57,14 @@ describe('calculateCapacity', () => {
   });
 
   it('mixed errors -> invalid (engine codes kept)', () => {
-    const errs = invalidCode(cargo({ length: 14000, width: 0 }), vehicle());
-    expect(errs.length).toBeGreaterThan(0);
-    expect(errs.every((e) => e.code !== ERR_INVALID_INPUT)).toBe(true);
+    const errs = invalidCode(
+      cargo({ length: 14000, nesting: { nestable: true, stepHeight: 999 }, state: 'verschachtelt' }),
+      vehicle(),
+    );
+    const codes = errs.map((e) => e.code);
+    expect(codes).toContain('ERR_CARGO_EXCEEDS_VEHICLE');
+    expect(codes).toContain('ERR_INVALID_NESTING');
+    expect(codes).not.toContain(ERR_INVALID_INPUT);
   });
 
   it('missing nesting / NaN / empty string -> ERR_INVALID_INPUT without throwing', () => {
@@ -93,6 +98,35 @@ describe('calculateCapacity', () => {
     for (const [c, v, o] of cases) {
       expect(invalidCode(c, v, o)[0].code).toBe(ERR_INVALID_INPUT);
     }
+  });
+
+  it('strict allowUnpairedTop / id / name checks', () => {
+    const nest = (allowUnpairedTop: unknown) => ({ nestable: true, nestingMode: 'pairwise', stepHeight: 20, allowUnpairedTop });
+    const v = vehicle();
+    const cases: [unknown, unknown, string][] = [
+      [cargo({ nesting: nest('false') }), v, 'cargo.nesting.allowUnpairedTop'],
+      [cargo({ id: 5 }), v, 'cargo.id'],
+      [cargo({ name: 5 }), v, 'cargo.name'],
+      [cargo(), { ...v, id: 5 }, 'vehicle.id'],
+      [cargo(), { ...v, name: 5 }, 'vehicle.name'],
+      [cargo(), { ...v, compartments: [{ id: 'a', name: 5, x: 0, length: 5 }] }, 'vehicle.compartments[0].name'],
+    ];
+    for (const [c, vv, field] of cases) {
+      expect(invalidCode(c, vv)[0]).toEqual({ code: ERR_INVALID_INPUT, details: { field } });
+    }
+    expect(calculateCapacity(cargo({ nesting: nest(true) }), v).status).toBe('fits');
+    expect(calculateCapacity(cargo({ nesting: nest(undefined) }), v).status).toBe('fits');
+  });
+
+  it('allowUnpairedTop "false" no longer counts as true', () => {
+    const c = (a: unknown) =>
+      cargo({
+        length: 1200, width: 800, height: 100, rotation: 'none', state: 'verschachtelt',
+        stacking: { stackable: true },
+        nesting: { nestable: true, nestingMode: 'pairwise', stepHeight: 20, allowUnpairedTop: a },
+      });
+    const v = { id: 'v', name: 'v', length: 1200, width: 800, height: 200 };
+    expect(calculateCapacity(c(false), v)).toEqual({ status: 'fits', units: 1 });
   });
 
   it('quantity/fill/orderId in input are ignored', () => {

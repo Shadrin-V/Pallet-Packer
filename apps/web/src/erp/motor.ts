@@ -48,6 +48,8 @@ const oneOf = (list: readonly string[], v: unknown) => typeof v === 'string' && 
 /** First offending field path, or null when the input matches the schema. */
 function firstBadField(cargo: unknown, vehicle: unknown, options: unknown): string | null {
   if (!isObj(cargo)) return 'cargo';
+  if (typeof cargo.id !== 'string') return 'cargo.id';
+  if (cargo.name !== undefined && typeof cargo.name !== 'string') return 'cargo.name';
   for (const k of ['length', 'width', 'height']) if (!isNum(cargo[k])) return `cargo.${k}`;
   if (!oneOf(ROTATION_RULES, cargo.rotation)) return 'cargo.rotation';
   if (!oneOf(NESTING_STATES, cargo.state)) return 'cargo.state';
@@ -59,11 +61,16 @@ function firstBadField(cargo: unknown, vehicle: unknown, options: unknown): stri
   if (!isObj(ne)) return 'cargo.nesting';
   if (typeof ne.nestable !== 'boolean') return 'cargo.nesting.nestable';
   if (ne.nestingMode !== undefined && !oneOf(NESTING_MODES, ne.nestingMode)) return 'cargo.nesting.nestingMode';
+  if (ne.allowUnpairedTop !== undefined && typeof ne.allowUnpairedTop !== 'boolean') {
+    return 'cargo.nesting.allowUnpairedTop';
+  }
   for (const k of ['stepHeight', 'maxNested']) if (ne[k] !== undefined && !isNum(ne[k])) return `cargo.nesting.${k}`;
   if (cargo.forkAccess !== undefined && !oneOf(FORK_ACCESS, cargo.forkAccess)) return 'cargo.forkAccess';
   if (cargo.forkAxis !== undefined && !oneOf(FORK_AXES, cargo.forkAxis)) return 'cargo.forkAxis';
 
   if (!isObj(vehicle)) return 'vehicle';
+  if (typeof vehicle.id !== 'string') return 'vehicle.id';
+  if (vehicle.name !== undefined && typeof vehicle.name !== 'string') return 'vehicle.name';
   for (const k of ['length', 'width', 'height']) if (!isNum(vehicle[k])) return `vehicle.${k}`;
   const comps = vehicle.compartments;
   if (comps !== undefined) {
@@ -72,6 +79,7 @@ function firstBadField(cargo: unknown, vehicle: unknown, options: unknown): stri
       const c: unknown = comps[i];
       if (!isObj(c)) return `vehicle.compartments[${i}]`;
       if (typeof c.id !== 'string') return `vehicle.compartments[${i}].id`;
+      if (c.name !== undefined && typeof c.name !== 'string') return `vehicle.compartments[${i}].name`;
       if (!isNum(c.x)) return `vehicle.compartments[${i}].x`;
       if (!isNum(c.length)) return `vehicle.compartments[${i}].length`;
     }
