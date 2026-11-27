@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   calculateLayout,
   findGeometryViolations,
@@ -10,9 +10,16 @@ import {
   type OrderGrouping,
 } from '@shadrin-v/engine';
 import { LocaleProvider } from './i18n/LocaleContext';
+import { useHost } from './host/HostContext';
+import { ErpTopBar } from './erp/ErpTopBar';
+import { ErpCargoPicker } from './erp/ErpCargoPicker';
+import { ERP_STEP_ANCHORS, ErpSteps } from './erp/ErpSteps';
+import { ERP_KEY_OVERRIDES } from './erp/erpLabels';
 import { SetupScreen } from './screens/SetupScreen';
 import { LadeplanScreen } from './screens/LadeplanScreen';
 import { EmptyPlan } from './screens/components/EmptyPlan';
+import { readStored, removeStored, writeStored } from './lib/draftStorage';
+import { isPlanContext, type PlanContext } from './erp/planContext';
 
 const LOAD_STORAGE_KEY = 'ladungsplaner.load';
 // Stable orderId→palette slot, persisted separately so the Load format stays unchanged (QA #2).
@@ -23,12 +30,15 @@ const ORDER_COLORS_STORAGE_KEY = 'ladungsplaner.orderColors';
  *  Без этого выбор не переживал перезагрузку: черновик заявки возвращался целиком, а «Von der Seite»
  *  снова становился «Hinten und Seite» (финальное ревью, I4). */
 const STRATEGY_STORAGE_KEY = 'ladungsplaner.strategy';
+/** Контекст плана сборки для ERP (рейс, заказы, коды артикулов, неразмещаемые строки) — рядом с
+ *  `ladungsplaner.load`, своим ключом: в `Load` его нет, и контракт `Load` не меняется. */
+const PLAN_CONTEXT_STORAGE_KEY = 'ladungsplaner.planContext';
 
 /** Прочитать сохранённую стратегию. Чужое/испорченное значение молча игнорируется — засев тогда
  *  возьмёт стратегию последнего плана, а её нет — умолчания контракта. */
 function loadPersistedStrategy(): { loadingMode?: LoadingMode; orderGrouping?: OrderGrouping } {
   try {
-    const raw = globalThis.localStorage?.getItem(STRATEGY_STORAGE_KEY);
+    const raw = readStored(STRATEGY_STORAGE_KEY);
     if (!raw) return {};
     const v = JSON.parse(raw) as { loadingMode?: string; orderGrouping?: string };
     return {
@@ -41,9 +51,9 @@ function loadPersistedStrategy(): { loadingMode?: LoadingMode; orderGrouping?: O
 }
 
 /** Rebuild the last computed plan from the persisted Load (layout is derived, not stored). */
-function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Record<string, number> } | null {
+function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Record<string, number>; context?: PlanContext } | null {
   try {
-    const raw = globalThis.localStorage?.getItem(LOAD_STORAGE_KEY);
+    const raw = readStored(LOAD_STORAGE_KEY);
     if (!raw) return null;
     const load = JSON.parse(raw) as Load;
     const layout = calculateLayout(load);
@@ -54,18 +64,29 @@ function loadPersistedResult(): { load: Load; layout: Layout; orderColors?: Reco
     if (findGeometryViolations(load, layout).length > 0) return null;
     let orderColors: Record<string, number> | undefined;
     try {
-      const rc = globalThis.localStorage?.getItem(ORDER_COLORS_STORAGE_KEY);
+      const rc = readStored(ORDER_COLORS_STORAGE_KEY);
       if (rc) orderColors = JSON.parse(rc) as Record<string, number>;
     } catch {
       /* ignore */
     }
-    return { load, layout, orderColors };
+    // Испорченный контекст не доезжает до экрана плана: план остаётся, без подписей ERP.
+    let context: PlanContext | undefined;
+    try {
+      const rc = readStored(PLAN_CONTEXT_STORAGE_KEY);
+      const parsed: unknown = rc ? JSON.parse(rc) : undefined;
+      if (isPlanContext(parsed)) context = parsed;
+    } catch {
+      /* ignore */
+    }
+    return { load, layout, orderColors, ...(context ? { context } : {}) };
   } catch {
     return null;
   }
 }
 
 export function App() {
+  // Хост ERP задаёт язык (из сессии, без записи в хранилище) и ставит свою верхнюю полосу.
+  const host = useHost();
   // Single page: SetupScreen stays mounted (its state never resets); the Ladeplan result renders
   // below it when a layout has been computed. Both survive a refresh via localStorage.
   // `transient` marks a Demo preview: shown in the UI but never persisted, so a reload returns to
@@ -73,7 +94,13 @@ export function App() {
   // Один разбор localStorage на монтирование: loadPersistedResult ещё и пересчитывает layout, а
   // читают его три состояния сразу. Ленивый инициализатор useState вызывает функцию ровно один раз.
   const [persisted] = useState(loadPersistedResult);
-  const [result, setResult] = useState<{ load: Load; layout: Layout; transient?: boolean; orderColors?: Record<string, number> } | null>(persisted);
+  const [result, setResult] = useState<{
+    load: Load;
+    layout: Layout;
+    transient?: boolean;
+    orderColors?: Record<string, number>;
+    context?: PlanContext;
+  } | null>(persisted);
 
   // Стратегия расчёта живёт здесь, а не в результате: её выбирают в шапке «Настройки» — ДО
   // расчёта, когда плана ещё может не быть, и потому хранить её в плане нельзя. Место правки одно
@@ -95,7 +122,7 @@ export function App() {
    *  перезагрузку, и его стратегия не должна тоже. Слияние — с сохранённым выбором, не с state. */
   const saveStrategyChoice = (patch: Partial<{ loadingMode: LoadingMode; orderGrouping: OrderGrouping }>) => {
     try {
-      globalThis.localStorage?.setItem(
+      writeStored(
         STRATEGY_STORAGE_KEY,
         JSON.stringify({ ...loadPersistedStrategy(), ...patch }),
       );
@@ -117,16 +144,24 @@ export function App() {
   // проходит через App, а не остаётся внутри плана.
   const [hasManualEdits, setHasManualEdits] = useState(false);
 
+  // Сколько размещаемых позиций в черновике «Настройки» — для полосы шагов ERP. Знает об этом
+  // SetupScreen (черновик живёт там), поэтому число поднимается сюда, к верхней полосе.
+  const [draftPositions, setDraftPositions] = useState(0);
+  const onDraftStats = useCallback((s: { positions: number }) => setDraftPositions(s.positions), []);
+
   useEffect(() => {
     try {
       if (result?.transient) return; // preview: leave the previously saved plan untouched
       if (result) {
-        globalThis.localStorage?.setItem(LOAD_STORAGE_KEY, JSON.stringify(result.load));
-        if (result.orderColors) globalThis.localStorage?.setItem(ORDER_COLORS_STORAGE_KEY, JSON.stringify(result.orderColors));
-        else globalThis.localStorage?.removeItem(ORDER_COLORS_STORAGE_KEY);
+        writeStored(LOAD_STORAGE_KEY, JSON.stringify(result.load));
+        if (result.orderColors) writeStored(ORDER_COLORS_STORAGE_KEY, JSON.stringify(result.orderColors));
+        else removeStored(ORDER_COLORS_STORAGE_KEY);
+        if (result.context) writeStored(PLAN_CONTEXT_STORAGE_KEY, JSON.stringify(result.context));
+        else removeStored(PLAN_CONTEXT_STORAGE_KEY);
       } else {
-        globalThis.localStorage?.removeItem(LOAD_STORAGE_KEY);
-        globalThis.localStorage?.removeItem(ORDER_COLORS_STORAGE_KEY);
+        removeStored(LOAD_STORAGE_KEY);
+        removeStored(ORDER_COLORS_STORAGE_KEY);
+        removeStored(PLAN_CONTEXT_STORAGE_KEY);
       }
     } catch {
       /* ignore */
@@ -135,7 +170,10 @@ export function App() {
 
   /** Возвращает, принят ли результат. «Настройка» объявляет расчёт выполненным только по `true`:
    *  раньше объявление шло безусловно и врало уже при геометрическом отказе. */
-  const onCalculate = (load: Load, opts?: { persist?: boolean; orderColors?: Record<string, number> }): boolean => {
+  const onCalculate = (
+    load: Load,
+    opts?: { persist?: boolean; orderColors?: Record<string, number>; context?: PlanContext },
+  ): boolean => {
     // Стратегию передают все вызывающие явно: «Рассчитать» берёт её из состояния ниже, Demo
     // пришпиливает свою (4bj.13). Прежний fallback на стратегию предыдущего плана стал мёртвым
     // кодом вместе с переключателями на ладеплане (5nb этап 2) и убран.
@@ -145,7 +183,14 @@ export function App() {
     // Domain invariant: never surface a layout with geometry violations.
     if (findGeometryViolations(load, layout).length > 0) return false;
     // Demo doesn't pass orderColors → keep the current plan's map.
-    setResult({ load, layout, transient: opts?.persist === false, orderColors: opts?.orderColors ?? result?.orderColors });
+    // Контекст — только этого расчёта: от прежнего плана он не наследуется (рейс и заказы другие).
+    setResult({
+      load,
+      layout,
+      transient: opts?.persist === false,
+      orderColors: opts?.orderColors ?? result?.orderColors,
+      ...(opts?.context ? { context: opts.context } : {}),
+    });
     // Стратегия того, что реально посчиталось, становится текущей — иначе Demo (он пришпиливает
     // rear) оставил бы шапку «Настройки» показывать combined, хотя план перед глазами построен
     // иначе: единственный на всю страницу переключатель обязан описывать то, что на ней видно.
@@ -162,14 +207,38 @@ export function App() {
     setOrderGrouping('strict');
     // Забыть и сохранённый выбор: иначе перезагрузка после сброса вернула бы прежнюю стратегию.
     try {
-      globalThis.localStorage?.removeItem(STRATEGY_STORAGE_KEY);
+      removeStored(STRATEGY_STORAGE_KEY);
     } catch {
       /* ignore */
     }
   };
 
+  const erp = host.kind === 'erp';
+  const plan = result ? (
+    <LadeplanScreen
+      load={result.load}
+      layout={result.layout}
+      orderColors={result.orderColors}
+      context={result.context}
+      onManualEditsChange={setHasManualEdits}
+    />
+  ) : (
+    <EmptyPlan />
+  );
+
   return (
-    <LocaleProvider initial="de">
+    // В ERP подписи говорят словами макета («Bestellungen», «Ladeplan berechnen») — подменой ключей.
+    <LocaleProvider
+      initial={host.kind === 'erp' ? host.session.language : 'de'}
+      persist={!erp}
+      overrides={erp ? ERP_KEY_OVERRIDES : undefined}
+    >
+      {host.kind === 'erp' && (
+        <ErpTopBar
+          fullName={host.session.fullName}
+          steps={<ErpSteps positions={draftPositions} hasPlan={!!result} />}
+        />
+      )}
       {/* Setup is screen-only; printing yields just the Ladeplan document — print:hidden несут
           setup-части внутри SetupScreen, а не обёртка здесь: план передаётся ДЕТЬМИ SetupScreen
           (LKWkalk-9tq), чтобы липкая шапка «Настройки» и план делили одного родителя — sticky
@@ -185,19 +254,19 @@ export function App() {
         onLoadingModeChange={chooseLoadingMode}
         onOrderGroupingChange={chooseOrderGrouping}
         hasManualEdits={hasManualEdits}
+        // Шаг выбора груза (макет, блоки 2 и 5) — только в сборке для ERP.
+        importSlot={host.kind === 'erp' ? (api) => <ErpCargoPicker source={host.source} api={api} /> : undefined}
+        erpMode={erp}
+        onDraftStats={erp ? onDraftStats : undefined}
       >
         {/* The plan section is always part of the page (rgv.2) — one page, not two screens. Until
             the first Berechnen it stands in as an empty state. There is no "back": the plan is
-            removed by Zurücksetzen, which says so and asks first. */}
-        {result ? (
-          <LadeplanScreen
-            load={result.load}
-            layout={result.layout}
-            orderColors={result.orderColors}
-            onManualEditsChange={setHasManualEdits}
-          />
+            removed by Zurücksetzen, which says so and asks first.
+            В ERP план обёрнут якорем шага «Ladeplan» полосы шагов. */}
+        {erp ? (
+          <div id={ERP_STEP_ANCHORS.plan} className="scroll-mt-24">{plan}</div>
         ) : (
-          <EmptyPlan />
+          plan
         )}
       </SetupScreen>
     </LocaleProvider>

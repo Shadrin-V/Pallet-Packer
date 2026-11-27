@@ -2,11 +2,14 @@
 // Production exports are added test-first (TDD).
 
 /** Version of the engine JSON API contract (see docs/api-contract.md). */
-export const ENGINE_CONTRACT_VERSION = '0.18.0';
+export const ENGINE_CONTRACT_VERSION = '0.19.0';
 
 export * from './model/index';
 export { calculateLayout, getLayoutReport, computeStack } from './api/api';
 export type { StackPreview } from './api/api';
+// Capacity (contract 0.19.0, ADR 027) — «max. in diesen LKW» / «Platz für N weitere Stück».
+export { maxUnitsInVehicle, roomLeft } from './api/capacity';
+export type { CapacityOptions, RoomLeft } from './api/capacity';
 export { validateLoad } from './validation/validate';
 export { VALIDATION_ERROR_CODES } from './validation/codes';
 export type { ValidationErrorCode } from './validation/codes';

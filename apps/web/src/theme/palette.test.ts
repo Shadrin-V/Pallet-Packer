@@ -33,6 +33,8 @@ const tokens = (source: string, selector: string) =>
     [...block(source, selector).matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]),
   );
 
+const SCHAEFER = ":root[data-theme='schaefer']";
+
 describe('две фирменные палитры', () => {
   it('тёплая палитра объявляет тот же набор токенов, что и forest', () => {
     const forest = Object.keys(tokens(css, ':root {'));
@@ -40,7 +42,32 @@ describe('две фирменные палитры', () => {
     expect(warm.sort()).toEqual(forest.sort());
   });
 
-  it('цвета серий в обеих палитрах совпадают', () => {
+  it('третья палитра (schaefer) объявляет тот же набор токенов и те же семантические цвета, что и forest', () => {
+    const forest = tokens(css, ':root {');
+    const schaefer = tokens(css, SCHAEFER);
+    expect(Object.keys(schaefer).sort()).toEqual(Object.keys(forest).sort());
+    for (const k of ['--danger', '--success', '--warning', '--info']) {
+      expect(schaefer[k], `${k} обязан значить одно и то же во всех палитрах`).toBe(forest[k]);
+    }
+  });
+
+  it('schaefer: значения из Schäfer Design', () => {
+    const t = tokens(css, SCHAEFER);
+    expect(t['--paper']).toBe('#eef1ed');
+    expect(t['--brand']).toBe('#104f24');
+    expect(t['--ink']).toBe('#0f1a13');
+    expect(t['--font-sans'].startsWith('"Instrument Sans", "Onest"')).toBe(true);
+  });
+
+  it('schaefer: три цвета заказов, дальше по кругу', () => {
+    const t = tokens(css, SCHAEFER);
+    expect([t['--s1'], t['--s2'], t['--s3']]).toEqual(['#104f24', '#bf7f10', '#7f9486']);
+    expect([t['--s4'], t['--s5'], t['--s6'], t['--s7'], t['--s8']]).toEqual([
+      t['--s1'], t['--s2'], t['--s3'], t['--s1'], t['--s2'],
+    ]);
+  });
+
+  it('цвета серий в forest и warm совпадают', () => {
     const forest = tokens(css, ':root {');
     const warm = tokens(css, ":root[data-theme='warm']");
     for (const k of ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8']) {
@@ -93,6 +120,7 @@ describe('чернильный ряд обеих палитр проходит W
   for (const [name, selector] of [
     ['forest', ':root {'],
     ['warm', ":root[data-theme='warm']"],
+    ['schaefer', SCHAEFER],
   ] as const) {
     it(`${name}: --ink, --muted и --faint читаемы на --paper`, () => {
       const t = tokens(css, selector);
@@ -141,7 +169,7 @@ describe('--hero-tint: хвост градиента шапки следует �
 describe('docs/design/theme.css и apps/web/src/theme.css — палитры идентичны', () => {
   const docsCss = readFileSync(path.join(ROOT, 'docs/design/theme.css'), 'utf8');
 
-  for (const selector of [':root {', ":root[data-theme='warm']"]) {
+  for (const selector of [':root {', ":root[data-theme='warm']", SCHAEFER]) {
     it(`${selector} — один и тот же набор токенов и значений`, () => {
       const appTokens = tokens(css, selector);
       const docsTokens = tokens(docsCss, selector);

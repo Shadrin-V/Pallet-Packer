@@ -30,6 +30,9 @@ export interface CompositeOptions {
   figures: { label: string; value: string }[];
   legend: { label: string; color: string }[];
   sections: CompositeSection[];
+  /** Text blocks below the legend (a title, then its lines) — what the sheet says in words besides
+   *  the legend (ERP build: «Nicht im LKW», the weight note). Absent or empty → the sheet as before. */
+  notes?: { title: string; lines: string[] }[];
   /** Sheet width in user units; the PNG is rasterised to `pngWidth` regardless. */
   width?: number;
 }
@@ -85,6 +88,7 @@ const META_SIZE = 16;
 const FIGURE_SIZE = 30;
 const CAPTION_SIZE = 14;
 const LEGEND_ROW = 24;
+const NOTE_GAP = 12;
 
 function text(
   parent: SVGElement,
@@ -177,6 +181,16 @@ export function buildCompositeSvg(opts: CompositeOptions): string {
     root.appendChild(sw);
     text(root, PAD + 22, y, item.label, { size: 14, fill: 'var(--ink)' });
     y += LEGEND_ROW;
+  }
+
+  for (const note of opts.notes ?? []) {
+    y += NOTE_GAP;
+    text(root, PAD, y, note.title, { size: 14, fill: 'var(--ink)', weight: 700 });
+    y += LEGEND_ROW;
+    for (const line of note.lines) {
+      text(root, PAD, y, line, { size: 14, fill: 'var(--muted)' });
+      y += LEGEND_ROW;
+    }
   }
 
   const H = Math.round(y + PAD);

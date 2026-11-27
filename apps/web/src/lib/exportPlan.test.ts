@@ -173,6 +173,29 @@ describe('buildCompositeSvg', () => {
     // both cutaways are ~5.5:1 and 5:1 — the sheet must be far taller than a single strip
     expect(h).toBeGreaterThan(w / 3);
   });
+
+  it('draws the note blocks (title and lines as text) below the legend and grows the sheet for them', () => {
+    const notes = [
+      { title: 'Nicht im LKW', lines: ['2 Stk EUR101 Box · 1 Stapel zu 2 · BE-1 · kein Platz', '12,4 m³ SCH205 Bretter · BE-2 · in m³: nicht planbar'] },
+      { title: 'Gewicht wird nicht geprüft', lines: ['Der Ladungsplaner rechnet nur mit Maßen.'] },
+    ];
+    const markup = buildCompositeSvg({ ...opts, notes });
+    const texts = [...markup.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+    const legendAt = texts.indexOf('SO-1001 · 34');
+    expect(texts.slice(legendAt + 1)).toEqual([
+      'Nicht im LKW',
+      '2 Stk EUR101 Box · 1 Stapel zu 2 · BE-1 · kein Platz',
+      '12,4 m³ SCH205 Bretter · BE-2 · in m³: nicht planbar',
+      'Gewicht wird nicht geprüft',
+      'Der Ladungsplaner rechnet nur mit Maßen.',
+    ]);
+    const height = (m: string) => Number(/viewBox="0 0 \d+ (\d+)"/.exec(m)![1]);
+    expect(height(markup)).toBeGreaterThan(height(buildCompositeSvg(opts)));
+  });
+
+  it('without notes the sheet is unchanged', () => {
+    expect(buildCompositeSvg({ ...opts, notes: [] })).toBe(buildCompositeSvg(opts));
+  });
 });
 
 describe('downloadBlob', () => {

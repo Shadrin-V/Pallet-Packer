@@ -2,25 +2,33 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Vehicle } from '@shadrin-v/engine';
+import type { ErpSession } from '@shadrin-v/contracts';
 import { LocaleProvider } from '../../i18n/LocaleContext';
+import { HostProvider, type Host } from '../../host/HostContext';
+import type { ErpSource } from '../../data/ErpSource';
 import { PositionRow } from './PositionRow';
 import { emptyPosition, type PositionState } from './setupState';
 
 const vehicle: Vehicle = { id: 'v', name: 'v', length: 13620, width: 2480, height: 2700 };
 
-function renderRow(over: Partial<PositionState> = {}, props: Partial<Parameters<typeof PositionRow>[0]> = {}) {
+const ERP_HOST: Host = {
+  kind: 'erp',
+  session: { user: 'anna@firma.de', fullName: 'Anna Muster', language: 'de', csrfToken: 't', appVersion: '0.0.0' } satisfies ErpSession,
+  source: {} as ErpSource,
+};
+
+function renderRow(over: Partial<PositionState> = {}, props: Partial<Parameters<typeof PositionRow>[0]> = {}, host?: Host) {
   const onSelect = vi.fn();
   const onChange = vi.fn();
-  render(
-    <LocaleProvider initial="de">
-      <PositionRow
-        position={{ ...emptyPosition(), name: 'Gestell A', length: 2400, width: 1000, height: 1900, ...over }}
-        index={0} vehicle={vehicle} selected={false} panelMounted
-        onSelect={onSelect} onDeselect={() => {}} onChange={onChange} armed={false} onArm={() => {}} onRemove={() => {}}
-        {...props}
-      />
-    </LocaleProvider>,
+  const row = (
+    <PositionRow
+      position={{ ...emptyPosition(), name: 'Gestell A', length: 2400, width: 1000, height: 1900, ...over }}
+      index={0} vehicle={vehicle} selected={false} panelMounted
+      onSelect={onSelect} onDeselect={() => {}} onChange={onChange} armed={false} onArm={() => {}} onRemove={() => {}}
+      {...props}
+    />
   );
+  render(<LocaleProvider initial="de">{host ? <HostProvider value={host}>{row}</HostProvider> : row}</LocaleProvider>);
   return { onSelect, onChange };
 }
 
@@ -80,5 +88,58 @@ describe('PositionRow', () => {
     expect(screen.getByRole('combobox', { name: 'Artikel' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Artikel' })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Erklärung zur Artikelbindung' })).toHaveLength(4);
+  });
+
+  describe('происхождение габаритов (сборка для ERP)', () => {
+    it('каталог и полные габариты → «Maße am Artikel gespeichert»', () => {
+      renderRow({ dimsFromCatalog: true }, {}, ERP_HOST);
+      expect(screen.getByTestId('dims-hint')).toHaveTextContent('Maße am Artikel gespeichert');
+    });
+
+    it('из названия без высоты → «aus dem Namen» и «Höhe fehlt»', () => {
+      renderRow({ dimsFromName: true, height: '' }, {}, ERP_HOST);
+      const hint = screen.getByTestId('dims-hint');
+      expect(hint).toHaveTextContent('Länge und Breite aus dem Namen, bitte prüfen');
+      expect(hint).toHaveTextContent('Höhe fehlt');
+    });
+
+    it('каталог при неполных габаритах → не «gespeichert», а «Maße fehlen»', () => {
+      renderRow({ dimsFromCatalog: true, height: '' }, {}, ERP_HOST);
+      const hint = screen.getByTestId('dims-hint');
+      expect(hint).not.toHaveTextContent('Maße am Artikel gespeichert');
+      expect(hint).toHaveTextContent('Maße fehlen');
+    });
+
+    it('правка любого размера снимает метку каталога', async () => {
+      const { onChange } = renderRow({ dimsFromCatalog: true }, {}, ERP_HOST);
+      await userEvent.type(screen.getByLabelText('Höhe'), '1');
+      expect(onChange).toHaveBeenLastCalledWith({ height: 19001, dimsFromCatalog: undefined });
+      expect(Object.keys(onChange.mock.lastCall![0])).toEqual(['height', 'dimsFromCatalog']);
+    });
+
+    it('без габаритов и без метки названия → «Maße fehlen» с пояснением', () => {
+      renderRow({ length: '', width: '', height: '' }, {}, ERP_HOST);
+      expect(screen.getByTestId('dims-hint')).toHaveTextContent('Maße fehlen');
+      expect(screen.getByTestId('dims-hint')).toHaveTextContent('Im Namen steht kein Maß.');
+    });
+
+    it('правка длины снимает метку «aus dem Namen»; без метки патч прежний', async () => {
+      const { onChange } = renderRow({ dimsFromName: true }, {}, ERP_HOST);
+      await userEvent.type(screen.getByLabelText('Länge'), '1');
+      expect(onChange).toHaveBeenLastCalledWith({ length: 24001, dimsFromName: undefined });
+      expect(Object.keys(onChange.mock.lastCall![0])).toContain('dimsFromName');
+    });
+
+    it('обычная сборка: тех же меток нет', () => {
+      renderRow({ dimsFromName: true, height: '', sourceQuantity: 2.5, uom: 'Nos' });
+      expect(screen.queryByTestId('dims-hint')).toBeNull();
+      expect(screen.queryByTestId('source-quantity')).toBeNull();
+    });
+
+    it('обычная сборка: правка длины даёт прежний патч без новых ключей', async () => {
+      const { onChange } = renderRow();
+      await userEvent.type(screen.getByLabelText('Länge'), '1');
+      expect(Object.keys(onChange.mock.lastCall![0])).toEqual(['length']);
+    });
   });
 });

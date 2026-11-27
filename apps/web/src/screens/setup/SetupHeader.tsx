@@ -27,9 +27,16 @@ export interface SetupHeaderProps {
   onLoadingModeChange: (m: LoadingMode) => void;
   onOrderGroupingChange: (g: OrderGrouping) => void;
   onVehicleChange: (v: Vehicle) => void;
-  onDemo: () => void;
+  /** Без пропа кнопки Demo нет (сборка для ERP: демо-данных там нет, макет). */
+  onDemo?: () => void;
+  /** Сборка для ERP: кнопка «Positionen ändern» — к шагу выбора груза. Без пропа её нет. */
+  onChangePositions?: () => void;
   onReset: () => void;
   onCalculate: () => void;
+  /** Сборка для ERP: расчёт недоступен (`aria-disabled`, кнопка не гаснет); причина — текст с id
+   *  `calcBlockedReasonId` рядом с нижней кнопкой экрана. Без пропов шапка прежняя. */
+  calcBlocked?: boolean;
+  calcBlockedReasonId?: string;
 }
 
 function MeasureField({ label, value, onChange }: { label: string; value: Num; onChange: (v: Num) => void }) {
@@ -45,7 +52,8 @@ function MeasureField({ label, value, onChange }: { label: string; value: Num; o
 
 export function SetupHeader({
   vehicle, summary, errorCount, compact, loadingMode, orderGrouping,
-  onLoadingModeChange, onOrderGroupingChange, onVehicleChange, onDemo, onReset, onCalculate,
+  onLoadingModeChange, onOrderGroupingChange, onVehicleChange, onDemo, onChangePositions, onReset, onCalculate,
+  calcBlocked, calcBlockedReasonId,
 }: SetupHeaderProps) {
   const tt = useT();
   const { locale } = useLocale();
@@ -131,11 +139,21 @@ export function SetupHeader({
         <div className="ml-auto flex items-center gap-2">
           {!compact && (
             <>
-              <Button variant="ghost" onClick={onDemo}>{tt('action.demo')}</Button>
+              {onDemo && <Button variant="ghost" onClick={onDemo}>{tt('action.demo')}</Button>}
+              {onChangePositions && (
+                <Button variant="secondary" onClick={onChangePositions}>{tt('erp.action.changePositions')}</Button>
+              )}
               <Button variant="secondary" onClick={onReset}>{tt('action.reset')}</Button>
             </>
           )}
-          <Button variant="primary" onClick={onCalculate}>{tt('action.calculate')}</Button>
+          <Button
+            variant="primary"
+            onClick={onCalculate}
+            ariaDisabled={calcBlocked || undefined}
+            ariaDescribedBy={calcBlocked ? calcBlockedReasonId : undefined}
+          >
+            {tt('action.calculate')}
+          </Button>
         </div>
       </div>
       {errorCount > 0 && (

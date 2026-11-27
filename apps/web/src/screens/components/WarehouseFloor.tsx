@@ -31,6 +31,7 @@ import { orderIndexMap } from './cutaway';
 import { StackShape } from './StackShape';
 import { stackLabel, NAME_FONT_RATIO } from './stackLabel';
 import { RotateHandle } from './RotateHandle';
+import { topMarkPlacements } from './positionMark';
 import { WarehouseBay } from './WarehouseBay';
 import { reorderBaysAt, warehouseFloor, type BufferTile } from './warehouseLayout';
 
@@ -62,6 +63,7 @@ export function WarehouseFloor({
   onBayOrderChange,
   showTruck = true,
   dropTarget = false,
+  marks,
 }: {
   load: Load;
   tiles: BufferTile[];
@@ -95,6 +97,9 @@ export function WarehouseFloor({
   /** Рисуется ли обвес на разрезах. Двор повторяет это значение, чтобы ширина его внешнего viewBox
    *  совпадала с разрезом — на этом равенстве держится масштаб 1:1. */
   showTruck?: boolean;
+  /** Сборка для ERP: id позиции (= cargoTypeId) → знак позиции без цвета (`positionMarks`) — тот
+   *  же, что на грузе в кузове. Без карты разметка прежняя. */
+  marks?: ReadonlyMap<string, string>;
 }) {
   const tt = useT();
   const byId = new Map(load.cargo.map((c) => [c.id, c]));
@@ -209,6 +214,18 @@ export function WarehouseFloor({
   const floorHeight = Math.max(floor.height, yardUnit);
   // Uniform ×N label size, in the same mm units the hold uses for its own counts.
   const countFont = load.vehicle.width * 0.05;
+  // Знаки позиций (ERP) на плитках — те же правила, что в виде сверху кузова: вынесенный знак не
+  // ложится на соседнюю плитку. Ключ — индекс в `floor.tiles`; фантом знака не несёт.
+  const tileMarks = topMarkPlacements(
+    marks
+      ? floor.tiles.flatMap((pt, i) => {
+          const mark = pt.tile.phantom ? undefined : marks.get(pt.tile.cargoTypeId);
+          return mark ? [{ key: String(i), mark, rect: { x: pt.x, y: pt.y, w: pt.dx, h: pt.dy } }] : [];
+        })
+      : [],
+    countFont,
+    { length: floor.width },
+  );
 
   return (
     <section aria-label={tt('warehouse.title')} data-testid="warehouse-floor" className="select-none print:hidden">
@@ -373,6 +390,14 @@ export function WarehouseFloor({
               //     pointer mid-carry, when phantomAt is live and a buffer tile is pressed.
               const realIndex =
                 phantomAt && pt.srcIndex > phantomAt.index ? pt.srcIndex - 1 : pt.srcIndex;
+              const mark = marks?.get(cargo.id);
+              // Знак — по тем же правилам, что в виде сверху кузова; подпись — под полосой знака.
+              const tileRect = { x: pt.x, y: pt.y, w: pt.dx, h: pt.dy };
+              const markAt = mark ? tileMarks.get(String(i)) ?? null : null;
+              const area = markAt?.labelArea ?? tileRect;
+              // Имя плитки для экранного чтения начинается со знака позиции (ERP): на плитке он
+              // нарисован, и без текста человек со скринридером его бы не получил.
+              const tileName = `${mark ? `${fillTemplate(tt('plan.mark.sr'), { mark })} · ` : ''}${cargo.name} ×${pt.tile.units}`;
               return (
                 <g
                   key={`${pt.tile.cargoTypeId}-${i}`}
@@ -384,7 +409,7 @@ export function WarehouseFloor({
                   data-units={pt.tile.units}
                   role="button"
                   tabIndex={0}
-                  aria-label={`${cargo.name} ×${pt.tile.units}`}
+                  aria-label={tileName}
                   opacity={dragging === realIndex ? 0.3 : undefined}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) => {
@@ -406,19 +431,19 @@ export function WarehouseFloor({
                     }
                   }}
                 >
-                  <title>{`${cargo.name} ×${pt.tile.units}`}</title>
+                  <title>{tileName}</title>
                   <StackShape x={pt.x} y={pt.y} w={pt.dx} h={pt.dy} series={series} hatchSpacing={180} backing />
                   {/* Имя артикула над количеством (ayg) — та же пара, что в виде сверху. Имя тише
                       числа и пропадает первым, когда плитка мала: stackLabel решает, что влезло. */}
                   {(() => {
-                    const name = stackLabel(cargo.name, pt.dx, pt.dy, countFont);
+                    const name = stackLabel(cargo.name, area.w, area.h, countFont);
                     const dy = name ? countFont * 0.45 : 0;
                     return (
                       <>
                         {name && (
                           <text
-                            x={pt.x + pt.dx / 2}
-                            y={pt.y + pt.dy / 2 - dy}
+                            x={area.x + area.w / 2}
+                            y={area.y + area.h / 2 - dy}
                             fill="var(--muted)"
                             fontSize={countFont * NAME_FONT_RATIO}
                             fontWeight={600}
@@ -430,8 +455,8 @@ export function WarehouseFloor({
                           </text>
                         )}
                         <text
-                          x={pt.x + pt.dx / 2}
-                          y={pt.y + pt.dy / 2 + dy}
+                          x={area.x + area.w / 2}
+                          y={area.y + area.h / 2 + dy}
                           fill="var(--ink)"
                           fontSize={countFont}
                           fontWeight={700}
@@ -444,6 +469,30 @@ export function WarehouseFloor({
                       </>
                     );
                   })()}
+                  {mark && markAt && (
+                    <>
+                      {markAt.leader && (
+                        <line {...markAt.leader} stroke="var(--ink)" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                      )}
+                      <text
+                        data-mark={mark}
+                        x={markAt.x}
+                        y={markAt.y}
+                        fill="var(--ink)"
+                        fontSize={markAt.fontSize}
+                        fontWeight={700}
+                        stroke="var(--card)"
+                        strokeWidth={markAt.strokeWidth}
+                        strokeLinejoin="round"
+                        paintOrder="stroke"
+                        textAnchor={markAt.anchor}
+                        dominantBaseline="central"
+                        pointerEvents="none"
+                      >
+                        {mark}
+                      </text>
+                    </>
+                  )}
                   {sel === realIndex && (
                     <>
                       <rect

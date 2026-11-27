@@ -1,3 +1,4 @@
+import { logoUrl } from '../../lib/logoUrl';
 import { useT } from '../../i18n/LocaleContext';
 
 /**
@@ -9,7 +10,7 @@ export function BrandMark() {
   const tt = useT();
   return (
     <img
-      src="/logo.svg"
+      src={logoUrl()}
       alt={tt('ladeplan.brandName')}
       className="h-14 w-auto max-w-[220px] object-contain"
     />

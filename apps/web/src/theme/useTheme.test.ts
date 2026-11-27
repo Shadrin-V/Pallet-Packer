@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readTheme, applyTheme, THEME_STORAGE_KEY } from './useTheme';
 
 describe('хранение темы', () => {
@@ -29,5 +29,62 @@ describe('хранение темы', () => {
   it('warm ставит атрибут', () => {
     applyTheme('warm');
     expect(document.documentElement.getAttribute('data-theme')).toBe('warm');
+  });
+});
+
+describe('палитра хоста (сборка для ERP)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
+    vi.resetModules();
+  });
+
+  it('палитра хоста запирается: applyTheme её не снимает и не пишет выбор', async () => {
+    const m = await import('./useTheme');
+    m.applyHostPalette('schaefer');
+    m.applyTheme('warm');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('schaefer');
+    expect(localStorage.getItem(m.THEME_STORAGE_KEY)).not.toBe('warm');
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('импорт модуля и applyHostPalette не обращаются к хранилищу вообще (ни чтение, ни запись)', async () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem');
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    const m = await import('./useTheme');
+    m.applyHostPalette('schaefer');
+    expect(get).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('schaefer');
+    get.mockRestore();
+    set.mockRestore();
+  });
+
+  it('импорт ничего не ставит на <html>, даже при сохранённом warm', async () => {
+    localStorage.setItem('ladungsplaner.theme', 'warm');
+    await import('./useTheme');
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('обычная сборка: initTheme ставит атрибут по сохранённому выбору и ничего не пишет', async () => {
+    localStorage.setItem('ladungsplaner.theme', 'warm');
+    const m = await import('./useTheme');
+    m.initTheme();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('warm');
+    expect(localStorage.getItem('ladungsplaner.theme')).toBe('warm');
+    expect(localStorage.length).toBe(1);
+  });
+
+  it('обычная сборка: пустое хранилище после initTheme остаётся пустым', async () => {
+    const m = await import('./useTheme');
+    m.initTheme();
+    expect(localStorage.length).toBe(0);
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('обычная сборка: явный applyTheme по-прежнему запоминает выбор', async () => {
+    const m = await import('./useTheme');
+    m.applyTheme('warm');
+    expect(localStorage.getItem(m.THEME_STORAGE_KEY)).toBe('warm');
   });
 });

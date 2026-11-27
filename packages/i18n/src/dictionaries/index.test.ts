@@ -26,6 +26,12 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
   it('translates every engine validation error code into both locales (acceptance criterion)', () => {
     const errorCodes = TRANSLATION_KEYS.filter((key) => key.startsWith('ERR_'));
     expect(errorCodes).toEqual([
+      // why an ERP order line is not placeable (ERP contract erp-y6tb9, section 2) — server reasons
+      // shown next to the line, not engine codes
+      'ERR_LINE_UNIT_NOT_PIECES',
+      'ERR_LINE_QTY_UNKNOWN',
+      'ERR_LINE_NO_ITEM',
+      'ERR_LINE_NOTHING_OPEN',
       'ERR_INVALID_DIMENSION',
       'ERR_CARGO_EXCEEDS_VEHICLE',
       'ERR_INVALID_QUANTITY',
@@ -45,6 +51,17 @@ describe('DICTIONARIES completeness (ADR 006)', () => {
       'ERR_EDIT_FORK_ACCESS',
       'ERR_EDIT_ROTATION',
       'ERR_EDIT_NOTHING_TO_PLACE',
+      // error codes of the ERP contract (erp-y6tb9 api-vertrag, section 5) — answers of the ERP
+      // methods, translated on the page; not engine codes
+      'ERR_NOT_LOGGED_IN',
+      'ERR_FORBIDDEN',
+      'ERR_TRIP_NOT_FOUND',
+      'ERR_LINE_NOT_FOUND',
+      'ERR_ITEM_NOT_FOUND',
+      'ERR_VALIDATION',
+      // the page's own code (ERP contract, section 1, "user change"): another user logged in to the ERP
+      // in this browser; not sent by the ERP
+      'ERR_SESSION_CHANGED',
     ]);
     for (const code of errorCodes) {
       expect(DICTIONARIES.de[code]).toBeTruthy();

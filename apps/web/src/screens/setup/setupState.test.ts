@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { Vehicle } from '@shadrin-v/engine';
+import type { OrderPosition, OrderZone } from '@shadrin-v/contracts';
 import {
-  SETUP_STORAGE_KEY, emptyOrder, emptyPosition, isPristineDraft, loadSetup, nextColorIndex,
-  nextOrderNumber, orderStateFromZone, toCargo, toCargoList, type PositionState,
+  SETUP_STORAGE_KEY, applySuggestion, emptyOrder, emptyPosition, isPristineDraft, loadSetup, nextColorIndex,
+  nextOrderNumber, orderStateFromZone, rulesPatch, toCargo, toCargoList, type PositionState,
 } from './setupState';
+import { setupMessages } from './setupValidation';
 
 describe('nextOrderNumber', () => {
   it('is the highest SO-n plus one, so a deletion frees no number', () => {
@@ -57,6 +60,18 @@ describe('loadSetup', () => {
     };
     globalThis.localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(draft));
     expect(loadSetup()!.orders.map((o) => o.colorIndex)).toEqual([0, 1]);
+  });
+
+  it('keeps a well-formed trip reference and drops a corrupt one', () => {
+    const base = {
+      vehicle: { id: 'v', name: 'v', length: 1, width: 1, height: 1 },
+      orders: [{ key: 'a', orderId: 'SO-1', colorIndex: 0, positions: [emptyPosition()] }],
+    };
+    const trip = { tripId: 'LKW-2026-00412', loadingDate: '2026-11-24' };
+    globalThis.localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify({ ...base, trip }));
+    expect(loadSetup()!.trip).toEqual(trip);
+    globalThis.localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify({ ...base, trip: { tripId: 7 } }));
+    expect(loadSetup()).not.toHaveProperty('trip');
   });
 
   it('returns null on a corrupt draft instead of throwing', () => {
@@ -219,5 +234,78 @@ describe('isPristineDraft (F2, решение владельца: нетрону
     const o = emptyOrder(1);
     o.positions[0].rotation = 'full';
     expect(isPristineDraft([o])).toBe(false);
+  });
+});
+
+describe('зона ERP → черновик: правила каталога, неразмещаемое, происхождение габаритов', () => {
+  const vehicle: Vehicle = { id: 'v', name: 'LKW', length: 13600, width: 2450, height: 2450 };
+  const zone = (p: Partial<OrderPosition>, z: Partial<OrderZone> = {}): OrderZone =>
+    ({ orderId: 'PUR-ORD-2026-00871', partner: 'Muster Paletten Sp. z o.o.', ...z,
+       positions: [{ itemCode: 'HAN0412', itemName: 'Einwegpalette 1200x800', quantity: 440, dimensionsSource: 'catalog', lineRef: 'a1b2c3d4e5', ...p }] });
+
+  it('orderStateFromZone применяет правила каталога и шаги вложения', () => {
+    const o = orderStateFromZone(zone({ length: 1200, width: 800, height: 144, nestStepSequential: 30,
+      rules: { state: 'verschachtelt', nestingMode: 'sequential', rotation: 'none', maxTiers: 3 } }), 0);
+    expect(o.positions[0]).toMatchObject({ state: 'verschachtelt', nestingMode: 'sequential', rotation: 'none', maxTiers: 3, nestStepSequential: 30, lineRef: 'a1b2c3d4e5', dimsFromCatalog: true });
+    expect(o.partner).toBe('Muster Paletten Sp. z o.o.');
+  });
+
+  it('без rules — умолчания emptyPosition', () => {
+    expect(orderStateFromZone(zone({}), 0).positions[0]).toMatchObject({ state: 'entschachtelt', rotation: 'yawOnly', nestingMode: 'pairwise' });
+  });
+
+  it('переносит покупателя прямой поставки', () => {
+    expect(orderStateFromZone(zone({}, { customer: 'Musterkunde Logistik GmbH' }), 0).customer).toBe('Musterkunde Logistik GmbH');
+  });
+
+  it('количество рейса и точное количество переносятся как есть; единица на размещаемость не влияет', () => {
+    const p = orderStateFromZone(zone({ quantity: 2598, sourceQuantity: 2597.361, uom: 'Cubic Meter' }), 0).positions[0];
+    expect(p).toMatchObject({ quantity: 2598, sourceQuantity: 2597.361, uom: 'Cubic Meter' });
+    expect(p.unplaceable).toBeUndefined();                                  // нет флага сервера — позиция размещаемая
+    expect(toCargoList([orderStateFromZone(zone({ quantity: 440, length: 1200, width: 800, height: 144 }), 0)]).cargo[0].quantity).toBe(440);
+  });
+
+  it('неполная запись каталога: каталожные размеры есть, недостающие пусты, расчёт ловит пробел', () => {
+    const o = orderStateFromZone(zone({ length: 1200, width: 800, dimensionsSource: 'catalog' }), 0);
+    expect(o.positions[0]).toMatchObject({ dimsFromCatalog: true, length: 1200, width: 800, height: '' });
+    expect(setupMessages([o], vehicle)).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'setup.msg.dimsMissing' })]));
+  });
+
+  it('неразмещаемая строка: причина, количество 0, габариты пусты, в груз не идёт', () => {
+    const o = orderStateFromZone(zone({ quantity: 0, uom: 'Cubic Meter', dimensionsSource: 'manual', unplaceable: 'ERR_LINE_UNIT_NOT_PIECES' }), 0);
+    expect(o.positions[0]).toMatchObject({ unplaceable: 'ERR_LINE_UNIT_NOT_PIECES', quantity: 0, length: '', uom: 'Cubic Meter' });
+    const forced = { ...o, positions: [{ ...o.positions[0], quantity: 5, length: 1000, width: 1000, height: 1000 }] };
+    expect(toCargoList([forced]).cargo).toHaveLength(0);
+  });
+
+  it('неразмещаемая строка с присланными габаритами: габариты не переносятся', () => {
+    const p = orderStateFromZone(zone({ quantity: 0, length: 1200, width: 800, height: 144, unplaceable: 'ERR_LINE_QTY_UNKNOWN' }), 0).positions[0];
+    expect([p.length, p.width, p.height, p.quantity]).toEqual(['', '', '', 0]);
+  });
+
+  it('размер из названия — предложение, высота пуста', () => {
+    expect(orderStateFromZone(zone({ length: 1200, width: 800, dimensionsSource: 'name' }), 0).positions[0])
+      .toMatchObject({ dimsFromName: true, length: 1200, width: 800, height: '' });
+  });
+
+  it('строка без ERP-дополнений не получает лишних полей', () => {
+    const p = orderStateFromZone({ orderId: 'SO-1', positions: [{ itemCode: 'A', itemName: 'A', quantity: 1, dimensionsSource: 'erpnext-field' }] }, 0).positions[0];
+    for (const k of ['lineRef', 'uom', 'unplaceable', 'sourceQuantity', 'dimsFromName', 'dimsFromCatalog'])
+      expect(p).not.toHaveProperty(k);
+  });
+});
+
+describe('rulesPatch и applySuggestion', () => {
+  it('rulesPatch переносит заданные правила и шаги, отсутствующие шаги — пустые', () => {
+    expect(rulesPatch({ rotation: 'full', maxNested: 4 }, { nestStepPairwise: 22 })).toEqual({
+      rotation: 'full', maxNested: 4, nestStepPairwise: 22, nestStepSequential: '',
+    });
+    expect(rulesPatch(undefined, {})).toEqual({ nestStepPairwise: '', nestStepSequential: '' });
+  });
+
+  it('applySuggestion снимает пометки происхождения габаритов', () => {
+    const patch = applySuggestion({ itemCode: 'A', name: 'A', length: 800, erpFields: [], origin: 'local' });
+    expect(patch).toHaveProperty('dimsFromName', undefined);
+    expect(patch).toHaveProperty('dimsFromCatalog', undefined);
   });
 });

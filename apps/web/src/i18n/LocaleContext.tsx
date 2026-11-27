@@ -22,16 +22,26 @@ function readStored(fallback: Locale): Locale {
   return fallback;
 }
 
+/**
+ * `persist=false` (сборка для ERP): язык задаёт хост, и `ladungsplaner.locale` не читается и не
+ * пишется — в хранилище той сборки только ключи пользователя (контракт ERP §7).
+ * `overrides` подменяет ключ подписи другим ключом: `tt(key) = t(overrides[key] ?? key)`.
+ */
 export function LocaleProvider({
   children,
   initial = 'de',
+  persist = true,
+  overrides,
 }: {
   children: ReactNode;
   initial?: Locale;
+  persist?: boolean;
+  overrides?: Partial<Record<TranslationKey, TranslationKey>>;
 }) {
-  const [locale, setLocaleState] = useState<Locale>(() => readStored(initial));
+  const [locale, setLocaleState] = useState<Locale>(() => (persist ? readStored(initial) : initial));
   const setLocale = (l: Locale) => {
     setLocaleState(l);
+    if (!persist) return;
     try {
       globalThis.localStorage?.setItem(STORAGE_KEY, l);
     } catch {
@@ -39,8 +49,8 @@ export function LocaleProvider({
     }
   };
   const value = useMemo<LocaleCtx>(
-    () => ({ locale, setLocale, tt: (key) => t(key, locale) }),
-    [locale],
+    () => ({ locale, setLocale, tt: (key) => t(overrides?.[key] ?? key, locale) }),
+    [locale, overrides, persist], // setLocale зависит только от persist
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

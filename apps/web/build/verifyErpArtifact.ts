@@ -1,0 +1,139 @@
+// Проверка артефакта для ERP перед сдачей (контракт erp-y6tb9 §7, бид lp-erp-build):
+//
+//   npm run verify:erp                  — сдача в ERP и CI: дерево обязано быть чистым (dirty: false)
+//   npm run verify:erp -- --allow-dirty — только проверка до коммита
+//
+// Собирает `build:erp` ДВАЖДЫ — вторую с заведомо «враждебным» окружением (`hostileBuildEnv`: dev-режим,
+// чужие браузеры, сетка autoprefixer) — и требует: обе сборки побайтово равны (ERP пересобирает на своей
+// машине и сравнивает побайтово); в `apps/web/dist-erp` ровно три обычных файла артефакта и `HERKUNFT.json`,
+// без `.html`, ссылок и подкаталогов; размеры — в пределах ERP; паспорт — в канонической форме, годен
+// (`checkHerkunft`, правила `pruefe` ERP), его коммит — текущий HEAD, версия движка — из собранного пакета,
+// sha256 — от файлов на диске; сканеры запретов пусты. Иначе — exit 1 с перечнем нарушений.
+import { execFileSync } from 'node:child_process';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  ERP_ARTIFACT_FILES,
+  HERKUNFT_FILE,
+  checkHerkunft,
+  diffBuilds,
+  findCssForbidden,
+  findDynamicCode,
+  findRootAbsoluteLiterals,
+  hostileBuildEnv,
+  serializeHerkunft,
+  sha256Hex,
+  type Herkunft,
+} from './erpArtifact';
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const OUT = path.join(REPO, 'apps/web/dist-erp');
+const allowDirty = process.argv.includes('--allow-dirty');
+/** Пределы `pruefe` в ERP: паспорт — 64 КиБ, файл артефакта — 8 МиБ. */
+const MAX_HERKUNFT = 64 * 1024;
+const MAX_FILE = 8 * 1024 * 1024;
+
+type Snapshot = Map<string, Buffer>;
+
+function buildOnce(label: string, env: NodeJS.ProcessEnv, problems: string[]): Snapshot {
+  console.log(`\n=== verify:erp — ${label} ===`);
+  execFileSync('npm', ['run', 'build:erp'], { cwd: REPO, stdio: 'inherit', env });
+  const snap: Snapshot = new Map();
+  for (const name of readdirSync(OUT).sort()) {
+    const full = path.join(OUT, name);
+    if (!lstatSync(full).isFile()) {
+      problems.push(`dist-erp: ${name} — не обычный файл (ссылка или каталог)`);
+      continue;
+    }
+    snap.set(name, readFileSync(full));
+  }
+  return snap;
+}
+
+/** Разобранный паспорт; каноническая форма (`serializeHerkunft`) исключает и повтор ключей. */
+function parseHerkunft(snap: Snapshot, problems: string[]): Record<string, unknown> | undefined {
+  const raw = snap.get(HERKUNFT_FILE);
+  if (!raw) {
+    problems.push(`нет ${HERKUNFT_FILE}`);
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.toString('utf8'));
+  } catch {
+    problems.push(`${HERKUNFT_FILE} — не JSON`);
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    problems.push(`${HERKUNFT_FILE} — не JSON-объект`);
+    return undefined;
+  }
+  if (raw.toString('utf8') !== serializeHerkunft(parsed as Herkunft)) problems.push(`${HERKUNFT_FILE} — не в канонической форме`);
+  return parsed as Record<string, unknown>;
+}
+
+async function main(): Promise<number> {
+  const problems: string[] = [];
+  const first = buildOnce('сборка 1 из 2 (окружение как есть)', process.env, problems);
+  const second = buildOnce('сборка 2 из 2 (враждебное окружение: NODE_ENV=development, BROWSERSLIST, AUTOPREFIXER_GRID)', hostileBuildEnv(process.env), problems);
+
+  // 1. Воспроизводимость и устойчивость к окружению: тот же состав, те же байты (включая паспорт).
+  problems.push(...diffBuilds(first, second));
+  const names = [...second.keys()];
+
+  // 2. Состав каталога: ровно три файла артефакта и паспорт, без .html; размеры — в пределах ERP.
+  const expected = [...ERP_ARTIFACT_FILES, HERKUNFT_FILE].sort();
+  if (names.join('\n') !== expected.join('\n')) problems.push(`dist-erp: [${names.join(', ')}] ≠ [${expected.join(', ')}]`);
+  for (const name of names) if (name.endsWith('.html')) problems.push(`dist-erp: лишний ${name}`);
+  for (const [name, bytes] of second) {
+    const limit = name === HERKUNFT_FILE ? MAX_HERKUNFT : MAX_FILE;
+    if (bytes.length > limit) problems.push(`${name}: ${bytes.length} B больше предела ERP ${limit} B`);
+  }
+
+  // 3. Паспорт: годен, указывает на текущий HEAD и собранную версию движка, хэши — от файлов на диске.
+  const h = parseHerkunft(second, problems);
+  if (h) {
+    problems.push(...checkHerkunft(h, { allowDirty }));
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim();
+    if (h.commit !== head) problems.push(`commit: ${String(h.commit)} ≠ HEAD ${head}`);
+    const { ENGINE_CONTRACT_VERSION } = await import('@shadrin-v/engine');
+    if (h.engineContractVersion !== ENGINE_CONTRACT_VERSION) {
+      problems.push(`engineContractVersion: ${String(h.engineContractVersion)} ≠ ${ENGINE_CONTRACT_VERSION}`);
+    }
+    const files = (typeof h.files === 'object' && h.files !== null ? h.files : {}) as Record<string, unknown>;
+    for (const name of ERP_ARTIFACT_FILES) {
+      const bytes = second.get(name);
+      if (bytes && files[name] !== sha256Hex(bytes)) problems.push(`files["${name}"] не совпадает с sha256 файла`);
+    }
+  }
+
+  // 4. Сканеры запретов (контракт §7).
+  const js = second.get('ladungsplaner.js')?.toString('utf8') ?? '';
+  const css = second.get('ladungsplaner.css')?.toString('utf8') ?? '';
+  for (const x of findRootAbsoluteLiterals(js)) problems.push(`ladungsplaner.js: адрес от корня вне разрешённых: ${x}`);
+  for (const x of findRootAbsoluteLiterals(css)) problems.push(`ladungsplaner.css: адрес от корня вне разрешённых: ${x}`);
+  for (const x of findDynamicCode(js)) problems.push(`ladungsplaner.js: динамический код: ${x}`);
+  for (const x of findCssForbidden(css)) problems.push(`ladungsplaner.css: запрещено: ${x}`);
+
+  console.log('\n=== verify:erp — итог ===');
+  if (problems.length > 0) {
+    console.error(`НАРУШЕНИЯ (${problems.length}):`);
+    for (const p of problems) console.error(`  - ${p}`);
+    return 1;
+  }
+  for (const name of expected) {
+    const bytes = second.get(name)!;
+    console.log(`  ${sha256Hex(bytes)}  ${String(bytes.length).padStart(9)} B  ${name}`);
+  }
+  console.log(`OK: обе сборки (вторая — во враждебном окружении) побайтово равны; commit ${String(h!.commit)}, dirty: ${String(h!.dirty)}${allowDirty ? ' (--allow-dirty)' : ''}`);
+  return 0;
+}
+
+main().then(
+  (code) => process.exit(code),
+  (e: unknown) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

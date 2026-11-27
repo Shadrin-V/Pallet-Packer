@@ -2,6 +2,7 @@
 # Node / build
 node_modules/
 dist/
+dist-erp/
 *.tsbuildinfo
 
 # Local npm auth for GitHub Packages (qrd.19) — NEVER commit

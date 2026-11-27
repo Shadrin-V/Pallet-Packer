@@ -2,7 +2,7 @@
 
 > Граница между ядром `@shadrin-v/engine`, UI (Lovable) и будущим MCP-сервером.
 > Это источник истины по формам входа/выхода. **Ломающее изменение → ADR + правка этого файла
-> до реализации.** Версия контракта: `0.18.0` (аддитивно; полная история версий — в конце файла).
+> до реализации.** Версия контракта: `0.19.0` (аддитивно; полная история версий — в конце файла).
 
 Единицы: все линейные размеры — **целые миллиметры**. Координаты — от угла грузового отсека
 (`x` — длина, `y` — ширина, `z` — высота). Движок текст не возвращает — только данные и коды ошибок.
@@ -217,6 +217,31 @@ interface Report {
 }
 ```
 
+### CapacityOptions, RoomLeft (вместимость, 0.19.0, [ADR 027](adr/027-erp-embedded-artifact.md))
+```ts
+interface CapacityOptions {      // контекст упаковки для maxUnitsInVehicle — те же поля, что в Load
+  loadingMode?: LoadingMode;     // default 'combined'
+  clearance?: number;            // мм, равномерный зазор; default 0
+}
+
+interface RoomLeft {             // «Platz für N weitere Stück» — груз ровно из одного типа
+  cargoTypeId: string;
+  max: number;                   // = maxUnitsInVehicle(тип, load.vehicle, { loadingMode, clearance } из Load)
+  placed: number;                // размещений этого типа в ПЕРЕДАННОЙ раскладке (в т.ч. правленной вручную)
+  free: number;                  // max − placed, всегда > 0
+}
+```
+
+`maxUnitsInVehicle(cargo, vehicle, options?)` — один вызов `calculateLayout` с этим типом как
+единственной позицией `fill: true` (`quantity` и `orderId` игнорируются): число — то, что реально
+ставит упаковщик при правилах вращения/штабелирования/вложения/доступа вилами типа и отсеках кузова,
+а не оценка по объёму. Вход, не прошедший валидацию, или груз, не входящий ни в одной ориентации,
+→ `0`. Чистая, детерминированная, вход не мутирует.
+
+`roomLeft(load, layout)` считает `placed` по переданной раскладке, не пересчитывая её — поэтому
+годится для раскладки после ручных правок. `null`, если в `load.cargo` не ровно один тип или
+`free ≤ 0` (места нет).
+
 ## 2. Операции (= будущие MCP-инструменты)
 
 | Операция            | Вход                 | Выход             | Назначение                              |
@@ -235,6 +260,8 @@ interface Report {
 | `unplaceStack`      | `Load`,`Layout`,`StackRef` | `EditResult` | Снять стопку с пола → единицы уходят в `unplaced` |
 | `placeStack`        | `Load`,`Layout`,`PlaceStackSpec` | `EditResult` | Поставить стопку из неразмещённых в `(x,y)` |
 | `stackBuffer`       | `Load`,`Layout`      | `BufferStack[]`   | Неразмещённое, собранное в стопки (буфер) |
+| `maxUnitsInVehicle` | `CargoType`, `Vehicle`, `CapacityOptions?` | `number` | Сколько единиц этого типа максимум входит в кузов при его правилах (`quantity` и `orderId` игнорируются) |
+| `roomLeft`          | `Load`, `Layout`     | `RoomLeft \| null` | Для груза из одного типа: максимум, размещено в переданной (в т.ч. отредактированной) раскладке, свободно |
 
 В MVP `list/upsert` работают против браузерного хранилища (IndexedDB) на стороне UI; чистая
 функция ядра — `calculateLayout` и `getLayoutReport`. Формы входа/выхода стабильны для всех сред.
@@ -411,6 +438,9 @@ function resolveSlide(load: Load, layout: Layout, refs: StackRef[], dir: SlideDi
 - `contractVersion` в `Layout` позволяет клиентам проверять совместимость.
 
 ### История версий
+- `0.19.0` — добавлены `maxUnitsInVehicle`, `roomLeft`, типы `CapacityOptions`, `RoomLeft`;
+  аддитивно, чистые функции поверх `calculateLayout` с `fill: true`. `ENGINE_CONTRACT_VERSION` →
+  `0.19.0` ([ADR 027](adr/027-erp-embedded-artifact.md)).
 - `0.18.0` — добавлен код `ERR_DUPLICATE_CARGO_ID`: `validateLoad` отвергает `Load`, в котором два
   элемента `cargo` делят один `id` (`LKWkalk-p3p.15`). Аддитивно по форме — расширение
   `VALIDATION_ERROR_CODES`. По поведению это ужесточение валидации: такой `Load` раньше принимался,
@@ -468,3 +498,12 @@ function resolveSlide(load: Load, layout: Layout, refs: StackRef[], dir: SlideDi
 - `0.2.0` — добавлены `nestingMode`, `allowUnpairedTop`; `stepHeight` переинтерпретируется как h_д
   для `pairwise` (аддитивно, [ADR 009](adr/009-pairwise-nesting-model.md)).
 - `0.1.0` — исходный контракт.
+
+## 6. Граница со сборкой для ERP
+
+Программа поставляет в ERP готовый артефакт (второй вход сборки, `apps/web/dist-erp/`). Что именно
+программа и оболочка ERP обязаны друг другу — файлы, `HERKUNFT.json`, адреса, ключи хранения — задаёт
+действующая редакция контракта ERP (репозиторий ERP,
+`docs/superpowers/specs/2026-11-22-erp-y6tb9-api-vertrag.md`, §7); здесь это не пересказывается.
+Как программа это выполняет — [ADR 027](adr/027-erp-embedded-artifact.md). Контракт движка (разделы
+1–5) границу не меняет: добавлены только `maxUnitsInVehicle` и `roomLeft` (`0.19.0`).

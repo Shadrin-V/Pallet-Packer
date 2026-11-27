@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { Vehicle } from '@shadrin-v/engine';
 import { VALIDATION_ERROR_CODES } from '@shadrin-v/engine';
 import { TRANSLATION_KEYS } from '@shadrin-v/i18n';
+import type { OrderPosition, OrderZone } from '@shadrin-v/contracts';
 import { setupSummary, setupMessages, allMessages, firstError } from './setupValidation';
-import type { OrderState, PositionState } from './setupState';
+import { orderStateFromZone, type OrderState, type PositionState } from './setupState';
 
 const vehicle: Vehicle = { id: 'v', name: 'LKW', length: 13600, width: 2450, height: 2450 };
 
@@ -279,5 +280,45 @@ describe('ERR_DUPLICATE_CARGO_ID на экране', () => {
     const msgs = allMessages([order([pos({ length: '' }), pos({ name: 'Копия' })])], vehicle);
     expect(msgs.some((m) => m.code === 'ERR_DUPLICATE_CARGO_ID')).toBe(false);
     expect(msgs.some((m) => m.code === 'setup.msg.dimsMissing' && m.level === 'error')).toBe(true);
+  });
+});
+
+describe('строки из ERP: неразмещаемое и размер из названия', () => {
+  const zone = (p: Partial<OrderPosition>, z: Partial<OrderZone> = {}): OrderZone =>
+    ({ orderId: 'PUR-ORD-2026-00871', partner: 'Muster Paletten Sp. z o.o.', ...z,
+       positions: [{ itemCode: 'HAN0412', itemName: 'Einwegpalette 1200x800', quantity: 440, dimensionsSource: 'catalog', lineRef: 'a1b2c3d4e5', ...p }] });
+  const unplaceable = (): Partial<OrderPosition> =>
+    ({ quantity: 0, uom: 'Cubic Meter', dimensionsSource: 'manual', unplaceable: 'ERR_LINE_UNIT_NOT_PIECES' });
+
+  it('рейс из одной строки в м³: адресных ошибок нет, причина — пустая заявка', () => {
+    const orders = [orderStateFromZone(zone(unplaceable()), 0)];
+    const msgs = allMessages(orders, vehicle);
+    expect(msgs.some((m) => m.where)).toBe(false);
+    expect(msgs.some((m) => m.code === 'ERR_EMPTY_LOAD')).toBe(true);
+    expect(firstError(msgs)?.where).toBeUndefined();
+  });
+
+  it('предложение из названия даёт адресное предупреждение', () => {
+    const orders = [orderStateFromZone(zone({ length: 1200, width: 100, dimensionsSource: 'name' }), 0)];
+    expect(setupMessages(orders, vehicle)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'setup.msg.dimsFromName', level: 'warning', where: expect.any(Object) }),
+      expect.objectContaining({ code: 'setup.msg.dimsMissing', level: 'error' }),
+    ]));
+  });
+
+  it('сводка не считает неразмещаемые строки', () => {
+    const o = order([pos(), pos({ id: 'p2', quantity: 7, unplaceable: 'ERR_LINE_NO_ITEM' })]);
+    expect(setupSummary([o], vehicle)).toMatchObject({ positions: 1, units: 10 });
+  });
+
+  it('дубль Auftrags-ID адресуется первой размещаемой строке карточки', () => {
+    const a = order([pos()]);
+    const b = { ...order([pos({ id: 'u1', quantity: 0, length: '', unplaceable: 'ERR_LINE_NO_ITEM' }), pos({ id: 'p2' })]), key: 'o2' };
+    const dup = setupMessages([a, b], vehicle).find((m) => m.code === 'setup.msg.duplicateOrderId');
+    expect(dup?.where).toEqual({ orderKey: 'o2', positionId: 'p2' });
+  });
+
+  it('код предупреждения переводим', () => {
+    expect(TRANSLATION_KEYS).toContain('setup.msg.dimsFromName');
   });
 });

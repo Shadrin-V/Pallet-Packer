@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import local from './tools/eslint/index.js';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '.beads/**'] },
+  { ignores: ['**/dist/**', '**/dist-erp/**', '**/node_modules/**', '.beads/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

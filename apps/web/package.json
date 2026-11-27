@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:erp": "tsc --noEmit && vite build -c vite.erp.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

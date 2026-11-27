@@ -5,10 +5,15 @@ import { t } from './translate';
 
 const INTL_LOCALE_TAG: Record<Locale, string> = { de: 'de-DE', ru: 'ru-RU' };
 
+/** Число длины в мм без единицы (группировка по локали) — для «1.200 × 800 × 144 mm», где
+ *  единица ставится один раз. `formatLength` = это число + единица. */
+export function formatLengthNumber(mm: number, locale: Locale): string {
+  return new Intl.NumberFormat(INTL_LOCALE_TAG[locale]).format(mm);
+}
+
 /** Format an integer millimetre value with locale-appropriate grouping and the localized unit. */
 export function formatLength(mm: number, locale: Locale): string {
-  const number = new Intl.NumberFormat(INTL_LOCALE_TAG[locale]).format(mm);
-  return `${number} ${t('unit.mm', locale)}`;
+  return `${formatLengthNumber(mm, locale)} ${t('unit.mm', locale)}`;
 }
 
 /** Объём из внутренних мм³ (ADR 002) в м³ для показа: один знак после запятой, локальные

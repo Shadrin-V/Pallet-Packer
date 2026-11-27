@@ -136,6 +136,67 @@
   --r-card: 10px;  --r-ctl: 7px;  --r-pill: 20px;
 }
 
+/* Третья палитра — палитра ХОСТА (сборка внутри ERP, задача 10): раскладка экранов не меняется, цвета и
+   шрифты берутся из Schäfer Design (ERP-y6tb9-spec/docs/design/schaefer-design/tokens.css, светлая тема).
+   Не выбор пользователя: ставится оболочкой через applyHostPalette и запирается. @font-face здесь нет —
+   шрифты подключает оболочка ERP. */
+:root[data-theme='schaefer'] {
+  /* ---- surfaces ---- */
+  --paper: #eef1ed;        /* surface-page */
+  --card: #ffffff;         /* surface */
+  --sub: #e2ede5;          /* surface-tint */
+
+  /* ---- ink ---- */
+  --ink: #0f1a13;         /* ink */
+  --muted: #36423a;       /* ink-2 */
+  --faint: #5c685f;       /* ink-muted */
+
+  /* ---- lines: в Schäfer линии только line ---- */
+  --line: #dde3de;
+  --line-strong: #dde3de;
+
+  /* ---- brand ---- */
+  --brand: #104f24;         /* brand */
+  --brand-strong: #0b3a1a;  /* brand-strong */
+  --brand-ink: #ffffff;     /* on-brand */
+  --mint: #104f24;          /* focus-ring */
+  --mint-tint: #dff0e5;     /* success-tint */
+  --mint-ring: rgba(16, 79, 36, 0.35); /* focus-ring с прозрачностью */
+  --sage: #dde3de;          /* line */
+  --hero-tint: #e2ede5;     /* surface-tint */
+
+  /* ---- semantic — КОПИИ forest (инвариант ADR 025) ---- */
+  --success: #1f7a4c;  --success-ink: #ffffff;
+  --warning: #b8860b;  --warning-ink: #ffffff;
+  --danger: #b3261e;   --danger-ink: #ffffff;
+  --info: #1565c0;     --info-ink: #ffffff;
+
+  /* ---- categorical: в Schäfer три цвета заказов (chart-primary, chart-freight, chart-cost), дальше по
+     кругу; различимость держат штриховка и знак позиции, не цвет ---- */
+  --s1: #104f24;  --s2: #bf7f10;  --s3: #7f9486;  --s4: #104f24;
+  --s5: #bf7f10;  --s6: #7f9486;  --s7: #104f24;  --s8: #bf7f10;
+
+  /* ---- data-viz ---- */
+  --grid: #d0dad4;         /* копия forest */
+  --truck: #36423a;        /* ink-2 */
+  --yard-mark: #e8b300;    /* копия forest: краска на асфальте, не UI */
+
+  /* ---- radii ---- */
+  --r-card: 12px;  --r-ctl: 8px;  --r-pill: 999px;
+
+  /* ---- elevation ---- */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* ---- typography / motion / density ---- */
+  --font-sans: "Instrument Sans", "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur: 150ms;
+  --pad-compact: 13px 14px;
+  --pad-roomy: 18px 20px;
+}
+
 body {
   background: var(--paper);
   color: var(--ink);

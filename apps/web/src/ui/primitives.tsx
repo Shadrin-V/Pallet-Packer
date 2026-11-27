@@ -47,6 +47,7 @@ export function Measure({
   invalid = false,
   align = 'right',
   readOnly = false,
+  inputRef,
 }: {
   value: number | '';
   onChange: (v: number | '') => void;
@@ -57,6 +58,8 @@ export function Measure({
   align?: 'left' | 'center' | 'right';
   /** A constructive field ERPNext supplied for the bound article (Task 8) — locked against edits. */
   readOnly?: boolean;
+  /** Регистрация самого поля у родителя — чтобы экран мог перевести в него фокус. */
+  inputRef?: (el: HTMLInputElement | null) => void;
 }) {
   const alignCls = align === 'left' ? 'text-left' : align === 'center' ? 'text-center' : 'text-right';
   return (
@@ -66,6 +69,7 @@ export function Measure({
       } ${readOnly ? 'opacity-70' : ''}`}
     >
       <input
+        ref={inputRef}
         type="number"
         inputMode="numeric"
         aria-label={ariaLabel}
@@ -187,18 +191,37 @@ export const Button = forwardRef<
     variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
     type?: 'button' | 'submit';
     disabled?: boolean;
+    /** Недоступна, но не погашена: остаётся в порядке фокуса и объявляется скринридером, нажатие
+     *  отклоняет сам обработчик (спека программы §6). Без пропа разметка прежняя. */
+    ariaDisabled?: boolean;
+    /** id текста причины, который озвучивается вместе с кнопкой. */
+    ariaDescribedBy?: string;
+    /** Действие кнопки выполняется (запрос в полёте). Без пропа разметка прежняя. */
+    ariaBusy?: boolean;
   }
->(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false }, ref) {
+>(function Button({ children, onClick, variant = 'secondary', type = 'button', disabled = false, ariaDisabled, ariaDescribedBy, ariaBusy }, ref) {
   const base =
-    'rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed';
-  const styles = {
-    primary: 'bg-brand text-brand-ink hover:bg-brand-strong',
-    secondary: 'border border-line-strong bg-card text-ink hover:border-brand hover:text-brand',
-    ghost: 'border border-dashed border-line-strong text-muted hover:text-brand',
-    danger: 'bg-danger text-[color:var(--danger-ink)] hover:opacity-90',
+    'rounded-ctl px-3.5 py-2 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50 disabled:cursor-not-allowed' +
+    (ariaDisabled ? ' opacity-50 cursor-not-allowed' : '');
+  const [look, hover] = {
+    primary: ['bg-brand text-brand-ink', 'hover:bg-brand-strong'],
+    secondary: ['border border-line-strong bg-card text-ink', 'hover:border-brand hover:text-brand'],
+    ghost: ['border border-dashed border-line-strong text-muted', 'hover:text-brand'],
+    danger: ['bg-danger text-[color:var(--danger-ink)]', 'hover:opacity-90'],
   }[variant];
+  // Недоступная кнопка под курсором не меняет вид: иначе она обещала бы нажатие, которого не будет.
+  const styles = ariaDisabled ? look : `${look} ${hover}`;
   return (
-    <button ref={ref} type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
+    <button
+      ref={ref}
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      aria-disabled={ariaDisabled ? true : undefined}
+      aria-describedby={ariaDescribedBy}
+      aria-busy={ariaBusy ? true : undefined}
+      className={`${base} ${styles}`}
+    >
       {children}
     </button>
   );

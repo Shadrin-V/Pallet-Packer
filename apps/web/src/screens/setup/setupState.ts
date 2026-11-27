@@ -1,8 +1,9 @@
 // Состояние экрана «Настройка» без DOM (LKWkalk-5nb): типы, умолчания, персистентность, сборка
 // CargoType. Извлечено из SetupScreen.tsx дословно — поведение не менялось.
 import type { CargoType, NestingMode, NestingState, RotationRule, ForkAccess, ForkAxis, Vehicle } from '@shadrin-v/engine';
-import type { ArticleErpField, OrderZone } from '@shadrin-v/contracts';
+import type { ArticleErpField, ArticleRules, OrderZone, UnplaceableReason } from '@shadrin-v/contracts';
 import type { ArticleSuggestion } from '../components/ArticleCombobox';
+import { readStored, writeStored } from '../../lib/draftStorage';
 
 // ---- state model ----------------------------------------------------------
 export type Num = number | '';
@@ -40,6 +41,23 @@ export interface PositionState {
    *  name came from ERPNext. Drives the "the name is changed in ERPNext" notice — without it the
    *  row would simply look like free text and a save would fork a second article silently. */
   unboundFromErp?: { itemCode: string; name: string };
+  // --- строка заказа ERP (сборка во встраивании); у обычной строки этих полей нет ---
+  /** Стабильная идентичность строки заказа ERP: по ней повторный импорт не задваивает строку. */
+  lineRef?: string;
+  /** Складская единица, в которой ERP дал количество, — только для показа (`formatUom`). */
+  uom?: string;
+  /** Строку не размещают: так решил сервер ERP. Никогда не выводится из `uom` на странице. */
+  unplaceable?: UnplaceableReason;
+  /** Точное количество в `uom` из ERP — только для показа; в расчёт идёт целое `quantity`. */
+  sourceQuantity?: number;
+  /** Длина и ширина — предложение по названию артикула (высоты нет): просим проверить. */
+  dimsFromName?: true;
+  /** Габариты из каталога ERP; запись может быть неполной — недостающие поля пусты. */
+  dimsFromCatalog?: true;
+  /** Рейс ERP (`tripId`), из которого пришла строка. Нет — строка взята из списка строк, заведена
+   *  вручную или сохранена до появления этого поля. Номером рейса план подписывается, только если он
+   *  стоит у ВСЕХ позиций черновика (`draftTrip`). */
+  fromTrip?: string;
 }
 
 export interface OrderState {
@@ -49,7 +67,22 @@ export interface OrderState {
    *  its colour + hatch when the list is reordered, on both Setup and the Ladeplan (QA). */
   colorIndex: number;
   positions: PositionState[];
+  /** Поставщик заказа ERP — подпись зоны. */
+  partner?: string;
+  /** Покупатель прямой поставки. */
+  customer?: string;
 }
+
+/** Рейс ERP, к которому относится черновик. */
+export interface TripRef {
+  tripId: string;
+  loadingDate?: string;
+}
+
+const isTripRef = (x: unknown): x is TripRef =>
+  typeof x === 'object' && x !== null &&
+  typeof (x as TripRef).tripId === 'string' &&
+  ((x as TripRef).loadingDate === undefined || typeof (x as TripRef).loadingDate === 'string');
 
 // ---- persistence (survives page refresh; cleared by the reset button) ---------------------------
 // The persisted form is a client-side working draft. ERPNext import (future) sets the same state and
@@ -58,10 +91,11 @@ export const SETUP_STORAGE_KEY = 'ladungsplaner.setup';
 export interface PersistedSetup {
   vehicle: Vehicle;
   orders: OrderState[];
+  trip?: TripRef;
 }
 export function loadSetup(): PersistedSetup | null {
   try {
-    const raw = globalThis.localStorage?.getItem(SETUP_STORAGE_KEY);
+    const raw = readStored(SETUP_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSetup;
     if (parsed?.vehicle && Array.isArray(parsed.orders) && parsed.orders.length) {
@@ -79,7 +113,9 @@ export function loadSetup(): PersistedSetup | null {
             : { ...rest, nestStepPairwise: legacy, nestStepSequential: '' as Num };
         }),
       }));
-      return { ...parsed, orders };
+      // Испорченная ссылка на рейс отбрасывается, а не доезжает до экрана под видом TripRef.
+      const { trip, ...rest } = parsed;
+      return { ...rest, orders, ...(isTripRef(trip) ? { trip } : {}) };
     }
   } catch {
     /* corrupt / unavailable — ignore */
@@ -88,7 +124,7 @@ export function loadSetup(): PersistedSetup | null {
 }
 export function saveSetup(s: PersistedSetup): void {
   try {
-    globalThis.localStorage?.setItem(SETUP_STORAGE_KEY, JSON.stringify(s));
+    writeStored(SETUP_STORAGE_KEY, JSON.stringify(s));
   } catch {
     /* ignore */
   }
@@ -125,32 +161,77 @@ export const emptyOrder = (n: number, colorIndex: number = n - 1): OrderState =>
   positions: [emptyPosition()],
 });
 
+/** Правила упаковки и шаги вложения артикула → поля позиции. Заданное правило замещает текущее,
+ *  незаданное не трогается; шаги — физика артикула: отсутствующий шаг становится пустым. Общая
+ *  часть выбора подсказки (`applySuggestion`) и импорта строки заказа (`orderStateFromZone`). */
+export function rulesPatch(
+  rules: Partial<ArticleRules> | undefined,
+  steps: { nestStepPairwise?: number; nestStepSequential?: number },
+): Partial<PositionState> {
+  const r = rules ?? {};
+  return {
+    nestStepPairwise: steps.nestStepPairwise ?? '',
+    nestStepSequential: steps.nestStepSequential ?? '',
+    ...(r.state ? { state: r.state } : {}),
+    ...(r.nestingMode ? { nestingMode: r.nestingMode } : {}),
+    ...(r.rotation ? { rotation: r.rotation } : {}),
+    ...(r.forkAccess ? { forkAccess: r.forkAccess } : {}),
+    ...(r.forkAxis ? { forkAxis: r.forkAxis } : {}),
+    ...(r.maxNested !== undefined ? { maxNested: r.maxNested } : {}),
+    ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
+    ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
+  };
+}
+
 /**
- * Импортированный из ERPNext заказ → состояние экрана (LKWkalk-s17).
+ * Импортированный заказ (ERPNext Sales Order / ERP Purchase Order) → состояние экрана (LKWkalk-s17).
  *
  * Пустые габариты остаются ПУСТЫМИ, а не нулями: пустое поле уже даёт по строке локальную ошибку
  * «укажите размеры» с адресом, и «Рассчитать» к ней прыгает (`setupValidation`), тогда как ноль —
- * это заполненный неверный размер, который мимо неё пройдёт.
+ * это заполненный неверный размер, который мимо неё пройдёт. Так же ловится неполная запись
+ * каталога: присланные размеры переносятся, недостающие остаются пустыми.
  *
- * `dimensionsSource` в состояние не переносится: «нужен ввод» выводится из пустых габаритов, а не
- * из тега (см. комментарий к нему в contracts/dto.ts), и второй источник той же истины разошёлся бы
- * с первым. `locked` не выставляется — он описывает провенанс полей АРТИКУЛА из каталога (ADR 022),
- * а не строку Sales Order.
+ * Правила и шаги вложения, пришедшие со строкой (из каталога), применяются (`rulesPatch`);
+ * без них — умолчания `emptyPosition()`. `quantity` — уже целое, округлённое сервером, и
+ * переносится как есть; `sourceQuantity` и `uom` — только для показа. Размещаемость решает
+ * исключительно `unplaceable` с сервера: такая строка получает количество 0 и пустые габариты и в
+ * груз не идёт (`toCargoList`).
+ *
+ * «Нужен ввод» по-прежнему выводится из пустых габаритов, а не из `dimensionsSource`; из тега
+ * переносится только происхождение заполненных размеров — `dimsFromName` (предложение, просим
+ * проверить) и `dimsFromCatalog`. `locked` не выставляется — он описывает провенанс полей АРТИКУЛА
+ * из каталога (ADR 022), а не строку заказа.
  */
 export function orderStateFromZone(zone: OrderZone, colorIndex: number): OrderState {
   return {
     key: uid(),
     orderId: zone.orderId,
     colorIndex,
-    positions: zone.positions.map((p) => ({
-      ...emptyPosition(),
-      name: p.itemName,
-      quantity: p.quantity,
-      length: p.length ?? '',
-      width: p.width ?? '',
-      height: p.height ?? '',
-      articleCode: p.itemCode,
-    })),
+    ...(zone.partner !== undefined ? { partner: zone.partner } : {}),
+    ...(zone.customer !== undefined ? { customer: zone.customer } : {}),
+    positions: zone.positions.map((p): PositionState => {
+      const base: PositionState = {
+        ...emptyPosition(),
+        ...rulesPatch(p.rules, p),
+        name: p.itemName,
+        articleCode: p.itemCode,
+        ...(p.lineRef !== undefined ? { lineRef: p.lineRef } : {}),
+        ...(p.uom !== undefined ? { uom: p.uom } : {}),
+        ...(p.sourceQuantity !== undefined ? { sourceQuantity: p.sourceQuantity } : {}),
+      };
+      if (p.unplaceable !== undefined) {
+        return { ...base, unplaceable: p.unplaceable, quantity: 0, length: '', width: '', height: '' };
+      }
+      return {
+        ...base,
+        quantity: p.quantity,
+        length: p.length ?? '',
+        width: p.width ?? '',
+        height: p.height ?? '',
+        ...(p.dimensionsSource === 'name' ? { dimsFromName: true as const } : {}),
+        ...(p.dimensionsSource === 'catalog' ? { dimsFromCatalog: true as const } : {}),
+      };
+    }),
   };
 }
 
@@ -281,7 +362,8 @@ export interface SetupMessageWhere {
  *  ЕДИНСТВЕННАЯ сборка груза в приложении: её зовут «Рассчитать», Demo и живая валидация — разойтись
  *  им негде, а расхождение сборок и было корнем молчаливого пустого плана.
  *  Позиции с нулевым количеством в груз не попадают: обнуление временно исключает строку из заявки
- *  (спека §6), и её габариты не должны блокировать расчёт. */
+ *  (спека §6), и её габариты не должны блокировать расчёт. Неразмещаемые строки ERP (`unplaceable`)
+ *  не попадают никогда — что бы ни стояло в их количестве и габаритах. */
 export function toCargoList(orders: OrderState[]): {
   cargo: CargoType[];
   addressOf: Map<string, SetupMessageWhere>;
@@ -290,7 +372,7 @@ export function toCargoList(orders: OrderState[]): {
   const addressOf = new Map<string, SetupMessageWhere>();
   for (const o of orders) {
     for (const p of o.positions) {
-      if (numOr0(p.quantity) === 0) continue;
+      if (p.unplaceable || numOr0(p.quantity) === 0) continue;
       cargo.push(toCargo(p, o.orderId));
       addressOf.set(p.id, { orderKey: o.key, positionId: p.id });
     }
@@ -308,26 +390,19 @@ export function lockedFieldsFrom(fields: readonly ArticleErpField[]): LockedFiel
   return locked;
 }
 
-/** Apply a picked suggestion to a position: name, constructive fields, rules; quantity untouched. */
+/** Apply a picked suggestion to a position: name, constructive fields, rules; quantity untouched.
+ *  The dimensions now come from the picked article, so any origin mark of the old ones is cleared. */
 export function applySuggestion(s: ArticleSuggestion): Partial<PositionState> {
-  const r = s.rules ?? {};
   return {
     articleCode: s.itemCode,
     name: s.name,
     length: s.length ?? '',
     width: s.width ?? '',
     height: s.height ?? '',
-    nestStepPairwise: s.nestStepPairwise ?? '',
-    nestStepSequential: s.nestStepSequential ?? '',
-    ...(r.state ? { state: r.state } : {}),
-    ...(r.nestingMode ? { nestingMode: r.nestingMode } : {}),
-    ...(r.rotation ? { rotation: r.rotation } : {}),
-    ...(r.forkAccess ? { forkAccess: r.forkAccess } : {}),
-    ...(r.forkAxis ? { forkAxis: r.forkAxis } : {}),
-    ...(r.maxNested !== undefined ? { maxNested: r.maxNested } : {}),
-    ...(r.maxTiers !== undefined ? { maxTiers: r.maxTiers } : {}),
-    ...(r.allowUnpairedTop !== undefined ? { allowUnpairedTop: r.allowUnpairedTop } : {}),
+    ...rulesPatch(s.rules, s),
     locked: lockedFieldsFrom(s.erpFields),
     unboundFromErp: undefined,
+    dimsFromName: undefined,
+    dimsFromCatalog: undefined,
   };
 }

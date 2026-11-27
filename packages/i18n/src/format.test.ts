@@ -1,10 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { formatLength, formatVolume } from './format';
+import { formatLength, formatLengthNumber, formatVolume } from './format';
 
 // Intl.NumberFormat('ru-RU') groups thousands with U+00A0 NO-BREAK SPACE, not a plain space.
 // Built via fromCharCode (not a literal/escaped character) so the separator is unambiguous and
 // impossible to silently corrupt in source control.
 const NBSP = String.fromCharCode(0xa0);
+
+describe('formatLengthNumber', () => {
+  it('число длины без единицы — той же записью, что formatLength', () => {
+    expect(formatLengthNumber(13600, 'de')).toBe('13.600');
+    expect(formatLengthNumber(13600, 'ru')).toBe(`13${NBSP}600`);
+    for (const mm of [0, 650, 1200, 13600]) {
+      for (const locale of ['de', 'ru'] as const) {
+        expect(formatLength(mm, locale).startsWith(`${formatLengthNumber(mm, locale)} `)).toBe(true);
+      }
+    }
+  });
+});
 
 describe('formatLength', () => {
   it('formats a German length with dot grouping and the "mm" unit', () => {

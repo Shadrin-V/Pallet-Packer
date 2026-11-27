@@ -7,8 +7,10 @@ import { fillTemplate } from '../components/stackFormula';
 import { OrderSwatch } from '../../lib/swatch';
 import { TextField } from '../../ui/primitives';
 import { useT } from '../../i18n/LocaleContext';
+import { useHost } from '../../host/HostContext';
 import { PositionRow } from './PositionRow';
 import type { OrderState, PositionState } from './setupState';
+import type { DimField } from './setupValidation';
 
 export interface OrderCardProps {
   order: OrderState;
@@ -19,6 +21,8 @@ export interface OrderCardProps {
   canMoveDown: boolean;
   onMove: (dir: -1 | 1) => void;
   onOrderIdChange: (v: string) => void;
+  /** Номер заказа только для чтения (сборка для ERP: номер приходит из ERP, макет). */
+  orderIdReadOnly?: boolean;
   onPositionChange: (pid: string, patch: Partial<PositionState>) => void;
   onAddPosition: () => void;
   armed: { kind: 'position' | 'order'; key: string } | null;
@@ -40,6 +44,8 @@ export interface OrderCardProps {
   /** Same registration, for the row's article-name input — Task 7 (LKWkalk-78x) uses this to return
    *  focus to a sibling row after a position delete instead of evicting it from the card. */
   onNameRef?: (pid: string, el: HTMLInputElement | null) => void;
+  /** То же для полей размеров строки (фокус при заблокированном расчёте в ERP). */
+  onDimRef?: (pid: string, field: DimField, el: HTMLInputElement | null) => void;
 }
 
 export function OrderCard({
@@ -51,6 +57,7 @@ export function OrderCard({
   canMoveDown,
   onMove,
   onOrderIdChange,
+  orderIdReadOnly = false,
   onPositionChange,
   onAddPosition,
   armed,
@@ -63,8 +70,13 @@ export function OrderCard({
   onDeselectPosition,
   onChipRef,
   onNameRef,
+  onDimRef,
 }: OrderCardProps) {
   const tt = useT();
+  const erp = useHost().kind === 'erp';
+  // Неразмещаемые строки ERP строкой карточки не рисуются: экран показывает их отдельным списком
+  // (UnplaceableList). Обычная сборка рисует все строки, как раньше.
+  const rows = erp ? order.positions.filter((p) => !p.unplaceable) : order.positions;
   const colorVar = `var(--s${((index % 8) + 1)})`;
   return (
     <section className="overflow-hidden rounded-card bg-card shadow-card" style={{ borderLeft: `4px solid ${colorVar}` }}>
@@ -74,12 +86,30 @@ export function OrderCard({
           overflow-hidden section, same fix already applied to the position row below. */}
       <div className="flex flex-wrap items-center gap-3 bg-sub px-4 py-2.5">
         <OrderSwatch index={index} title={`${tt('setup.order')} ${order.orderId}`} />
-        <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
+        {orderIdReadOnly ? (
+          // Поле, а не текст: номер остаётся выделяемым и копируемым, скринридер называет его так же.
+          <input
+            type="text"
+            readOnly
+            aria-label={tt('field.orderId')}
+            value={order.orderId}
+            className="min-w-0 rounded-ctl border border-transparent bg-transparent px-2 py-1.5 text-body font-bold text-ink outline-none focus-visible:border-brand"
+          />
+        ) : (
+          <TextField ariaLabel={tt('field.orderId')} value={order.orderId} onChange={onOrderIdChange} weight={700} />
+        )}
+        {/* Шапка заказа ERP (макет, блок 3): поставщик и, при прямой поставке, покупатель. */}
+        {erp && order.partner && <span className="text-caption text-muted">{order.partner}</span>}
+        {erp && order.customer && (
+          <span className="text-caption text-muted">
+            {fillTemplate(tt('erp.order.directTo'), { customer: order.customer })}
+          </span>
+        )}
         {/* Счётчик — целиком из словаря (LKWkalk-5gi п.3): конкатенация в коде отдавала переводчику
             только слово, а порядок и разделитель зашивала намертво. */}
         <span className="ml-auto text-caption text-muted">
           {fillTemplate(tt('setup.positionCount'), {
-            count: order.positions.length,
+            count: rows.length,
             label: tt('cargoType.label'),
           })}
         </span>
@@ -132,7 +162,7 @@ export function OrderCard({
       </div>
 
       <div className="divide-y divide-line">
-        {order.positions.map((p) => (
+        {rows.map((p) => (
           <PositionRow
             key={p.id}
             position={p}
@@ -148,6 +178,7 @@ export function OrderCard({
             onRemove={() => onRemovePosition(p.id)}
             chipRef={onChipRef ? (el) => onChipRef(p.id, el) : undefined}
             nameRef={onNameRef ? (el) => onNameRef(p.id, el) : undefined}
+            dimRef={onDimRef ? (field, el) => onDimRef(p.id, field, el) : undefined}
           />
         ))}
       </div>

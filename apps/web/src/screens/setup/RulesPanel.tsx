@@ -17,6 +17,7 @@ import { Measure, Segmented, Select, Button, InfoHint } from '../../ui/primitive
 import { orderColorToken } from '../../lib/orderColor';
 import { OrderSwatch } from '../../lib/swatch';
 import { useT, useLocale } from '../../i18n/LocaleContext';
+import { useHost } from '../../host/HostContext';
 import { ruleSentences } from './positionRules';
 import { LoadSummary } from './LoadSummary';
 import type { SetupMessage, SetupMessageWhere, SetupSummary } from './setupValidation';
@@ -50,6 +51,7 @@ export interface RulesPanelProps {
 export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onSaveArticle, onClose, summary, messages, onGoTo, summaryRef }: RulesPanelProps) {
   const tt = useT();
   const { locale } = useLocale();
+  const erp = useHost().kind === 'erp';
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -76,11 +78,14 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
       setSaveError(null);
       // Finding 1: bind the row to what the server actually stored — otherwise articleCode stays
       // unset and the button keeps reading "save" instead of flipping to "update".
+      // В ERP сохранённые у артикула габариты подтверждены: предложение из названия снимается, строка
+      // помечается как «габариты у артикула» (макет, блок 3).
       if (saved)
         onChange({
           articleCode: saved.itemCode,
           locked: lockedFieldsFrom(saved.erpFields),
           unboundFromErp: undefined,
+          ...(erp ? { dimsFromName: undefined, dimsFromCatalog: true as const } : {}),
         });
     } catch {
       setSaveError(tt('article.saveError'));
@@ -276,6 +281,12 @@ export function RulesPanel({ position: p, orderId, index, vehicle, onChange, onS
               hiding the notice the moment the text matches again would silently re-open the very
               duplicate-fork bug this notice exists to prevent. */}
           {p.unboundFromErp && <p className="text-caption text-muted">{tt('article.renameInErp')}</p>}
+          {/* В ERP правила и габариты живут у артикула и действуют для каждого следующего LKW. */}
+          {erp && p.articleCode && (
+            <p className="mt-1 text-caption text-muted">
+              {fillTemplate(tt('erp.rules.savedAtArticle'), { code: p.articleCode })}
+            </p>
+          )}
         </div>
       </div>
     </aside>

@@ -14,27 +14,99 @@ import type {
 /**
  * Provenance of a cargo position's dimensions:
  * - 'erpnext-field' — read from ERPNext custom fields custom_length_mm/width/height (Sales Order Item);
- * - 'manual' — not provided by ERPNext; the user enters the dimensions in the app.
+ * - 'manual' — not provided by ERPNext; the user enters the dimensions in the app;
+ * - 'catalog' — from the ERP catalogue (DocType «Ladungsplaner Artikel»): confirmed by a human;
+ * - 'name' — length and width suggested from the article name: a SUGGESTION, height is empty.
  * "Needs input" is derived from empty dimensions, not from this tag (see the fields spec).
  */
-export const DIMENSION_SOURCES = ['erpnext-field', 'manual'] as const;
+export const DIMENSION_SOURCES = ['erpnext-field', 'manual', 'catalog', 'name'] as const;
 export type DimensionSource = (typeof DIMENSION_SOURCES)[number];
+
+/** ERP API contract version the build is written against (docs: erp-y6tb9 api-vertrag). */
+export const ERP_API_CONTRACT = 'erp-y6tb9-v1';
+
+export const UNPLACEABLE_REASONS = [
+  'ERR_LINE_UNIT_NOT_PIECES', // line unit is not a piece unit (e.g. m³) — not laid out by dimensions
+  'ERR_LINE_QTY_UNKNOWN', // conversion to stock units unknown (no conversion_factor)
+  'ERR_LINE_NO_ITEM', // line without an article
+  'ERR_LINE_NOTHING_OPEN', // open remainder is 0
+] as const;
+export type UnplaceableReason = (typeof UNPLACEABLE_REASONS)[number];
 
 /** One line of an imported order. Dimensions are mm; undefined → needs manual entry. */
 export interface OrderPosition {
   itemCode: string;
   itemName: string;
+  /** Whole number ≥ 0; 0 when `unplaceable`. */
   quantity: number;
   length?: number;
   width?: number;
   height?: number;
   dimensionsSource: DimensionSource;
+  // --- ERP additions, all optional ---
+  /** Name of the Purchase Order Item row. */
+  lineRef?: string;
+  /** Stock unit of the article — the unit `quantity` is given in. Piece-ness is decided by the server. */
+  uom?: string;
+  /** From the catalogue; when present the page MUST apply them to the position. */
+  rules?: ArticleRules;
+  nestStepPairwise?: number;
+  nestStepSequential?: number;
+  unplaceable?: UnplaceableReason;
+  /**
+   * Exact quantity in `uom`, may be fractional: for an unplaceable line (with `quantity: 0`) and for a
+   * placeable one when the exact value differs from `quantity` (the server rounded `quantity` UP).
+   */
+  sourceQuantity?: number;
 }
 
-/** An imported ERPNext Sales Order mapped to a packing zone (engine groups cargo by orderId). */
+/** An imported ERPNext Sales Order / ERP Purchase Order mapped to a packing zone (engine groups cargo by orderId). */
 export interface OrderZone {
   orderId: string;
   positions: OrderPosition[];
+  /** Supplier name — the zone caption. */
+  partner?: string;
+  /** Customer name for a direct delivery. */
+  customer?: string;
+}
+
+/** Who is logged in to the ERP page. */
+export interface ErpSession {
+  /** ERP login — the key isolating the browser draft. */
+  user: string;
+  fullName: string;
+  language: 'de' | 'ru';
+  csrfToken: string;
+  /** schaefer_erp.__version__ */
+  appVersion: string;
+}
+
+/** Positions of an existing trip. */
+export interface TripImport {
+  /** Name of the LKW-Disposition. */
+  tripId: string;
+  /** ISO date (verladung_am). */
+  loadingDate?: string;
+  /** Grouped by Purchase Order, in trip order. */
+  zones: OrderZone[];
+}
+
+/** An open Purchase Order line offered for selection. */
+export interface OpenLine {
+  lineRef: string;
+  orderId: string;
+  supplier?: string;
+  customer?: string;
+  itemCode: string;
+  itemName: string;
+  /** Open remainder in stock units; null — unknown. */
+  openQuantity: number | null;
+  uom: string;
+  /** ISO date. */
+  dueDate?: string;
+  placeable: boolean;
+  /** Present ⇔ placeable === false. */
+  reason?: UnplaceableReason;
 }
 
 /** Lightweight order reference for search/autocomplete. */

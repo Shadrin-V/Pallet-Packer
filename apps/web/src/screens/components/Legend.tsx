@@ -12,12 +12,15 @@ export function Legend({
   layout,
   label,
   orderColors,
+  capacity,
 }: {
   load: Load;
   layout: Layout;
   label: string;
   /** Stable orderId→palette slot, so legend colours match the Setup screen after reorder (QA #2). */
   orderColors?: Map<string, number>;
+  /** cargoTypeId → максимум единиц в этом кузове (из ядра). Только экран, в печать не идёт. */
+  capacity?: ReadonlyMap<string, number>;
 }) {
   const tt = useT();
   const orders = orderBreakdown(load, layout, orderColors);
@@ -41,6 +44,11 @@ export function Legend({
                     {/* Неразмещённое — экранная новость: печатный лист говорит только о погруженном
                         (x7e, решение владельца). Прячется здесь же, а не в @media print по классу
                         text-danger: тем же красным подсвечивается не только эта приписка. */}
+                    {capacity?.has(it.cargoTypeId) && (
+                      <span className="ml-2 text-faint print:hidden" data-testid="legend-capacity">
+                        {fillTemplate(tt('ladeplan.maxInTruck'), { n: capacity.get(it.cargoTypeId)! })}
+                      </span>
+                    )}
                     {it.unplaced > 0 && (
                       <span className="text-danger print:hidden" data-testid="legend-unplaced">
                         {' '}
