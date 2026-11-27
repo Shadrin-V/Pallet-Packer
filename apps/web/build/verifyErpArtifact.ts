@@ -5,23 +5,28 @@
 //
 // Собирает `build:erp` ДВАЖДЫ — вторую с заведомо «враждебным» окружением (`hostileBuildEnv`: dev-режим,
 // чужие браузеры, сетка autoprefixer) — и требует: обе сборки побайтово равны (ERP пересобирает на своей
-// машине и сравнивает побайтово); в `apps/web/dist-erp` ровно три обычных файла артефакта и `HERKUNFT.json`,
-// без `.html`, ссылок и подкаталогов; размеры — в пределах ERP; паспорт — в канонической форме, годен
-// (`checkHerkunft`, правила `pruefe` ERP), его коммит — текущий HEAD, версия движка — из собранного пакета,
-// sha256 — от файлов на диске; сканеры запретов пусты. Иначе — exit 1 с перечнем нарушений.
+// машине и сравнивает побайтово); в `apps/web/dist-erp` ровно четыре обычных файла артефакта (страница и
+// `lkw_motor.js`, ADR 027, поправка 2026-11-25) и `HERKUNFT.json`, без `.html`, ссылок, подкаталогов и
+// лишних чанков; размеры — в пределах ERP; файлы страницы побайтово равны эталону 5d67485 (второй проход
+// не меняет первый); паспорт — в канонической форме, годен (`checkHerkunft`, правила `pruefe` ERP), его
+// коммит — текущий HEAD, версия движка — из собранного пакета, sha256 — от файлов на диске; сканеры
+// запретов (для `lkw_motor.js` — и замки «без сети и без ERP» и самодостаточности) пусты; собранный
+// `lkw_motor.js` после каждой из двух сборок загружается и отдаёт ровно экспорт фасада, версии и пробный
+// расчёт (`checkMotorModule`). Иначе — exit 1 с перечнем нарушений.
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   ERP_ARTIFACT_FILES,
+  ERP_MOTOR_FILE,
   HERKUNFT_FILE,
+  checkFirstPassReference,
   checkHerkunft,
+  checkMotorModule,
   diffBuilds,
-  findCssForbidden,
-  findDynamicCode,
-  findRootAbsoluteLiterals,
   hostileBuildEnv,
+  scanArtifactFiles,
   serializeHerkunft,
   sha256Hex,
   type Herkunft,
@@ -51,6 +56,30 @@ function buildOnce(label: string, env: NodeJS.ProcessEnv, problems: string[]): S
   return snap;
 }
 
+/**
+ * Загружает только что собранный `lkw_motor.js` (по file-URL с номером сборки — без кэша модулей между
+ * сборками) и проверяет поверхность экспорта против паспорта той же сборки (`checkMotorModule`).
+ * Вызывается сразу после каждой сборки, пока следующая не перезаписала `dist-erp/`.
+ */
+async function checkBuiltMotor(build: number, snap: Snapshot, problems: string[]): Promise<void> {
+  const label = `сборка ${build}`;
+  if (!snap.has(ERP_MOTOR_FILE)) return; // отсутствие файла называет состав каталога и сканеры
+  let engineContractVersion: unknown;
+  try {
+    engineContractVersion = (JSON.parse(snap.get(HERKUNFT_FILE)?.toString('utf8') ?? 'null') as Record<string, unknown> | null)
+      ?.engineContractVersion;
+  } catch {
+    engineContractVersion = undefined; // паспорт разбирает и называет шаг 3
+  }
+  try {
+    const url = `${pathToFileURL(path.join(OUT, ERP_MOTOR_FILE)).href}?build=${build}`;
+    const mod = (await import(url)) as Record<string, unknown>;
+    for (const p of checkMotorModule({ ...mod }, engineContractVersion)) problems.push(`${label}: ${p}`);
+  } catch (e) {
+    problems.push(`${label}: ${ERP_MOTOR_FILE} не загружается как ES-модуль: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Разобранный паспорт; каноническая форма (`serializeHerkunft`) исключает и повтор ключей. */
 function parseHerkunft(snap: Snapshot, problems: string[]): Record<string, unknown> | undefined {
   const raw = snap.get(HERKUNFT_FILE);
@@ -76,13 +105,16 @@ function parseHerkunft(snap: Snapshot, problems: string[]): Record<string, unkno
 async function main(): Promise<number> {
   const problems: string[] = [];
   const first = buildOnce('сборка 1 из 2 (окружение как есть)', process.env, problems);
+  await checkBuiltMotor(1, first, problems);
   const second = buildOnce('сборка 2 из 2 (враждебное окружение: NODE_ENV=development, BROWSERSLIST, AUTOPREFIXER_GRID)', hostileBuildEnv(process.env), problems);
+  await checkBuiltMotor(2, second, problems);
 
   // 1. Воспроизводимость и устойчивость к окружению: тот же состав, те же байты (включая паспорт).
   problems.push(...diffBuilds(first, second));
   const names = [...second.keys()];
 
-  // 2. Состав каталога: ровно три файла артефакта и паспорт, без .html; размеры — в пределах ERP.
+  // 2. Состав каталога: ровно четыре файла артефакта и паспорт — без .html и без лишних чанков второго
+  //    прохода; размеры — в пределах ERP.
   const expected = [...ERP_ARTIFACT_FILES, HERKUNFT_FILE].sort();
   if (names.join('\n') !== expected.join('\n')) problems.push(`dist-erp: [${names.join(', ')}] ≠ [${expected.join(', ')}]`);
   for (const name of names) if (name.endsWith('.html')) problems.push(`dist-erp: лишний ${name}`);
@@ -90,6 +122,9 @@ async function main(): Promise<number> {
     const limit = name === HERKUNFT_FILE ? MAX_HERKUNFT : MAX_FILE;
     if (bytes.length > limit) problems.push(`${name}: ${bytes.length} B больше предела ERP ${limit} B`);
   }
+
+  // 2а. Первый проход (страница) — побайтово эталон 5d67485.
+  problems.push(...checkFirstPassReference(second));
 
   // 3. Паспорт: годен, указывает на текущий HEAD и собранную версию движка, хэши — от файлов на диске.
   const h = parseHerkunft(second, problems);
@@ -108,13 +143,8 @@ async function main(): Promise<number> {
     }
   }
 
-  // 4. Сканеры запретов (контракт §7).
-  const js = second.get('ladungsplaner.js')?.toString('utf8') ?? '';
-  const css = second.get('ladungsplaner.css')?.toString('utf8') ?? '';
-  for (const x of findRootAbsoluteLiterals(js)) problems.push(`ladungsplaner.js: адрес от корня вне разрешённых: ${x}`);
-  for (const x of findRootAbsoluteLiterals(css)) problems.push(`ladungsplaner.css: адрес от корня вне разрешённых: ${x}`);
-  for (const x of findDynamicCode(js)) problems.push(`ladungsplaner.js: динамический код: ${x}`);
-  for (const x of findCssForbidden(css)) problems.push(`ladungsplaner.css: запрещено: ${x}`);
+  // 4. Сканеры запретов (контракт §7) и замки `lkw_motor.js` (решение A′).
+  problems.push(...scanArtifactFiles(second));
 
   console.log('\n=== verify:erp — итог ===');
   if (problems.length > 0) {
